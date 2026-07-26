@@ -116,20 +116,21 @@ def copy_cell(page: Page, saved_row: Locator) -> None:
     )
 
 
+def assert_row_selected(row: Locator, message: str) -> None:
+    require(
+        "journal-row--selected" in (row.get_attribute("class") or ""),
+        message,
+    )
+
+
 def copy_row(page: Page, saved_row: Locator) -> None:
     saved_row.locator(".journal-row-number").click()
-    require(
-        saved_row.locator(".journal-row--selected").count() == 1,
-        "Row number did not select the complete journal row.",
-    )
+    assert_row_selected(saved_row, "Row number did not select the complete journal row.")
     page.keyboard.press("Control+C")
 
     target = draft_row(page)
     target.locator(".journal-row-number").click()
-    require(
-        target.locator(".journal-row--selected").count() == 1,
-        "Target row was not selected by its row number.",
-    )
+    assert_row_selected(target, "Target row was not selected by its row number.")
     page.keyboard.press("Control+V")
 
     page.locator('#journal-save-state[data-state="saved"]').wait_for(
