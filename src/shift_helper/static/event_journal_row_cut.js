@@ -22,6 +22,7 @@
         "end_time",
         "author",
     ];
+    let highlightedRow = null;
 
     function normalizeMatrix(cells) {
         if (!Array.isArray(cells) || !cells.length) {
@@ -44,6 +45,15 @@
         const fields = new Set(cells.map((cell) => cell.getField?.()));
         return editableFields.every((field) => fields.has(field)) ? row : null;
     }
+
+    function refreshRowHighlight() {
+        highlightedRow?.getElement().classList.remove("journal-row--selected");
+        highlightedRow = selectedWholeRow();
+        highlightedRow?.getElement().classList.add("journal-row--selected");
+    }
+
+    table.on("rangeChanged", refreshRowHighlight);
+    table.on("renderComplete", refreshRowHighlight);
 
     function isTextControl(target) {
         return target instanceof Element && Boolean(
@@ -85,6 +95,7 @@
             }
         }
 
+        highlightedRow = null;
         await row.delete();
         saveState.dataset.state = "saved";
         saveText.textContent = cut ? "Строка вырезана" : "Строка удалена";
