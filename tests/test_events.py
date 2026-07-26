@@ -1,5 +1,6 @@
 import json
 import re
+from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy import select
@@ -38,7 +39,6 @@ def _journal_row(**overrides: object) -> dict[str, object]:
         "end_date": "",
         "end_time": "",
         "author": "Петров П.П.",
-        "losses_mwh": "1,250",
         "revision": 0,
     }
     values.update(overrides)
@@ -115,7 +115,7 @@ def test_invalid_rotor_limit_is_rejected(tmp_path: Path) -> None:
         assert session.scalar(select(Event)) is None
 
 
-def test_spreadsheet_workspace_uses_offline_tabulator_and_no_create_button(
+def test_spreadsheet_workspace_uses_offline_tabulator_and_excel_patch(
     tmp_path: Path,
 ) -> None:
     app = create_app(testing=True, data_root=tmp_path)
@@ -130,20 +130,33 @@ def test_spreadsheet_workspace_uses_offline_tabulator_and_no_create_button(
     assert 'id="event-journal-suggestions"' in page
     assert "vendor/tabulator/tabulator.min.css" in page
     assert "vendor/tabulator/tabulator.min.js" in page
+    assert "event_journal_excel_patch.css" in page
+    assert "event_journal_excel_patch.js" in page
     assert 'data-status-filter="all"' in page
     assert 'id="journal-search"' in page
+    assert 'id="cell-fill-color"' in page
+    assert 'id="format-rules-dialog"' in page
     assert "+ Новое событие" not in page
     assert ">Создать событие<" not in page
 
     grid_script = client.get("/static/event_journal.js")
+    patch_script = client.get("/static/event_journal_excel_patch.js")
+    patch_styles = client.get("/static/event_journal_excel_patch.css")
     assert grid_script.status_code == 200
+    assert patch_script.status_code == 200
+    assert patch_styles.status_code == 200
     script_text = grid_script.get_data(as_text=True)
+    patch_text = patch_script.get_data(as_text=True)
     assert "new window.Tabulator" in script_text
     assert 'title: "Дата останова"' in script_text
-    assert 'title: "Действия персонала"' in script_text
-    assert 'title: "Кто внёс запись"' in script_text
     assert "selectableRange: 1" in script_text
     assert 'clipboardPasteAction: "range"' in script_text
+    assert "function excelEditor" in patch_text
+    assert 'event.key === "Enter"' in patch_text
+    assert "multiline && event.shiftKey" in patch_text
+    assert "navigator.clipboard.writeText" in patch_text
+    assert "format-rules" in patch_text
+    assert "downtime_losses_rub" in patch_text
 
     vendor_script = client.get("/static/vendor/tabulator/tabulator.min.js")
     vendor_styles = client.get("/static/vendor/tabulator/tabulator.min.css")
@@ -174,7 +187,9 @@ def test_journal_embeds_history_values_for_autocomplete(tmp_path: Path) -> None:
     assert "Передано дежурному инженеру" in suggestions["actions"]
 
 
-def test_inline_row_create_update_and_close(tmp_path: Path) -> None:
+def test_inline_row_calculates_downtime_and_source_workbook_losses(
+    tmp_path: Path,
+) -> None:
     app = create_app(testing=True, data_root=tmp_path)
     client = app.test_client()
 
@@ -185,7 +200,7 @@ def test_inline_row_create_update_and_close(tmp_path: Path) -> None:
     assert create_payload["ok"] is True
     assert create_payload["row"]["status"] == "open"
     assert create_payload["row"]["author"] == "Петров П.П."
-    assert create_payload["row"]["losses_mwh"] == "1.250"
+    assert create_payload["row"]["downtime_losses_rub"] == ""
     event_id = create_payload["row"]["id"]
     revision = create_payload["row"]["revision"]
 
@@ -203,6 +218,7 @@ def test_inline_row_create_update_and_close(tmp_path: Path) -> None:
     assert update_payload["ok"] is True
     assert update_payload["row"]["status"] == "closed"
     assert update_payload["row"]["downtime"] == "2 ч 30 мин"
+    assert update_payload["row"]["downtime_losses_rub"] == "6250"
 
     engine = app.extensions["shift_helper_database_engine"]
     with Session(engine) as session:
@@ -211,4 +227,4 @@ def test_inline_row_create_update_and_close(tmp_path: Path) -> None:
         assert event.end_at is not None
         assert event.status == "closed"
         assert event.author == "Петров П.П."
-        assert str(event.losses_mwh) == "1.250"
+        assert event.downtime_losses_rub == Decimal("6250.00")
