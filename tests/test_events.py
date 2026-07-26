@@ -149,12 +149,15 @@ def test_spreadsheet_workspace_uses_one_offline_controller(tmp_path: Path) -> No
     assert 'title: "Дата останова"' in script_text
     assert 'title: "№ ВЭУ / оборудование"' in script_text
     assert "selectableRange: 1" in script_text
-    assert 'clipboardPasteAction: "range"' in script_text
     assert "function journalEditor" in script_text
     assert 'event.key === "Enter"' in script_text
     assert "multiline && event.shiftKey" in script_text
-    assert "rowContextMenu" in script_text
-    assert "contextMenu: cellContextMenu" in script_text
+    assert 'document.addEventListener("keydown"' in script_text
+    assert 'document.addEventListener("copy"' in script_text
+    assert 'document.addEventListener("paste"' in script_text
+    assert "rowHeaderMenu" in script_text
+    assert "contextMenu: rowHeaderMenu" in script_text
+    assert "contextMenu: cellMenu" in script_text
     assert "downtime_losses_rub" in script_text
     assert ".journal-stable-editor" in style_text
     assert "position: fixed" not in style_text
