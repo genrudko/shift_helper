@@ -23,6 +23,7 @@
         "author",
     ];
     let internalRowClipboard = "";
+    let selectedRowKey = null;
 
     function isTextControl(target) {
         return target instanceof Element && Boolean(
@@ -33,13 +34,43 @@
         );
     }
 
-    function selectedRow() {
-        const element = root.querySelector(".tabulator-row.journal-row--selected");
-        if (!element) {
+    function rowFromElement(element) {
+        const rowElement = element?.closest?.(".tabulator-row");
+        if (!rowElement) {
             return null;
         }
-        return table.getRows().find((row) => row.getElement() === element) || null;
+        return table.getRows().find((row) => row.getElement() === rowElement) || null;
     }
+
+    function selectedRow() {
+        if (selectedRowKey) {
+            const byKey = table.getRows().find(
+                (row) => row.getData()._rowKey === selectedRowKey,
+            );
+            if (byKey) {
+                return byKey;
+            }
+        }
+        const element = root.querySelector(".tabulator-row.journal-row--selected");
+        return element ? rowFromElement(element) : null;
+    }
+
+    document.addEventListener("pointerdown", (event) => {
+        if (!(event.target instanceof Element) || !root.contains(event.target)) {
+            return;
+        }
+        const rowNumber = event.target.closest(".journal-row-number");
+        if (rowNumber) {
+            const row = rowFromElement(rowNumber);
+            selectedRowKey = row?.getData()._rowKey || null;
+            window.shiftHelperSelectedRowKey = selectedRowKey;
+            return;
+        }
+        if (event.target.closest(".tabulator-cell")) {
+            selectedRowKey = null;
+            window.shiftHelperSelectedRowKey = null;
+        }
+    }, true);
 
     function escapeTsv(value) {
         const text = String(value ?? "");
@@ -116,6 +147,8 @@
                 return;
             }
         }
+        selectedRowKey = null;
+        window.shiftHelperSelectedRowKey = null;
         await row.delete();
         saveState.dataset.state = "saved";
         saveText.textContent = "Строка вырезана";
