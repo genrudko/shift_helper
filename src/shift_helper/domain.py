@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import date, datetime, time
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from .models import Event
 
@@ -19,6 +19,7 @@ EVENT_TYPE_CHOICES: tuple[tuple[str, str], ...] = (
     ("other", "Другое"),
 )
 EVENT_TYPE_KEYS = {key for key, _label in EVENT_TYPE_CHOICES}
+DOWNTIME_LOSS_RATE_RUB_PER_HOUR = Decimal("2500")
 
 
 class EventValidationError(ValueError):
@@ -106,17 +107,6 @@ def parse_journal_time(
         raise EventValidationError(f"Поле «{field_label}» заполнено неверно.") from exc
 
 
-def parse_optional_decimal(value: str, *, field_label: str) -> Decimal | None:
-    """Parse an optional decimal accepting comma and dot separators."""
-    cleaned = value.strip().replace(" ", "").replace(",", ".")
-    if not cleaned:
-        return None
-    try:
-        return Decimal(cleaned).quantize(Decimal("0.001"))
-    except InvalidOperation as exc:
-        raise EventValidationError(f"Поле «{field_label}» должно быть числом.") from exc
-
-
 def parse_rotor_limit(value: str) -> Decimal | None:
     """Parse a decimal rotor limit accepting both comma and dot separators."""
     cleaned = value.strip().replace(",", ".")
@@ -154,6 +144,21 @@ def calculate_repair_power_mw(rotor_limit: Decimal | None) -> Decimal | None:
     if limit < Decimal("0.70"):
         return Decimal("2.50")
     return Decimal("0.45")
+
+
+def calculate_downtime_losses_rub(
+    start_at: datetime,
+    end_at: datetime | None,
+) -> Decimal | None:
+    """Apply the source workbook formula: downtime hours multiplied by 2500 rubles."""
+    if end_at is None:
+        return None
+    total_seconds = Decimal(str((end_at - start_at).total_seconds()))
+    return (
+        total_seconds
+        * DOWNTIME_LOSS_RATE_RUB_PER_HOUR
+        / Decimal("3600")
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def event_values_from_form(form: Mapping[str, str]) -> dict[str, object]:
@@ -253,11 +258,8 @@ def event_values_from_row(
         "actions": _text(values, "actions") or None,
         "performer": _text(values, "performer") or None,
         "author": _text(values, "author") or None,
-        "losses_mwh": parse_optional_decimal(
-            _text(values, "losses_mwh"),
-            field_label="Потери",
-        ),
         "end_at": end_at,
+        "downtime_losses_rub": calculate_downtime_losses_rub(start_at, end_at),
         "status": "closed" if end_at else "open",
         "include_in_report": (
             existing_event.include_in_report if existing_event else True
@@ -278,8 +280,17 @@ def format_downtime(start_at: datetime, end_at: datetime | None) -> str:
     return f"{minutes} мин"
 
 
+def format_downtime_losses_rub(value: Decimal | None) -> str:
+    """Format source-compatible downtime losses as whole rubles."""
+    if value is None:
+        return ""
+    rounded = value.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return str(rounded)
+
+
 def event_to_row(event: Event) -> dict[str, object]:
     """Serialize a persisted event for the inline table."""
+    calculated_losses = calculate_downtime_losses_rub(event.start_at, event.end_at)
     return {
         "id": event.id,
         "start_date": event.start_at.strftime("%d.%m.%Y"),
@@ -293,7 +304,7 @@ def event_to_row(event: Event) -> dict[str, object]:
         "end_time": event.end_at.strftime("%H:%M") if event.end_at else "",
         "downtime": format_downtime(event.start_at, event.end_at),
         "author": event.author or "",
-        "losses_mwh": "" if event.losses_mwh is None else str(event.losses_mwh),
+        "downtime_losses_rub": format_downtime_losses_rub(calculated_losses),
         "status": event.status,
         "revision": event.revision,
     }
