@@ -9,7 +9,7 @@ from sqlalchemy.engine import Engine
 
 from .models import Base
 
-APPLICATION_SCHEMA_VERSION = "2"
+APPLICATION_SCHEMA_VERSION = "3"
 
 
 def create_database_engine(database_path: Path) -> Engine:
@@ -32,6 +32,19 @@ def create_database_engine(database_path: Path) -> Engine:
     return engine
 
 
+def _ensure_event_columns(engine: Engine) -> None:
+    """Add nullable journal columns to databases created by earlier prototypes."""
+    with engine.begin() as connection:
+        columns = {
+            row[1]
+            for row in connection.execute(text("PRAGMA table_info(events)"))
+        }
+        if "author" not in columns:
+            connection.execute(text("ALTER TABLE events ADD COLUMN author VARCHAR(160)"))
+        if "losses_mwh" not in columns:
+            connection.execute(text("ALTER TABLE events ADD COLUMN losses_mwh NUMERIC(10, 3)"))
+
+
 def initialize_database(database_path: Path) -> Engine:
     """Create the database and current application schema when absent."""
     engine = create_database_engine(database_path)
@@ -39,6 +52,7 @@ def initialize_database(database_path: Path) -> Engine:
         connection.execute(text("PRAGMA journal_mode = WAL"))
 
     Base.metadata.create_all(engine)
+    _ensure_event_columns(engine)
 
     with engine.begin() as connection:
         connection.execute(
