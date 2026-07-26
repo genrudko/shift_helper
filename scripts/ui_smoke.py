@@ -147,7 +147,10 @@ def run_smoke(url: str, screenshot_path: Path) -> None:
             )
             description_cell.click()
             page.locator("#cell-fill-color").evaluate(
-                "element => { element.value = '#fff2cc'; element.dispatchEvent(new Event('input')); }"
+                "element => {"
+                " element.value = '#fff2cc';"
+                " element.dispatchEvent(new Event('input'));"
+                " }"
             )
             page.locator("#apply-cell-fill").click()
             require(
