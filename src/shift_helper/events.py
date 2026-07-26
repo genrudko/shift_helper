@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 from flask import (
@@ -28,7 +29,7 @@ from .domain import (
     event_values_from_form,
     event_values_from_row,
 )
-from .models import Event
+from .models import DeletedEvent, Event
 
 events_blueprint = Blueprint("events", __name__, url_prefix="/events")
 EVENT_TYPE_LABELS = dict(EVENT_TYPE_CHOICES)
@@ -60,6 +61,14 @@ def _distinct_values(session: Session, column) -> list[str]:
         .order_by(column)
     )
     return [str(value) for value in session.scalars(statement) if value]
+
+
+def _event_snapshot(event: Event) -> str:
+    values = {
+        column.name: getattr(event, column.key)
+        for column in Event.__table__.columns
+    }
+    return json.dumps(values, ensure_ascii=False, default=str, sort_keys=True)
 
 
 @events_blueprint.get("")
@@ -139,6 +148,38 @@ def update_event_row(event_id: int):
         session.commit()
         session.refresh(event)
         return jsonify({"ok": True, "row": event_to_row(event)})
+
+
+@events_blueprint.delete("/<int:event_id>/row")
+def delete_event_row(event_id: int):
+    try:
+        payload = _request_json()
+    except EventValidationError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    with Session(_database_engine()) as session:
+        event = _get_event_or_404(session, event_id)
+        expected_revision = payload.get("revision")
+        if expected_revision is not None and int(expected_revision) != event.revision:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "Строка уже была изменена. Обновите журнал перед удалением.",
+                    }
+                ),
+                409,
+            )
+
+        session.add(
+            DeletedEvent(
+                original_event_id=event.id,
+                snapshot_json=_event_snapshot(event),
+            )
+        )
+        session.delete(event)
+        session.commit()
+        return jsonify({"ok": True, "deleted_id": event_id})
 
 
 @events_blueprint.route("/new", methods=["GET", "POST"])
