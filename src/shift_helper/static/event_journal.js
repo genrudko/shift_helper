@@ -53,7 +53,6 @@
         "performer",
         "author",
     ]);
-    const multilineFields = new Set(["description", "reason", "actions"]);
     const draftBatchSize = 80;
     const saveTimers = new Map();
     const saveQueues = new Map();
@@ -819,6 +818,15 @@
     }
 
     function setActiveCell(cell) {
+        if (!cell) {
+            return;
+        }
+        const element = cell.getElement();
+        const field = cell.getField();
+        if (element.classList.contains("journal-row-number") || !editableFields.includes(field)) {
+            selectRow(cell.getRow());
+            return;
+        }
         clearSelectedRow();
         activeCell = cell;
     }
