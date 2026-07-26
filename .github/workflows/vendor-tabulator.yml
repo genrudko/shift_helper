@@ -1,9 +1,7 @@
 name: vendor-tabulator
 
 on:
-  push:
-    branches:
-      - ux/repair-001-inline-event-journal
+  pull_request:
   workflow_dispatch:
 
 permissions:
