@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine, event, text
-
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.engine import Engine
 
 APPLICATION_SCHEMA_VERSION = "1"
 
