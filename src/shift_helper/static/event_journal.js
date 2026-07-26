@@ -109,6 +109,27 @@
         }
     }
 
+    function isRealTextControl(target) {
+        if (!(target instanceof Element)) {
+            return false;
+        }
+        if (target.closest(".journal-stable-editor")) {
+            return true;
+        }
+        if (target.closest("#journal-search, .tabulator-header-filter, .format-rules-dialog")) {
+            return true;
+        }
+        return (
+            !root.contains(target)
+            && (
+                target instanceof HTMLInputElement
+                || target instanceof HTMLTextAreaElement
+                || target instanceof HTMLSelectElement
+                || target.isContentEditable
+            )
+        );
+    }
+
     function pad(value) {
         return String(value).padStart(2, "0");
     }
@@ -448,6 +469,13 @@
         (table.getRanges?.() || []).forEach((range) => range.remove());
     }
 
+    function clearSelectedRow() {
+        if (selectedRow) {
+            selectedRow.getElement().classList.remove("journal-row--selected");
+        }
+        selectedRow = null;
+    }
+
     function selectCell(cell) {
         if (!cell) {
             return;
@@ -619,13 +647,6 @@
             element.style.color = fill ? contrastingTextColor(fill) : "";
         });
         return element;
-    }
-
-    function clearSelectedRow() {
-        if (selectedRow) {
-            selectedRow.getElement().classList.remove("journal-row--selected");
-        }
-        selectedRow = null;
     }
 
     function selectRow(row) {
@@ -1035,11 +1056,7 @@
     table.on("dataFiltered", updateRecordCount);
 
     document.addEventListener("keydown", (event) => {
-        const target = event.target;
-        const editing = target instanceof HTMLInputElement
-            || target instanceof HTMLTextAreaElement
-            || target?.isContentEditable;
-        if (editing) {
+        if (isRealTextControl(event.target)) {
             return;
         }
         const modifier = event.ctrlKey || event.metaKey;
@@ -1086,13 +1103,7 @@
     }, true);
 
     document.addEventListener("copy", (event) => {
-        const target = event.target;
-        if (
-            !activeCell
-            || target instanceof HTMLInputElement
-            || target instanceof HTMLTextAreaElement
-            || !event.clipboardData
-        ) {
+        if (!activeCell || isRealTextControl(event.target) || !event.clipboardData) {
             return;
         }
         const text = matrixText();
@@ -1106,13 +1117,7 @@
     });
 
     document.addEventListener("cut", (event) => {
-        const target = event.target;
-        if (
-            !activeCell
-            || target instanceof HTMLInputElement
-            || target instanceof HTMLTextAreaElement
-            || !event.clipboardData
-        ) {
+        if (!activeCell || isRealTextControl(event.target) || !event.clipboardData) {
             return;
         }
         const text = matrixText();
@@ -1126,13 +1131,7 @@
     });
 
     document.addEventListener("paste", (event) => {
-        const target = event.target;
-        if (
-            !activeCell
-            || target instanceof HTMLInputElement
-            || target instanceof HTMLTextAreaElement
-            || !event.clipboardData
-        ) {
+        if (!activeCell || isRealTextControl(event.target) || !event.clipboardData) {
             return;
         }
         const text = event.clipboardData.getData("text/plain");
