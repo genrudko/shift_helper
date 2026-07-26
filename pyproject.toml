@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shift-helper"
+version = "0.1.0.dev0"
+description = "Local cross-platform shift journals and report application"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "Flask>=3.1,<4",
+    "SQLAlchemy>=2.0,<3",
+    "alembic>=1.14,<2",
+    "openpyxl>=3.1,<4",
+    "platformdirs>=4.3,<5",
+    "waitress>=3.0,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9",
+    "ruff>=0.9,<1",
+]
+
+[project.scripts]
+shift-helper = "shift_helper.launcher:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+shift_helper = [
+    "templates/**/*.html",
+    "static/**/*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

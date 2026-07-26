@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Shift-Helper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+    <main class="shell">
+        <section class="hero">
+            <p class="eyebrow">Кочубеевская ВЭС</p>
+            <h1>Shift-Helper</h1>
+            <p class="lead">Локальное рабочее место сменного персонала.</p>
+        </section>
+
+        <section class="status-grid" aria-label="Состояние прототипа">
+            <article class="status-card">
+                <span class="status-label">Режим</span>
+                <strong>Локальный</strong>
+                <p>Приложение доступно только на этом компьютере.</p>
+            </article>
+            <article class="status-card">
+                <span class="status-label">База данных</span>
+                <strong>SQLite готова</strong>
+                <p class="path">{{ database_path }}</p>
+            </article>
+            <article class="status-card">
+                <span class="status-label">Данные</span>
+                <strong>Пользовательский каталог</strong>
+                <p class="path">{{ data_root }}</p>
+            </article>
+        </section>
+
+        <section class="next-step">
+            <h2>Первый рабочий модуль</h2>
+            <p>Следующим этапом будет журнал событий: быстрый ввод, коды ошибок, ограничения ВЭУ и экспорт в XLSX.</p>
+        </section>
+    </main>
+</body>
+</html>
