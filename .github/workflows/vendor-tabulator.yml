@@ -1,0 +1,43 @@
+name: vendor-tabulator
+
+on:
+  push:
+    branches:
+      - ux/repair-001-inline-event-journal
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Download pinned Tabulator package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm pack tabulator-tables@6.5.2
+          mkdir -p vendor/tabulator
+          tar -xzf tabulator-tables-6.5.2.tgz \
+            --strip-components=3 \
+            -C vendor/tabulator \
+            package/dist/js/tabulator.min.js \
+            package/dist/css/tabulator.min.css
+          tar -xzf tabulator-tables-6.5.2.tgz \
+            --strip-components=1 \
+            -C vendor/tabulator \
+            package/LICENSE
+          sha256sum vendor/tabulator/* > vendor/tabulator/SHA256SUMS
+
+      - name: Upload vendored frontend assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: tabulator-6.5.2-vendor
+          path: vendor/tabulator
+          if-no-files-found: error
