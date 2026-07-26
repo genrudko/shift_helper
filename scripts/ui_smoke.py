@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from playwright.sync_api import Locator, Page, sync_playwright
+from playwright.sync_api import Dialog, Locator, Page, sync_playwright
 
 
 def require(condition: bool, message: str) -> None:
@@ -95,11 +95,17 @@ def assert_context_menus(page: Page, saved_row: Locator) -> None:
     page.keyboard.press("Escape")
 
     saved_row.locator(".journal-row-number").click(button="right")
-    menu = page.locator(".tabulator-menu").last
-    menu.wait_for(state="visible", timeout=5_000)
-    require(menu.get_by_text("Копировать", exact=True).count() == 1, "No row copy command.")
-    require(menu.get_by_text("Вставить", exact=True).count() == 1, "No row paste command.")
+    row_menu = page.locator(".journal-row-menu")
+    row_menu.wait_for(state="visible", timeout=5_000)
+    for label in (
+        "Копировать строку",
+        "Вырезать строку",
+        "Вставить строку",
+        "Удалить строку",
+    ):
+        require(row_menu.get_by_text(label, exact=True).count() == 1, f"No row command: {label}")
     page.keyboard.press("Escape")
+    page.locator("#journal-title").click()
 
 
 def copy_cell(page: Page, saved_row: Locator) -> None:
@@ -123,7 +129,7 @@ def assert_row_selected(row: Locator, message: str) -> None:
     )
 
 
-def copy_row(page: Page, saved_row: Locator) -> None:
+def copy_row(page: Page, saved_row: Locator) -> Locator:
     saved_row.locator(".journal-row-number").click()
     assert_row_selected(saved_row, "Row number did not select the complete journal row.")
     page.keyboard.press("Control+C")
@@ -147,6 +153,93 @@ def copy_row(page: Page, saved_row: Locator) -> None:
     require(
         "Проверка spreadsheet-интерфейса" in cell(copied, "description").inner_text(),
         "Row paste lost description.",
+    )
+    return copied
+
+
+def select_range(page: Page, first: Locator, last: Locator) -> None:
+    first_box = first.bounding_box()
+    last_box = last.bounding_box()
+    require(first_box is not None and last_box is not None, "Range cell geometry is unavailable.")
+    page.mouse.move(
+        first_box["x"] + (first_box["width"] / 2),
+        first_box["y"] + (first_box["height"] / 2),
+    )
+    page.mouse.down()
+    page.mouse.move(
+        last_box["x"] + (last_box["width"] / 2),
+        last_box["y"] + (last_box["height"] / 2),
+        steps=8,
+    )
+    page.mouse.up()
+
+
+def paste_across_selected_range(page: Page) -> None:
+    first_row = draft_row(page, 0)
+    second_row = draft_row(page, 1)
+    select_range(page, cell(first_row, "reason"), cell(second_row, "actions"))
+    page.evaluate("navigator.clipboard.writeText('Диапазон')")
+    page.keyboard.press("Control+V")
+    page.wait_for_timeout(600)
+    for row in (first_row, second_row):
+        for field in ("reason", "actions"):
+            require(
+                "Диапазон" in cell(row, field).inner_text(),
+                "Paste did not repeat the copied value over the selected range.",
+            )
+
+
+def use_fill_handle(page: Page, saved_row: Locator) -> None:
+    source = cell(saved_row, "reason")
+    source.click()
+    handle = page.locator(".journal-fill-handle")
+    handle.wait_for(state="visible", timeout=5_000)
+    target = cell(draft_row(page, 2), "reason")
+    handle_box = handle.bounding_box()
+    target_box = target.bounding_box()
+    require(handle_box is not None and target_box is not None, "Fill handle geometry is unavailable.")
+    page.mouse.move(
+        handle_box["x"] + (handle_box["width"] / 2),
+        handle_box["y"] + (handle_box["height"] / 2),
+    )
+    page.mouse.down()
+    page.mouse.move(
+        target_box["x"] + (target_box["width"] / 2),
+        target_box["y"] + (target_box["height"] / 2),
+        steps=10,
+    )
+    page.mouse.up()
+    page.wait_for_timeout(600)
+    require(
+        "Повышенная вибрация" in target.inner_text(),
+        "Fill handle did not extend the selected value downward.",
+    )
+
+
+def accept_dialog(dialog: Dialog) -> None:
+    dialog.accept()
+
+
+def delete_and_cut_rows(page: Page, original: Locator) -> None:
+    page.on("dialog", accept_dialog)
+
+    copied = copy_row(page, original)
+    copied.locator(".journal-row-number").click(button="right")
+    menu = page.locator(".journal-row-menu")
+    menu.get_by_text("Удалить строку", exact=True).click()
+    page.wait_for_timeout(800)
+    require(
+        page.locator(".tabulator-row:not(.journal-row--draft)").count() == 1,
+        "Row delete did not remove the persisted row.",
+    )
+
+    copied = copy_row(page, original)
+    copied.locator(".journal-row-number").click()
+    page.keyboard.press("Control+X")
+    page.wait_for_timeout(800)
+    require(
+        page.locator(".tabulator-row:not(.journal-row--draft)").count() == 1,
+        "Ctrl+X did not cut the persisted row.",
     )
 
 
@@ -201,10 +294,16 @@ def run_smoke(url: str, screenshot_path: Path) -> None:
                 state="visible",
                 timeout=15_000,
             )
-            page.wait_for_timeout(500)
+            page.wait_for_timeout(700)
             assert_blank_draft_dates(page)
 
             saved_row = page.locator(".tabulator-row:not(.journal-row--draft)").first
+            saved_box = saved_row.bounding_box()
+            require(
+                saved_box is not None and saved_box["height"] > 40,
+                "Multiline content did not increase row height.",
+            )
+
             edit_cell(page, cell(saved_row, "end_date"), "26.07.2026")
             edit_cell(page, cell(saved_row, "end_time"), "20:40")
             page.locator('#journal-save-state[data-state="saved"]').wait_for(
@@ -220,7 +319,9 @@ def run_smoke(url: str, screenshot_path: Path) -> None:
 
             assert_context_menus(page, saved_row)
             copy_cell(page, saved_row)
-            copy_row(page, saved_row)
+            paste_across_selected_range(page)
+            use_fill_handle(page, saved_row)
+            delete_and_cut_rows(page, saved_row)
 
             require(not browser_errors, "Browser errors: " + " | ".join(browser_errors))
         except Exception:
