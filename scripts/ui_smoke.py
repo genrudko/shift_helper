@@ -13,8 +13,8 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def draft_cell(page: Page, field: str) -> Locator:
-    return page.locator(".journal-row--draft").first.locator(
+def draft_cell(page: Page, field: str, row_index: int = 0) -> Locator:
+    return page.locator(".journal-row--draft").nth(row_index).locator(
         f'.tabulator-cell[tabulator-field="{field}"]'
     )
 
@@ -22,28 +22,52 @@ def draft_cell(page: Page, field: str) -> Locator:
 def begin_typing(page: Page, cell: Locator, seed: str = "1") -> Locator:
     cell.click()
     page.keyboard.type(seed)
-    editor = cell.locator("input.journal-excel-editor, textarea.journal-excel-editor")
+    editor = cell.locator("input.journal-stable-editor, textarea.journal-stable-editor")
     editor.wait_for(state="visible", timeout=5_000)
     return editor
+
+
+def assert_editor_inside_cell(cell: Locator, editor: Locator) -> None:
+    cell_box = cell.bounding_box()
+    editor_box = editor.bounding_box()
+    require(cell_box is not None and editor_box is not None, "Editor geometry is unavailable.")
+    tolerance = 2
+    require(
+        editor_box["x"] >= cell_box["x"] - tolerance,
+        "The editor moved to the left of its cell.",
+    )
+    require(
+        editor_box["y"] >= cell_box["y"] - tolerance,
+        "The editor moved above its cell.",
+    )
+    require(
+        editor_box["x"] + editor_box["width"] <= cell_box["x"] + cell_box["width"] + tolerance,
+        "The editor moved to the right of its cell.",
+    )
+    require(
+        editor_box["y"] + editor_box["height"] <= cell_box["y"] + cell_box["height"] + tolerance,
+        "The editor moved below its cell.",
+    )
 
 
 def direct_edit(page: Page, cell: Locator, value: str) -> None:
     editor = begin_typing(page, cell)
     editor.fill(value)
+    assert_editor_inside_cell(cell, editor)
     background = editor.evaluate("element => getComputedStyle(element).backgroundColor")
     require(
         background not in {"rgb(247, 251, 255)", "rgb(255, 255, 255)"},
-        "The editor still uses the detached white prototype styling.",
+        "The editor still uses detached white styling.",
     )
     page.keyboard.press("Enter")
     editor.wait_for(state="hidden", timeout=5_000)
     require(
-        cell.locator(".journal-excel-editor").count() == 0,
-        "Enter did not finish spreadsheet cell editing.",
+        cell.locator(".journal-stable-editor").count() == 0,
+        "Enter did not finish cell editing.",
     )
     require(
         "tabulator-editing" not in (cell.get_attribute("class") or ""),
-        "The cell remained in Tabulator editing state after Enter.",
+        "The cell remained in editing state after Enter.",
     )
 
 
@@ -94,21 +118,34 @@ def assert_row_context_menu(page: Page, row: Locator) -> None:
     page.keyboard.press("Escape")
 
 
+def assert_cell_copy_paste(page: Page, row: Locator) -> None:
+    source = row.locator('.tabulator-cell[tabulator-field="reason"]')
+    target = row.locator('.tabulator-cell[tabulator-field="actions"]')
+    source.click()
+    page.keyboard.press("Control+C")
+    target.click()
+    page.keyboard.press("Control+V")
+    page.wait_for_timeout(500)
+    require(
+        "Повышенная вибрация" in target.inner_text(),
+        "Cell copy/paste did not transfer the selected value.",
+    )
+
+
+def assert_row_range_selected(row: Locator) -> None:
+    selected = row.locator(".tabulator-cell.tabulator-range-selected").count()
+    require(selected >= 8, "Clicking the row number did not select the complete journal row.")
+
+
 def copy_and_paste_row(page: Page, source_row: Locator) -> None:
     source_row.locator(".journal-row-number").click()
-    require(
-        "journal-row--selected" in (source_row.get_attribute("class") or ""),
-        "Clicking the row number did not select the whole row.",
-    )
+    assert_row_range_selected(source_row)
     page.keyboard.press("Control+C")
-    page.wait_for_timeout(300)
+    page.wait_for_timeout(200)
 
     target_row = page.locator(".journal-row--draft").first
     target_row.locator(".journal-row-number").click()
-    require(
-        "journal-row--selected" in (target_row.get_attribute("class") or ""),
-        "The target row was not selected by its row number.",
-    )
+    assert_row_range_selected(target_row)
     page.keyboard.press("Control+V")
 
     page.locator('#journal-save-state[data-state="saved"]').wait_for(
@@ -182,11 +219,22 @@ def run_smoke(url: str, screenshot_path: Path) -> None:
 
             direct_edit(page, draft_cell(page, "start_date"), "26.07.2026")
             direct_edit(page, draft_cell(page, "start_time"), "18:10")
-            direct_edit(page, draft_cell(page, "asset_label"), "ВЭУ №11")
+
+            equipment = draft_cell(page, "asset_label")
+            equipment_editor = begin_typing(page, equipment, seed="В")
+            equipment_editor.fill("ВЭУ №11")
+            assert_editor_inside_cell(equipment, equipment_editor)
+            page.keyboard.press("Enter")
+            equipment_editor.wait_for(state="hidden", timeout=5_000)
+            require(
+                "ВЭУ №11" in equipment.inner_text(),
+                "The WTG/equipment number was not accepted after Enter.",
+            )
 
             description = draft_cell(page, "description")
             editor = begin_typing(page, description)
             editor.fill("Проверка spreadsheet-интерфейса")
+            assert_editor_inside_cell(description, editor)
             page.keyboard.press("Shift+Enter")
             page.keyboard.insert_text("Вторая строка")
             require(
@@ -196,9 +244,11 @@ def run_smoke(url: str, screenshot_path: Path) -> None:
             page.keyboard.press("Enter")
             editor.wait_for(state="hidden", timeout=5_000)
             require(
-                description.locator(".journal-excel-editor").count() == 0,
+                description.locator(".journal-stable-editor").count() == 0,
                 "Enter did not close the multiline editor.",
             )
+
+            direct_edit(page, draft_cell(page, "reason"), "Повышенная вибрация")
 
             page.locator('#journal-save-state[data-state="saved"]').wait_for(
                 state="visible",
@@ -239,6 +289,7 @@ def run_smoke(url: str, screenshot_path: Path) -> None:
             )
             assert_cell_context_menu(page, description_cell)
             assert_row_context_menu(page, saved_row)
+            assert_cell_copy_paste(page, saved_row)
             copy_and_paste_row(page, saved_row)
 
             description_cell.click()
