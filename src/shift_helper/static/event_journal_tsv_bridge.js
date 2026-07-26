@@ -39,16 +39,40 @@
         );
     }
 
-    function normalizeMatrix(cells) {
+    function isCellComponent(value) {
+        return Boolean(
+            value
+            && typeof value.getField === "function"
+            && typeof value.getRow === "function",
+        );
+    }
+
+    function canonicalMatrix(cells) {
         if (!Array.isArray(cells) || !cells.length) {
             return [];
         }
-        return Array.isArray(cells[0]) ? cells : [cells];
+        const flat = (Array.isArray(cells[0]) ? cells.flat() : cells)
+            .filter(isCellComponent);
+        const tableRows = table.getRows();
+        const grouped = new Map();
+        flat.forEach((cell) => {
+            const row = cell.getRow();
+            if (!grouped.has(row)) {
+                grouped.set(row, []);
+            }
+            grouped.get(row).push(cell);
+        });
+        return [...grouped.entries()]
+            .sort(([left], [right]) => tableRows.indexOf(left) - tableRows.indexOf(right))
+            .map(([_row, rowCells]) => rowCells.sort(
+                (left, right) => editableFields.indexOf(left.getField())
+                    - editableFields.indexOf(right.getField()),
+            ));
     }
 
     function selectedMatrix() {
         const range = table.getRanges?.().at(-1);
-        return normalizeMatrix(range?.getCells?.() || []);
+        return canonicalMatrix(range?.getCells?.() || []);
     }
 
     function selectedWholeRow() {
@@ -146,7 +170,7 @@
         if (!selected.length || !selected[0]?.length) {
             return [];
         }
-        const selectedSize = selected.length * selected[0].length;
+        const selectedSize = selected.reduce((total, row) => total + row.length, 0);
         if (selectedSize > 1 || (source.length === 1 && source[0].length === 1)) {
             return selected;
         }
