@@ -30,32 +30,53 @@
 }
 
 .event-grid .tabulator-row .tabulator-cell.tabulator-editing {
+    padding: 0;
     overflow: visible;
+    background: #17212a;
+    box-shadow: inset 0 0 0 2px #5597cf;
 }
 
 .event-grid .journal-excel-editor {
     display: block;
     width: 100%;
     min-width: 100%;
-    min-height: 34px;
+    min-height: 32px;
     border: 0;
+    border-radius: 0;
     outline: 0;
     padding: 7px 8px;
     overflow: auto;
     resize: none;
-    background: #f7fbff;
-    color: #15202b;
+    background: #17212a;
+    color: #eef4f8;
+    caret-color: #fff;
     font: inherit;
     line-height: 1.35;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    box-shadow: inset 0 0 0 2px #4f94d4;
+    box-shadow: none;
 }
 
 .event-grid input.journal-excel-editor {
-    height: 34px;
+    height: 32px;
     overflow: hidden;
     white-space: nowrap;
+}
+
+.event-grid .journal-excel-editor::selection {
+    background: #376a95;
+    color: #fff;
+}
+
+.event-grid .journal-row--selected {
+    outline: 2px solid #5d9bd3;
+    outline-offset: -2px;
+}
+
+.event-grid .journal-row--selected .journal-row-number {
+    background: #315c80 !important;
+    color: #fff !important;
+    font-weight: 750;
 }
 
 .journal-editor-suggestions {
@@ -90,6 +111,34 @@
 .journal-editor-suggestions button:focus-visible {
     background: #315575;
     color: #fff;
+}
+
+.tabulator-menu {
+    min-width: 205px;
+    border: 1px solid #4b5965 !important;
+    border-radius: 6px !important;
+    padding: 4px !important;
+    overflow: hidden;
+    background: #1b242d !important;
+    color: #e8eef3 !important;
+    box-shadow: 0 14px 38px rgba(0, 0, 0, 0.52) !important;
+}
+
+.tabulator-menu .tabulator-menu-item {
+    border-radius: 4px;
+    padding: 7px 10px !important;
+    color: #e0e7ed !important;
+    font-size: 0.74rem;
+}
+
+.tabulator-menu .tabulator-menu-item:not(.tabulator-menu-item-disabled):hover {
+    background: #315575 !important;
+    color: #fff !important;
+}
+
+.tabulator-menu .tabulator-menu-separator {
+    border-top-color: #3b4650 !important;
+    margin: 4px 2px !important;
 }
 
 .journal-cell-value--currency {
