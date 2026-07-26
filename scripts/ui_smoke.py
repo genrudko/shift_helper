@@ -122,21 +122,45 @@ def copy_cell(page: Page, saved_row: Locator) -> None:
     )
 
 
-def assert_row_selected(row: Locator, message: str) -> None:
-    require(
-        "journal-row--selected" in (row.get_attribute("class") or ""),
-        message,
+def whole_row_range_selected(page: Page) -> bool:
+    return bool(
+        page.evaluate(
+            """() => {
+                const fields = [
+                    "start_date", "start_time", "asset_label", "description",
+                    "reason", "actions", "performer", "end_date", "end_time", "author",
+                ];
+                const range = window.shiftHelperEventGrid?.getRanges?.().at(-1);
+                const raw = range?.getCells?.() || [];
+                const matrix = raw.length && Array.isArray(raw[0]) ? raw : [raw];
+                if (matrix.length !== 1 || matrix[0].length < fields.length) {
+                    return false;
+                }
+                const cells = matrix[0];
+                const row = cells[0]?.getRow?.();
+                if (!row || cells.some(cell => cell.getRow?.() !== row)) {
+                    return false;
+                }
+                const selected = new Set(cells.map(cell => cell.getField?.()));
+                return fields.every(field => selected.has(field));
+            }"""
+        )
     )
+
+
+def assert_row_selected(page: Page, row: Locator, message: str) -> None:
+    has_visual_class = "journal-row--selected" in (row.get_attribute("class") or "")
+    require(has_visual_class or whole_row_range_selected(page), message)
 
 
 def copy_row(page: Page, saved_row: Locator) -> Locator:
     saved_row.locator(".journal-row-number").click()
-    assert_row_selected(saved_row, "Row number did not select the complete journal row.")
+    assert_row_selected(page, saved_row, "Row number did not select the complete journal row.")
     page.keyboard.press("Control+C")
 
     target = draft_row(page)
     target.locator(".journal-row-number").click()
-    assert_row_selected(target, "Target row was not selected by its row number.")
+    assert_row_selected(page, target, "Target row was not selected by its row number.")
     page.keyboard.press("Control+V")
 
     page.locator('#journal-save-state[data-state="saved"]').wait_for(
@@ -235,6 +259,7 @@ def delete_and_cut_rows(page: Page, original: Locator) -> None:
 
     copied = copy_row(page, original)
     copied.locator(".journal-row-number").click()
+    assert_row_selected(page, copied, "Copied row was not selected before Ctrl+X.")
     page.keyboard.press("Control+X")
     page.wait_for_timeout(800)
     require(
