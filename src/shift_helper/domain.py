@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import Mapping
 
 from .models import Event
 
