@@ -65,8 +65,25 @@ def _distinct_values(session: Session, column) -> list[str]:
 
 def _event_snapshot(event: Event) -> str:
     values = {
-        column.name: getattr(event, column.key)
-        for column in Event.__table__.columns
+        "id": event.id,
+        "start_at": event.start_at,
+        "asset_label": event.asset_label,
+        "event_type": event.event_type,
+        "description": event.description,
+        "reason": event.reason,
+        "actions": event.actions,
+        "performer": event.performer,
+        "author": event.author,
+        "error_codes": event.error_codes,
+        "rotor_limit": event.rotor_limit,
+        "repair_power_mw": event.repair_power_mw,
+        "downtime_losses_rub": event.downtime_losses_rub,
+        "end_at": event.end_at,
+        "status": event.status,
+        "include_in_report": event.include_in_report,
+        "created_at": event.created_at,
+        "updated_at": event.updated_at,
+        "revision": event.revision,
     }
     return json.dumps(values, ensure_ascii=False, default=str, sort_keys=True)
 
