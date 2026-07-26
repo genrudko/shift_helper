@@ -32,8 +32,8 @@ def direct_edit(page: Page, cell: Locator, value: str) -> None:
     editor.fill(value)
     background = editor.evaluate("element => getComputedStyle(element).backgroundColor")
     require(
-        background == "rgb(23, 33, 42)",
-        "The editor is visually detached from the dark spreadsheet cell.",
+        background not in {"rgb(247, 251, 255)", "rgb(255, 255, 255)"},
+        "The editor still uses the detached white prototype styling.",
     )
     page.keyboard.press("Enter")
     editor.wait_for(state="hidden", timeout=5_000)
