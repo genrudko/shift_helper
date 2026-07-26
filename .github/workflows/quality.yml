@@ -47,6 +47,7 @@ jobs:
         shell: bash
         run: |
           node --check src/shift_helper/static/event_journal.js
+          node --check src/shift_helper/static/event_journal_row_clipboard.js
           node --check src/shift_helper/static/event_journal_tsv_bridge.js
           node --check src/shift_helper/static/event_journal_excel_features.js
           node --check src/shift_helper/static/event_journal_row_cut.js
