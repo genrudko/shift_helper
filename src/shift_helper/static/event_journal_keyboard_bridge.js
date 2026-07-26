@@ -53,16 +53,21 @@
         return cellFromSelectedElement() || activeCell;
     }
 
-    function replaceEditorValue(cell, value) {
-        window.setTimeout(() => {
+    function seedEditor(cell, value) {
+        const apply = () => {
             const editor = cell.getElement().querySelector(".journal-excel-editor");
             if (!(editor instanceof HTMLInputElement || editor instanceof HTMLTextAreaElement)) {
-                return;
+                return false;
             }
             editor.value = value;
             editor.dispatchEvent(new Event("input", {bubbles: true}));
             editor.setSelectionRange(value.length, value.length);
-        }, 0);
+            return true;
+        };
+
+        if (!apply()) {
+            window.requestAnimationFrame(apply);
+        }
     }
 
     document.addEventListener("keydown", (event) => {
@@ -85,7 +90,7 @@
             event.preventDefault();
             event.stopImmediatePropagation();
             cell.edit();
-            replaceEditorValue(cell, event.key);
+            seedEditor(cell, event.key);
         }
     }, true);
 })();
