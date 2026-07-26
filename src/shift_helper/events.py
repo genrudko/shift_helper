@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
-from sqlalchemy import Engine, select
+from sqlalchemy import select
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from .domain import (
