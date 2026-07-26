@@ -97,14 +97,8 @@ def assert_context_menus(page: Page, saved_row: Locator) -> None:
     saved_row.locator(".journal-row-number").click(button="right")
     menu = page.locator(".tabulator-menu").last
     menu.wait_for(state="visible", timeout=5_000)
-    require(
-        menu.get_by_text("Копировать строку", exact=True).count() == 1,
-        "No row copy command.",
-    )
-    require(
-        menu.get_by_text("Вставить строку", exact=True).count() == 1,
-        "No row paste command.",
-    )
+    require(menu.get_by_text("Копировать", exact=True).count() == 1, "No row copy command.")
+    require(menu.get_by_text("Вставить", exact=True).count() == 1, "No row paste command.")
     page.keyboard.press("Escape")
 
 
