@@ -48,6 +48,19 @@
                 <button class="icon-button icon-button--vertical-bottom" type="button" data-align-vertical="bottom" title="По нижнему краю">↧</button>
             </div>
 
+            <div class="toolbar-group toolbar-group--fill" role="group" aria-label="Заливка ячеек">
+                <label class="color-picker" title="Цвет заливки">
+                    <span class="visually-hidden">Цвет заливки</span>
+                    <input id="cell-fill-color" type="color" value="#fff2cc">
+                </label>
+                <button class="toolbar-button toolbar-button--inside" id="apply-cell-fill" type="button">Заливка</button>
+                <button class="icon-button" id="clear-cell-fill" type="button" title="Убрать заливку">×</button>
+            </div>
+
+            <button class="toolbar-button" id="open-format-rules" type="button" title="Настроить автоматическое выделение">
+                Условия
+            </button>
+
             <button class="toolbar-button" id="reset-grid-layout" type="button" title="Вернуть исходные ширины, порядок и фильтры колонок">
                 Стандартный вид
             </button>
@@ -71,15 +84,74 @@
     ></div>
 
     <footer class="journal-help">
-        <span><kbd>Enter</kbd> редактировать</span>
-        <span><kbd>↑ ↓ ← →</kbd> переход по ячейкам</span>
-        <span><kbd>Ctrl</kbd> + <kbd>C/V</kbd> диапазон</span>
-        <span><kbd>Ctrl</kbd> + <kbd>D</kbd> заполнить вниз</span>
+        <span><kbd>Печать</kbd> начать ввод</span>
+        <span><kbd>Enter</kbd> завершить ввод</span>
+        <span><kbd>Shift</kbd> + <kbd>Enter</kbd> новая строка текста</span>
+        <span><kbd>Ctrl</kbd> + <kbd>C/X/V</kbd> копировать / вырезать / вставить</span>
         <span><kbd>!</kbd> текущая дата или время</span>
         <span><kbd>.</kbd> значение сверху</span>
-        <span class="journal-help__message" id="journal-help-message">Пустые строки становятся записями только после ввода данных.</span>
+        <span class="journal-help__message" id="journal-help-message">Пустые строки становятся записями только после ввода оборудования и описания.</span>
     </footer>
 </section>
+
+<dialog class="format-rules-dialog" id="format-rules-dialog">
+    <form method="dialog" class="format-rules-dialog__panel">
+        <header class="format-rules-dialog__header">
+            <div>
+                <h2>Автоматическое выделение</h2>
+                <p>Правила применяются к значениям ячеек и сохраняются на этом рабочем месте.</p>
+            </div>
+            <button class="dialog-close" value="close" aria-label="Закрыть">×</button>
+        </header>
+
+        <div class="format-rule-editor">
+            <label>
+                Колонка
+                <select id="format-rule-column">
+                    <option value="*">Любая колонка</option>
+                    <option value="start_date">Дата останова</option>
+                    <option value="start_time">Время останова</option>
+                    <option value="asset_label">№ ВЭУ / оборудование</option>
+                    <option value="description">Описание события</option>
+                    <option value="reason">Причина</option>
+                    <option value="actions">Действия персонала</option>
+                    <option value="performer">Исполнитель</option>
+                    <option value="end_date">Дата пуска</option>
+                    <option value="end_time">Время пуска</option>
+                    <option value="downtime">Простой</option>
+                    <option value="author">Кто внёс запись</option>
+                    <option value="downtime_losses_rub">Потери от простоя</option>
+                </select>
+            </label>
+
+            <label>
+                Условие
+                <select id="format-rule-operator">
+                    <option value="contains">содержит</option>
+                    <option value="equals">равно</option>
+                    <option value="starts">начинается с</option>
+                    <option value="regex">соответствует маске</option>
+                    <option value="nonempty">не пусто</option>
+                    <option value="empty">пусто</option>
+                </select>
+            </label>
+
+            <label class="format-rule-value-label">
+                Значение или маска
+                <input id="format-rule-value" type="text" autocomplete="off" placeholder="Например: Авария или ^ВЭУ №[1-9]$">
+            </label>
+
+            <label>
+                Цвет
+                <input id="format-rule-color" type="color" value="#f4cccc">
+            </label>
+
+            <button class="toolbar-button" id="add-format-rule" type="button">Добавить правило</button>
+        </div>
+
+        <div class="format-rules-list" id="format-rules-list"></div>
+    </form>
+</dialog>
 
 <script id="event-journal-data" type="application/json">{{ rows|tojson }}</script>
 <script id="event-journal-suggestions" type="application/json">{{ suggestions|tojson }}</script>
