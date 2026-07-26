@@ -1,8 +1,14 @@
+from datetime import datetime
 from decimal import Decimal
 
 import pytest
 
-from shift_helper.domain import calculate_repair_power_mw, parse_rotor_limit
+from shift_helper.domain import (
+    calculate_repair_power_mw,
+    parse_journal_date,
+    parse_journal_time,
+    parse_rotor_limit,
+)
 
 
 @pytest.mark.parametrize(
@@ -29,3 +35,53 @@ def test_repair_power_without_limit_is_empty() -> None:
 
 def test_rotor_limit_accepts_comma_separator() -> None:
     assert parse_rotor_limit("0,80") == Decimal("0.80")
+
+
+def test_compact_journal_date_and_time_input() -> None:
+    current = datetime(2026, 7, 26, 18, 7)
+
+    assert str(
+        parse_journal_date(
+            "2707",
+            field_label="Дата",
+            required=True,
+            current=current,
+        )
+    ) == "2026-07-27"
+    assert str(
+        parse_journal_date(
+            "270726",
+            field_label="Дата",
+            required=True,
+            current=current,
+        )
+    ) == "2026-07-27"
+    assert str(
+        parse_journal_time(
+            "830",
+            field_label="Время",
+            required=True,
+            current=current,
+        )
+    ) == "08:30:00"
+
+
+def test_exclamation_uses_current_journal_date_and_time() -> None:
+    current = datetime(2026, 7, 26, 18, 7)
+
+    assert str(
+        parse_journal_date(
+            "!",
+            field_label="Дата",
+            required=True,
+            current=current,
+        )
+    ) == "2026-07-26"
+    assert str(
+        parse_journal_time(
+            "!",
+            field_label="Время",
+            required=True,
+            current=current,
+        )
+    ) == "18:07:00"
