@@ -5,37 +5,53 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   vendor:
+    if: github.head_ref == 'ux/repair-001-inline-event-journal' || github.ref_name == 'ux/repair-001-inline-event-journal'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: ux/repair-001-inline-event-journal
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Download pinned Tabulator package
+      - name: Vendor pinned Tabulator package
         shell: bash
         run: |
           set -Eeuo pipefail
           npm pack tabulator-tables@6.5.2
-          mkdir -p vendor/tabulator
+          target=src/shift_helper/static/vendor/tabulator
+          rm -rf "$target"
+          mkdir -p "$target"
           tar -xzf tabulator-tables-6.5.2.tgz \
             --strip-components=3 \
-            -C vendor/tabulator \
+            -C "$target" \
             package/dist/js/tabulator.min.js \
             package/dist/css/tabulator.min.css
           tar -xzf tabulator-tables-6.5.2.tgz \
             --strip-components=1 \
-            -C vendor/tabulator \
+            -C "$target" \
             package/LICENSE
-          sha256sum vendor/tabulator/* > vendor/tabulator/SHA256SUMS
+          sha256sum "$target"/* > "$target/SHA256SUMS"
+          rm tabulator-tables-6.5.2.tgz
 
-      - name: Upload vendored frontend assets
-        uses: actions/upload-artifact@v4
-        with:
-          name: tabulator-6.5.2-vendor
-          path: vendor/tabulator
-          if-no-files-found: error
+      - name: Commit vendored assets once
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/shift_helper/static/vendor/tabulator
+          if git diff --cached --quiet; then
+            echo "Pinned assets are already present."
+            exit 0
+          fi
+          git commit -m "vendor: add Tabulator 6.5.2 offline assets"
+          git push origin HEAD:ux/repair-001-inline-event-journal
