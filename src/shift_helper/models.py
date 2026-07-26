@@ -46,3 +46,14 @@ class Event(Base):
         onupdate=datetime.now,
     )
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class DeletedEvent(Base):
+    """Immutable snapshot retained when an operator deletes a journal row."""
+
+    __tablename__ = "deleted_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    original_event_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+    snapshot_json: Mapped[str] = mapped_column(Text, nullable=False)
