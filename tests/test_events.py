@@ -1,3 +1,5 @@
+import json
+import re
 from pathlib import Path
 
 from sqlalchemy import select
@@ -43,14 +45,24 @@ def _journal_row(**overrides: object) -> dict[str, object]:
     return values
 
 
+def _embedded_json(page: str, element_id: str) -> object:
+    pattern = rf'<script id="{re.escape(element_id)}" type="application/json">(.*?)</script>'
+    match = re.search(pattern, page, re.DOTALL)
+    assert match is not None, f"Embedded JSON element not found: {element_id}"
+    return json.loads(match.group(1))
+
+
 def test_event_create_edit_and_close(tmp_path: Path) -> None:
     app = create_app(testing=True, data_root=tmp_path)
     client = app.test_client()
 
     create_response = client.post("/events/new", data=_event_form(), follow_redirects=True)
     assert create_response.status_code == 200
-    assert "Событие зарегистрировано" in create_response.get_data(as_text=True)
-    assert "ВЭУ №17" in create_response.get_data(as_text=True)
+    page = create_response.get_data(as_text=True)
+    assert "Событие зарегистрировано" in page
+    rows = _embedded_json(page, "event-journal-data")
+    assert isinstance(rows, list)
+    assert any(row["asset_label"] == "ВЭУ №17" for row in rows)
 
     engine = app.extensions["shift_helper_database_engine"]
     with Session(engine) as session:
@@ -149,11 +161,17 @@ def test_journal_embeds_history_values_for_autocomplete(tmp_path: Path) -> None:
     assert create_response.status_code == 201
 
     page = client.get("/events").get_data(as_text=True)
-    assert "ВЭУ №17" in page
-    assert "Иванов И.И." in page
-    assert "Петров П.П." in page
-    assert "Повышенная вибрация" in page
-    assert "Передано дежурному инженеру" in page
+    rows = _embedded_json(page, "event-journal-data")
+    suggestions = _embedded_json(page, "event-journal-suggestions")
+
+    assert isinstance(rows, list)
+    assert isinstance(suggestions, dict)
+    assert rows[0]["asset_label"] == "ВЭУ №17"
+    assert "ВЭУ №17" in suggestions["asset_label"]
+    assert "Иванов И.И." in suggestions["performer"]
+    assert "Петров П.П." in suggestions["author"]
+    assert "Повышенная вибрация" in suggestions["reason"]
+    assert "Передано дежурному инженеру" in suggestions["actions"]
 
 
 def test_inline_row_create_update_and_close(tmp_path: Path) -> None:
