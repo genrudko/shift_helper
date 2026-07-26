@@ -24,7 +24,7 @@
 
     const initialRows = JSON.parse(dataElement.textContent || "[]");
     const suggestionValues = JSON.parse(suggestionsElement.textContent || "{}");
-    const fieldOrder = [
+    const fields = [
         "start_date",
         "start_time",
         "asset_label",
@@ -36,18 +36,35 @@
         "end_time",
         "downtime",
         "author",
-        "losses_mwh",
+        "downtime_losses_rub",
     ];
-    const editableFields = fieldOrder.filter((field) => field !== "downtime");
-    const searchableFields = [...fieldOrder];
+    const editableFields = fields.filter(
+        (field) => !["downtime", "downtime_losses_rub"].includes(field),
+    );
+    const operationalFields = editableFields.filter(
+        (field) => !["start_date", "start_time"].includes(field),
+    );
     const requiredFields = ["start_date", "start_time", "asset_label", "description"];
+    const multilineFields = new Set(["description", "reason", "actions"]);
+    const suggestionFields = new Set([
+        "asset_label",
+        "description",
+        "reason",
+        "actions",
+        "performer",
+        "author",
+    ]);
     const draftBatchSize = 80;
-    const alignmentStorageKey = "shift-helper-event-cell-alignment-v1";
-    const headerFilterStorageKey = "shift-helper-event-header-filter-visible-v1";
-    const persistenceId = "shift-helper-event-grid-v1";
     const saveTimers = new Map();
     const saveQueues = new Map();
+    const persistenceId = "shift-helper-event-grid-v2";
+    const headerFilterStorageKey = "shift-helper-event-header-filter-visible-v2";
+    const alignmentStorageKey = "shift-helper-event-cell-alignment-v2";
+    const fillStorageKey = "shift-helper-event-cell-fill-v2";
+    const rulesStorageKey = "shift-helper-event-format-rules-v2";
     const alignmentStore = loadJson(alignmentStorageKey, {});
+    const fillStore = loadJson(fillStorageKey, {});
+    const formatRules = loadJson(rulesStorageKey, []);
     const defaultAlignment = {
         start_date: {horizontal: "center", vertical: "middle"},
         start_time: {horizontal: "center", vertical: "middle"},
@@ -60,27 +77,21 @@
         end_time: {horizontal: "center", vertical: "middle"},
         downtime: {horizontal: "center", vertical: "middle"},
         author: {horizontal: "left", vertical: "middle"},
-        losses_mwh: {horizontal: "right", vertical: "middle"},
+        downtime_losses_rub: {horizontal: "right", vertical: "middle"},
     };
 
     let draftSequence = 0;
-    let currentStatus = root.dataset.selectedStatus || "all";
-    let currentSearch = "";
-    let activeCell = null;
     let table = null;
-    let defaultColumnLayout = null;
+    let activeCell = null;
+    let pendingTypedSeed = null;
     let normalizingCell = false;
     let addingDraftRows = false;
+    let currentStatus = root.dataset.selectedStatus || "all";
+    let currentSearch = "";
     let headerFiltersVisible = loadJson(headerFilterStorageKey, true) !== false;
+    let defaultColumnLayout = null;
 
-    const initialData = initialRows.map((row) => ({
-        ...row,
-        _draft: false,
-        _rowKey: `event-${row.id}`,
-        _saveError: false,
-        _saving: false,
-    }));
-    initialData.push(...makeDraftRows(draftBatchSize, true));
+    root.tabIndex = 0;
 
     function loadJson(key, fallback) {
         try {
@@ -95,7 +106,7 @@
         try {
             window.localStorage.setItem(key, JSON.stringify(value));
         } catch (_error) {
-            // The grid remains usable even when localStorage is unavailable.
+            // Workstation-local presentation settings must never block journal input.
         }
     }
 
@@ -111,17 +122,17 @@
         return `${pad(now.getHours())}:${pad(now.getMinutes())}`;
     }
 
-    function makeDraftRow(seedDateTime = false) {
+    function makeDraftRow() {
         draftSequence += 1;
         return {
             _draft: true,
             _rowKey: `draft-${Date.now()}-${draftSequence}`,
-            _saveError: false,
             _saving: false,
+            _saveError: false,
             revision: 0,
             status: "draft",
-            start_date: seedDateTime ? localDateValue() : "",
-            start_time: seedDateTime ? localTimeValue() : "",
+            start_date: "",
+            start_time: "",
             asset_label: "",
             description: "",
             reason: "",
@@ -131,16 +142,16 @@
             end_time: "",
             downtime: "",
             author: "",
-            losses_mwh: "",
+            downtime_losses_rub: "",
         };
     }
 
-    function makeDraftRows(count, seedFirst = false) {
-        return Array.from({length: count}, (_unused, index) => makeDraftRow(seedFirst && index === 0));
+    function makeDraftRows(count) {
+        return Array.from({length: count}, () => makeDraftRow());
     }
 
     function isMeaningfulDraft(data) {
-        return editableFields.some((field) => String(data[field] ?? "").trim() !== "");
+        return operationalFields.some((field) => String(data[field] ?? "").trim() !== "");
     }
 
     function requiredFieldsComplete(data) {
@@ -152,27 +163,34 @@
         saveStateText.textContent = message;
     }
 
+    function initialData() {
+        return [
+            ...initialRows.map((row) => ({
+                ...row,
+                _draft: false,
+                _rowKey: `event-${row.id}`,
+                _saving: false,
+                _saveError: false,
+            })),
+            ...makeDraftRows(draftBatchSize),
+        ];
+    }
+
     function updateRecordCount() {
         if (!table || !recordCount) {
             return;
         }
-        const allRows = table.getData().filter((row) => !row._draft).length;
-        const visibleRows = table.getRows("active").filter((row) => !row.getData()._draft).length;
-        recordCount.textContent = visibleRows === allRows
-            ? `Записей: ${allRows}`
-            : `Записей: ${allRows} · показано: ${visibleRows}`;
+        const all = table.getData().filter((row) => !row._draft).length;
+        const visible = table.getRows("active").filter((row) => !row.getData()._draft).length;
+        recordCount.textContent = all === visible
+            ? `Записей: ${all}`
+            : `Записей: ${all} · показано: ${visible}`;
     }
 
     function previousRowValue(row, field) {
-        if (!table) {
-            return "";
-        }
-        const rows = table.getRows("active");
+        const rows = table?.getRows("active") || [];
         const index = rows.indexOf(row);
-        if (index <= 0) {
-            return "";
-        }
-        return rows[index - 1].getData()[field] ?? "";
+        return index > 0 ? rows[index - 1].getData()[field] ?? "" : "";
     }
 
     function parseJournalDate(value) {
@@ -253,29 +271,20 @@
         if (value.trim() === ".") {
             value = String(previousRowValue(row, field) ?? "");
         }
-        if (field === "start_date" || field === "end_date") {
+        if (["start_date", "end_date"].includes(field)) {
             return normalizeDate(value, row);
         }
-        if (field === "start_time" || field === "end_time") {
+        if (["start_time", "end_time"].includes(field)) {
             return normalizeTime(value, row, field);
-        }
-        if (field === "losses_mwh") {
-            return value.trim().replace(".", ",");
         }
         return value;
     }
 
     function payloadForRow(data) {
         const payload = {revision: Number(data.revision || 0)};
-        for (const field of editableFields) {
+        editableFields.forEach((field) => {
             payload[field] = data[field] ?? "";
-        }
-        if (!String(payload.start_date).trim()) {
-            payload.start_date = localDateValue();
-        }
-        if (!String(payload.start_time).trim()) {
-            payload.start_time = localTimeValue();
-        }
+        });
         return payload;
     }
 
@@ -292,26 +301,13 @@
         return payload;
     }
 
-    function addSuggestion(field, value) {
-        const cleaned = String(value ?? "").trim();
-        const values = suggestionValues[field];
-        if (!cleaned || !Array.isArray(values) || values.includes(cleaned)) {
+    function migratePresentationStore(store, oldKey, newKey, storageKey) {
+        if (oldKey === newKey || !store[oldKey]) {
             return;
         }
-        values.push(cleaned);
-        values.sort((left, right) => left.localeCompare(right, "ru"));
-    }
-
-    function migrateAlignment(oldKey, newKey) {
-        if (oldKey === newKey || !alignmentStore[oldKey]) {
-            return;
-        }
-        alignmentStore[newKey] = {
-            ...(alignmentStore[newKey] || {}),
-            ...alignmentStore[oldKey],
-        };
-        delete alignmentStore[oldKey];
-        saveJson(alignmentStorageKey, alignmentStore);
+        store[newKey] = {...(store[newKey] || {}), ...store[oldKey]};
+        delete store[oldKey];
+        saveJson(storageKey, store);
     }
 
     async function saveRowOnce(row) {
@@ -326,9 +322,8 @@
         setSaveState("saving", "Сохранение…");
 
         try {
-            const eventId = data.id;
             const response = await fetch(
-                isDraft ? root.dataset.createUrl : `${root.dataset.updateBase}/${eventId}/row`,
+                isDraft ? root.dataset.createUrl : `${root.dataset.updateBase}/${data.id}/row`,
                 {
                     method: isDraft ? "POST" : "PATCH",
                     headers: {"Content-Type": "application/json"},
@@ -338,7 +333,8 @@
             const payload = await readResponse(response);
             const oldKey = data._rowKey;
             const newKey = `event-${payload.row.id}`;
-            migrateAlignment(oldKey, newKey);
+            migratePresentationStore(alignmentStore, oldKey, newKey, alignmentStorageKey);
+            migratePresentationStore(fillStore, oldKey, newKey, fillStorageKey);
             await row.update({
                 ...payload.row,
                 _draft: false,
@@ -346,13 +342,10 @@
                 _saving: false,
                 _saveError: false,
             });
-            for (const field of ["asset_label", "performer", "author", "reason", "actions"]) {
-                addSuggestion(field, payload.row[field]);
-            }
-            row.reformat();
+            suggestionFields.forEach((field) => addSuggestion(field, payload.row[field]));
             ensureDraftRows();
-            seedFirstDraft();
             applyCombinedFilter();
+            row.reformat();
             setSaveState("saved", "Все изменения сохранены");
             updateRecordCount();
             return true;
@@ -365,29 +358,29 @@
     }
 
     function queueSave(row) {
-        const rowKey = row.getData()._rowKey;
-        const previous = saveQueues.get(rowKey) || Promise.resolve();
+        const key = row.getData()._rowKey;
+        const previous = saveQueues.get(key) || Promise.resolve();
         const next = previous
             .catch(() => undefined)
             .then(() => saveRowOnce(row))
             .finally(() => {
-                if (saveQueues.get(rowKey) === next) {
-                    saveQueues.delete(rowKey);
+                if (saveQueues.get(key) === next) {
+                    saveQueues.delete(key);
                 }
             });
-        saveQueues.set(rowKey, next);
+        saveQueues.set(key, next);
         return next;
     }
 
     function scheduleSave(row, delay = 260) {
-        const rowKey = row.getData()._rowKey;
-        window.clearTimeout(saveTimers.get(rowKey));
+        const key = row.getData()._rowKey;
+        window.clearTimeout(saveTimers.get(key));
         setSaveState("dirty", "Есть несохранённые изменения");
         const timer = window.setTimeout(() => {
-            saveTimers.delete(rowKey);
+            saveTimers.delete(key);
             void queueSave(row);
         }, delay);
-        saveTimers.set(rowKey, timer);
+        saveTimers.set(key, timer);
     }
 
     function ensureDraftRows() {
@@ -395,52 +388,122 @@
             return;
         }
         const draftCount = table.getData().filter((row) => row._draft).length;
-        if (draftCount >= draftBatchSize) {
-            return;
+        if (draftCount < draftBatchSize) {
+            void table.addData(makeDraftRows(draftBatchSize - draftCount), false);
         }
-        void table.addData(makeDraftRows(draftBatchSize - draftCount), false);
     }
 
-    function seedFirstDraft() {
-        if (!table) {
+    function addSuggestion(field, value) {
+        const cleaned = String(value ?? "").trim();
+        const values = suggestionValues[field];
+        if (!cleaned || !Array.isArray(values) || values.includes(cleaned)) {
             return;
         }
-        const firstBlank = table.getRows().find((row) => {
-            const data = row.getData();
-            return data._draft && !isMeaningfulDraft(data);
+        values.push(cleaned);
+        values.sort((left, right) => left.localeCompare(right, "ru"));
+        rebuildDatalist(field);
+    }
+
+    function datalistId(field) {
+        return `journal-suggestions-${field}`;
+    }
+
+    function rebuildDatalist(field) {
+        let list = document.getElementById(datalistId(field));
+        if (!list) {
+            list = document.createElement("datalist");
+            list.id = datalistId(field);
+            document.body.appendChild(list);
+        }
+        list.replaceChildren();
+        (suggestionValues[field] || []).slice(0, 200).forEach((value) => {
+            const option = document.createElement("option");
+            option.value = value;
+            list.appendChild(option);
         });
-        if (!firstBlank) {
-            return;
-        }
-        const data = firstBlank.getData();
-        if (!data.start_date && !data.start_time) {
-            void firstBlank.update({start_date: localDateValue(), start_time: localTimeValue()});
-        }
     }
 
-    function combinedFilter(data) {
-        if (data._draft) {
-            return currentStatus !== "closed" && currentSearch === "";
-        }
-        if (currentStatus !== "all" && data.status !== currentStatus) {
-            return false;
-        }
-        if (!currentSearch) {
-            return true;
-        }
-        const haystack = searchableFields
-            .map((field) => String(data[field] ?? ""))
-            .join("\n")
-            .toLocaleLowerCase("ru");
-        return haystack.includes(currentSearch);
-    }
+    suggestionFields.forEach(rebuildDatalist);
 
-    function applyCombinedFilter() {
-        if (!table) {
+    function finishEditor(cell, editor, success, cancel, commit, navigation, state) {
+        if (state.finished) {
             return;
         }
-        table.setFilter(combinedFilter);
-        updateRecordCount();
+        state.finished = true;
+        if (commit) {
+            success(editor.value);
+        } else {
+            cancel();
+        }
+        window.setTimeout(() => {
+            if (navigation === "down") {
+                cell.navigateDown();
+            } else if (navigation === "next") {
+                cell.navigateNext();
+            } else if (navigation === "previous") {
+                cell.navigatePrev();
+            }
+        }, 0);
+    }
+
+    function journalEditor(cell, onRendered, success, cancel, params = {}) {
+        const multiline = Boolean(params.multiline);
+        const editor = document.createElement(multiline ? "textarea" : "input");
+        const data = cell.getRow().getData();
+        const field = cell.getField();
+        const seedMatches = pendingTypedSeed
+            && pendingTypedSeed.rowKey === data._rowKey
+            && pendingTypedSeed.field === field;
+        editor.className = "journal-stable-editor";
+        editor.value = seedMatches ? pendingTypedSeed.text : String(cell.getValue() ?? "");
+        pendingTypedSeed = null;
+        editor.autocomplete = "off";
+        editor.spellcheck = multiline;
+        if (params.suggestionField) {
+            editor.setAttribute("list", datalistId(params.suggestionField));
+        }
+
+        const state = {finished: false};
+        editor.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                finishEditor(cell, editor, success, cancel, false, null, state);
+                return;
+            }
+            if (event.key === "Enter") {
+                if (multiline && event.shiftKey) {
+                    return;
+                }
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                finishEditor(cell, editor, success, cancel, true, "down", state);
+                return;
+            }
+            if (event.key === "Tab") {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                finishEditor(
+                    cell,
+                    editor,
+                    success,
+                    cancel,
+                    true,
+                    event.shiftKey ? "previous" : "next",
+                    state,
+                );
+            }
+        }, true);
+        editor.addEventListener("blur", () => {
+            finishEditor(cell, editor, success, cancel, true, null, state);
+        });
+
+        onRendered(() => {
+            editor.focus({preventScroll: true});
+            const caret = editor.value.length;
+            editor.setSelectionRange(caret, caret);
+        });
+        return editor;
     }
 
     function alignmentFor(data, field) {
@@ -450,40 +513,344 @@
         };
     }
 
-    function applyAlignmentToRenderedCell(cell, element) {
-        const field = cell.getField();
-        const valueElement = element.querySelector(".journal-cell-value");
-        if (!valueElement || !field) {
-            return;
+    function contrastingTextColor(color) {
+        const hex = String(color || "").replace("#", "");
+        if (!/^[0-9a-f]{6}$/i.test(hex)) {
+            return "";
         }
-        const alignment = alignmentFor(cell.getRow().getData(), field);
-        valueElement.dataset.horizontal = alignment.horizontal;
-        valueElement.dataset.vertical = alignment.vertical;
+        const red = Number.parseInt(hex.slice(0, 2), 16);
+        const green = Number.parseInt(hex.slice(2, 4), 16);
+        const blue = Number.parseInt(hex.slice(4, 6), 16);
+        return ((0.299 * red) + (0.587 * green) + (0.114 * blue)) > 155
+            ? "#18212a"
+            : "#f7fafc";
     }
 
-    function journalFormatter(cell, formatterParams, onRendered) {
-        const value = cell.getValue();
+    function ruleMatches(rule, field, rawValue) {
+        if (rule.field !== "*" && rule.field !== field) {
+            return false;
+        }
+        const value = String(rawValue ?? "");
+        const normalized = value.toLocaleLowerCase("ru");
+        const expected = String(rule.value ?? "").toLocaleLowerCase("ru");
+        if (rule.operator === "contains") {
+            return normalized.includes(expected);
+        }
+        if (rule.operator === "equals") {
+            return normalized === expected;
+        }
+        if (rule.operator === "starts") {
+            return normalized.startsWith(expected);
+        }
+        if (rule.operator === "empty") {
+            return value.trim() === "";
+        }
+        if (rule.operator === "nonempty") {
+            return value.trim() !== "";
+        }
+        if (rule.operator === "regex") {
+            try {
+                return new RegExp(rule.value, "iu").test(value);
+            } catch (_error) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    function fillForCell(cell) {
+        const data = cell.getRow().getData();
+        const manual = fillStore[data._rowKey]?.[cell.getField()];
+        if (manual) {
+            return manual;
+        }
+        return formatRules.find((rule) => ruleMatches(rule, cell.getField(), cell.getValue()))
+            ?.color || "";
+    }
+
+    function journalFormatter(cell, params, onRendered) {
         const element = document.createElement("div");
         element.className = "journal-cell-value";
-        if (formatterParams?.multiline) {
+        if (params?.multiline) {
             element.classList.add("journal-cell-value--multiline");
         }
-        element.textContent = value === null || value === undefined ? "" : String(value);
-        onRendered(() => applyAlignmentToRenderedCell(cell, cell.getElement()));
+        if (params?.currency) {
+            element.classList.add("journal-cell-value--currency");
+            const raw = String(cell.getValue() ?? "").trim();
+            if (raw) {
+                const numeric = Number(raw.replace(/\s/g, "").replace(",", "."));
+                element.textContent = Number.isFinite(numeric)
+                    ? `${new Intl.NumberFormat("ru-RU", {maximumFractionDigits: 0}).format(numeric)} ₽`
+                    : raw;
+            }
+        } else {
+            element.textContent = String(cell.getValue() ?? "");
+        }
+        onRendered(() => {
+            const data = cell.getRow().getData();
+            const alignment = alignmentFor(data, cell.getField());
+            element.dataset.horizontal = alignment.horizontal;
+            element.dataset.vertical = alignment.vertical;
+            const fill = fillForCell(cell);
+            cell.getElement().style.backgroundColor = fill;
+            element.style.color = fill ? contrastingTextColor(fill) : "";
+        });
         return element;
     }
 
-    function autocompleteParams(field) {
+    function rangeMatrix() {
+        const range = table?.getRanges?.().at(-1);
+        if (!range) {
+            return activeCell ? [[activeCell]] : [];
+        }
+        const cells = range.getCells?.() || [];
+        return cells.length && !Array.isArray(cells[0]) ? [cells] : cells;
+    }
+
+    function selectedCells({editableOnly = false} = {}) {
+        const cells = [...new Set(rangeMatrix().flat())];
+        return editableOnly
+            ? cells.filter((cell) => editableFields.includes(cell.getField()))
+            : cells;
+    }
+
+    function applyAlignment(axis, value) {
+        const cells = selectedCells();
+        if (!cells.length) {
+            setSaveState("error", "Сначала выделите ячейку или диапазон.");
+            return;
+        }
+        const rows = new Set();
+        cells.forEach((cell) => {
+            const data = cell.getRow().getData();
+            alignmentStore[data._rowKey] ||= {};
+            alignmentStore[data._rowKey][cell.getField()] ||= {};
+            alignmentStore[data._rowKey][cell.getField()][axis] = value;
+            rows.add(cell.getRow());
+        });
+        saveJson(alignmentStorageKey, alignmentStore);
+        rows.forEach((row) => row.reformat());
+        setSaveState("saved", "Выравнивание сохранено");
+    }
+
+    function applyManualFill(color) {
+        const rows = new Set();
+        selectedCells().forEach((cell) => {
+            const data = cell.getRow().getData();
+            fillStore[data._rowKey] ||= {};
+            if (color) {
+                fillStore[data._rowKey][cell.getField()] = color;
+            } else {
+                delete fillStore[data._rowKey][cell.getField()];
+                if (!Object.keys(fillStore[data._rowKey]).length) {
+                    delete fillStore[data._rowKey];
+                }
+            }
+            rows.add(cell.getRow());
+        });
+        saveJson(fillStorageKey, fillStore);
+        rows.forEach((row) => row.reformat());
+    }
+
+    function clearSelectedCells() {
+        const rows = new Set();
+        normalizingCell = true;
+        selectedCells({editableOnly: true}).forEach((cell) => {
+            cell.setValue("", true);
+            rows.add(cell.getRow());
+        });
+        normalizingCell = false;
+        rows.forEach((row) => scheduleSave(row, 80));
+    }
+
+    function copyValueFromAbove(cell) {
+        normalizingCell = true;
+        cell.setValue(previousRowValue(cell.getRow(), cell.getField()), true);
+        normalizingCell = false;
+        scheduleSave(cell.getRow(), 80);
+    }
+
+    function fillRange(direction) {
+        const matrix = rangeMatrix();
+        if (!matrix.length || !matrix[0]?.length) {
+            return;
+        }
+        const rows = new Set();
+        normalizingCell = true;
+        if (direction === "down") {
+            const source = matrix[0].map((cell) => cell.getValue());
+            matrix.slice(1).forEach((row) => {
+                row.forEach((cell, index) => {
+                    if (editableFields.includes(cell.getField())) {
+                        cell.setValue(source[index] ?? "", true);
+                        rows.add(cell.getRow());
+                    }
+                });
+            });
+        } else {
+            matrix.forEach((row) => {
+                const source = row[0]?.getValue() ?? "";
+                row.slice(1).forEach((cell) => {
+                    if (editableFields.includes(cell.getField())) {
+                        cell.setValue(source, true);
+                        rows.add(cell.getRow());
+                    }
+                });
+            });
+        }
+        normalizingCell = false;
+        rows.forEach((row) => scheduleSave(row, 80));
+    }
+
+    function clearRanges() {
+        (table?.getRanges?.() || []).forEach((range) => range.remove());
+    }
+
+    function selectRowRange(row) {
+        clearRanges();
+        const first = row.getCell(editableFields[0]);
+        const last = row.getCell(editableFields.at(-1));
+        if (first && last) {
+            table.addRange(first, last);
+            activeCell = first;
+        }
+    }
+
+    async function pasteTextAtCell(startCell, text) {
+        if (!startCell || !text) {
+            return;
+        }
+        const rows = table.getRows("active");
+        const startRowIndex = rows.indexOf(startCell.getRow());
+        const startFieldIndex = editableFields.indexOf(startCell.getField());
+        if (startRowIndex < 0 || startFieldIndex < 0) {
+            return;
+        }
+        const matrix = text.replace(/\r/g, "").split("\n").map((line) => line.split("\t"));
+        const changedRows = new Set();
+        normalizingCell = true;
+        matrix.forEach((values, rowOffset) => {
+            const row = rows[startRowIndex + rowOffset];
+            if (!row) {
+                return;
+            }
+            values.forEach((value, columnOffset) => {
+                const field = editableFields[startFieldIndex + columnOffset];
+                const cell = field ? row.getCell(field) : null;
+                if (cell) {
+                    cell.setValue(value, true);
+                    changedRows.add(row);
+                }
+            });
+        });
+        normalizingCell = false;
+        changedRows.forEach((row) => scheduleSave(row, 80));
+    }
+
+    async function pasteFromClipboard(startCell) {
+        try {
+            const text = await navigator.clipboard.readText();
+            await pasteTextAtCell(startCell, text);
+        } catch (_error) {
+            setSaveState("error", "Браузер не дал доступ к буферу. Используйте Ctrl+V.");
+        }
+    }
+
+    const cellContextMenu = [
+        {
+            label: "Копировать",
+            action: () => table.copyToClipboard("range"),
+        },
+        {
+            label: "Вставить",
+            action: (_event, cell) => void pasteFromClipboard(cell),
+        },
+        {separator: true},
+        {
+            label: "Значение из строки выше",
+            action: (_event, cell) => copyValueFromAbove(cell),
+        },
+        {
+            label: "Заполнить вниз",
+            action: () => fillRange("down"),
+        },
+        {
+            label: "Заполнить вправо",
+            action: () => fillRange("right"),
+        },
+        {separator: true},
+        {
+            label: "Очистить выделенные ячейки",
+            action: () => clearSelectedCells(),
+        },
+    ];
+
+    const rowContextMenu = [
+        {
+            label: "Копировать строку",
+            action: (_event, row) => {
+                selectRowRange(row);
+                table.copyToClipboard("range");
+            },
+        },
+        {
+            label: "Вставить строку",
+            action: (_event, row) => {
+                selectRowRange(row);
+                void pasteFromClipboard(row.getCell(editableFields[0]));
+            },
+        },
+        {separator: true},
+        {
+            label: "Очистить черновую строку",
+            disabled: (row) => !row.getData()._draft,
+            action: (_event, row) => {
+                selectRowRange(row);
+                clearSelectedCells();
+            },
+        },
+    ];
+
+    function column({title, field, width, minWidth, multiline = false, currency = false}) {
         return {
-            values: () => suggestionValues[field] || [],
-            autocomplete: true,
-            listOnEmpty: true,
-            freetext: true,
-            allowEmpty: true,
-            filterDelay: 80,
-            placeholderEmpty: "Нет сохранённых вариантов",
+            title,
+            field,
+            width,
+            minWidth,
+            editor: editableFields.includes(field) ? journalEditor : false,
+            editorParams: {
+                multiline,
+                suggestionField: suggestionFields.has(field) ? field : null,
+            },
+            headerFilter: "input",
+            headerFilterPlaceholder: title,
+            formatter: journalFormatter,
+            formatterParams: {multiline, currency},
+            variableHeight: multiline,
+            contextMenu: cellContextMenu,
         };
     }
+
+    const columns = [
+        {...column({title: "Дата останова", field: "start_date", width: 112, minWidth: 96}), frozen: true},
+        {...column({title: "Время", field: "start_time", width: 78, minWidth: 68}), frozen: true},
+        {...column({title: "№ ВЭУ / оборудование", field: "asset_label", width: 158, minWidth: 120}), frozen: true},
+        column({title: "Описание события", field: "description", width: 330, minWidth: 180, multiline: true}),
+        column({title: "Причина", field: "reason", width: 270, minWidth: 160, multiline: true}),
+        column({title: "Действия персонала", field: "actions", width: 300, minWidth: 180, multiline: true}),
+        column({title: "Исполнитель", field: "performer", width: 170, minWidth: 120}),
+        column({title: "Дата пуска", field: "end_date", width: 112, minWidth: 96}),
+        column({title: "Время", field: "end_time", width: 78, minWidth: 68}),
+        column({title: "Простой", field: "downtime", width: 118, minWidth: 90}),
+        column({title: "Кто внёс запись", field: "author", width: 170, minWidth: 120}),
+        column({
+            title: "Потери от простоя, руб.",
+            field: "downtime_losses_rub",
+            width: 145,
+            minWidth: 110,
+            currency: true,
+        }),
+    ];
 
     function rowFormatter(row) {
         const element = row.getElement();
@@ -494,318 +861,8 @@
         element.classList.toggle("journal-row--error", Boolean(data._saveError));
     }
 
-    function rangeCellMatrix(range) {
-        const cells = range?.getCells?.() || [];
-        if (!Array.isArray(cells)) {
-            return [];
-        }
-        if (cells.length && !Array.isArray(cells[0])) {
-            return [cells];
-        }
-        return cells;
-    }
-
-    function selectedCells() {
-        if (!table) {
-            return activeCell ? [activeCell] : [];
-        }
-        const cells = [];
-        for (const range of table.getRanges?.() || []) {
-            for (const row of rangeCellMatrix(range)) {
-                cells.push(...row);
-            }
-        }
-        if (!cells.length && activeCell) {
-            cells.push(activeCell);
-        }
-        return [...new Set(cells)].filter((cell) => editableFields.includes(cell.getField()));
-    }
-
-    function applyAlignment(axis, value) {
-        const cells = selectedCells();
-        if (!cells.length) {
-            setSaveState("error", "Сначала выделите ячейку или диапазон.");
-            return;
-        }
-        const rows = new Set();
-        for (const cell of cells) {
-            const data = cell.getRow().getData();
-            alignmentStore[data._rowKey] ||= {};
-            alignmentStore[data._rowKey][cell.getField()] ||= {};
-            alignmentStore[data._rowKey][cell.getField()][axis] = value;
-            rows.add(cell.getRow());
-        }
-        saveJson(alignmentStorageKey, alignmentStore);
-        rows.forEach((row) => row.reformat());
-        setSaveState("saved", "Выравнивание сохранено");
-    }
-
-    function copyValueFromAbove(cell) {
-        const value = previousRowValue(cell.getRow(), cell.getField());
-        normalizingCell = true;
-        cell.setValue(value, true);
-        normalizingCell = false;
-        scheduleSave(cell.getRow(), 40);
-    }
-
-    function clearSelectedCells() {
-        const cells = selectedCells();
-        const rows = new Set();
-        normalizingCell = true;
-        cells.forEach((cell) => {
-            cell.setValue("", true);
-            rows.add(cell.getRow());
-        });
-        normalizingCell = false;
-        rows.forEach((row) => scheduleSave(row, 40));
-    }
-
-    function fillRange(direction) {
-        if (!table) {
-            return;
-        }
-        const range = table.getRanges?.()[0];
-        const matrix = rangeCellMatrix(range);
-        if (!matrix.length || !matrix[0]?.length) {
-            return;
-        }
-        const rowsToSave = new Set();
-        normalizingCell = true;
-        if (direction === "down") {
-            const source = matrix[0].map((cell) => cell.getValue());
-            matrix.forEach((row, rowIndex) => {
-                if (rowIndex === 0) {
-                    return;
-                }
-                row.forEach((cell, columnIndex) => {
-                    if (editableFields.includes(cell.getField())) {
-                        cell.setValue(source[columnIndex] ?? "", true);
-                        rowsToSave.add(cell.getRow());
-                    }
-                });
-            });
-        } else {
-            matrix.forEach((row) => {
-                const source = row[0]?.getValue() ?? "";
-                row.forEach((cell, columnIndex) => {
-                    if (columnIndex > 0 && editableFields.includes(cell.getField())) {
-                        cell.setValue(source, true);
-                        rowsToSave.add(cell.getRow());
-                    }
-                });
-            });
-        }
-        normalizingCell = false;
-        rowsToSave.forEach((row) => scheduleSave(row, 80));
-    }
-
-    const cellMenu = [
-        {
-            label: "По левому краю",
-            action: (_event, cell) => {
-                activeCell = cell;
-                applyAlignment("horizontal", "left");
-            },
-        },
-        {
-            label: "По центру",
-            action: (_event, cell) => {
-                activeCell = cell;
-                applyAlignment("horizontal", "center");
-            },
-        },
-        {
-            label: "По правому краю",
-            action: (_event, cell) => {
-                activeCell = cell;
-                applyAlignment("horizontal", "right");
-            },
-        },
-        {separator: true},
-        {
-            label: "По верхнему краю",
-            action: (_event, cell) => {
-                activeCell = cell;
-                applyAlignment("vertical", "top");
-            },
-        },
-        {
-            label: "По середине",
-            action: (_event, cell) => {
-                activeCell = cell;
-                applyAlignment("vertical", "middle");
-            },
-        },
-        {
-            label: "По нижнему краю",
-            action: (_event, cell) => {
-                activeCell = cell;
-                applyAlignment("vertical", "bottom");
-            },
-        },
-        {separator: true},
-        {
-            label: "Значение из строки выше",
-            action: (_event, cell) => copyValueFromAbove(cell),
-        },
-        {
-            label: "Очистить выделенные ячейки",
-            action: (_event, cell) => {
-                activeCell = cell;
-                clearSelectedCells();
-            },
-        },
-    ];
-
-    const columns = [
-        {
-            title: "Дата останова",
-            field: "start_date",
-            width: 112,
-            minWidth: 96,
-            frozen: true,
-            editor: "input",
-            headerFilter: "input",
-            headerFilterPlaceholder: "Дата",
-            formatter: journalFormatter,
-            cellContextMenu: cellMenu,
-        },
-        {
-            title: "Время",
-            field: "start_time",
-            width: 78,
-            minWidth: 68,
-            frozen: true,
-            editor: "input",
-            headerFilter: "input",
-            headerFilterPlaceholder: "Время",
-            formatter: journalFormatter,
-            cellContextMenu: cellMenu,
-        },
-        {
-            title: "№ ВЭУ / оборудование",
-            field: "asset_label",
-            width: 158,
-            minWidth: 120,
-            frozen: true,
-            editor: "list",
-            editorParams: () => autocompleteParams("asset_label"),
-            headerFilter: "input",
-            headerFilterPlaceholder: "Оборудование",
-            formatter: journalFormatter,
-            cellContextMenu: cellMenu,
-        },
-        {
-            title: "Описание события",
-            field: "description",
-            width: 330,
-            minWidth: 180,
-            editor: "textarea",
-            headerFilter: "input",
-            headerFilterPlaceholder: "Текст",
-            formatter: journalFormatter,
-            formatterParams: {multiline: true},
-            variableHeight: true,
-            cellContextMenu: cellMenu,
-        },
-        {
-            title: "Причина",
-            field: "reason",
-            width: 270,
-            minWidth: 160,
-            editor: "textarea",
-            headerFilter: "input",
-            headerFilterPlaceholder: "Причина",
-            formatter: journalFormatter,
-            formatterParams: {multiline: true},
-            variableHeight: true,
-            cellContextMenu: cellMenu,
-        },
-        {
-            title: "Действия персонала",
-            field: "actions",
-            width: 300,
-            minWidth: 180,
-            editor: "textarea",
-            headerFilter: "input",
-            headerFilterPlaceholder: "Действия",
-            formatter: journalFormatter,
-            formatterParams: {multiline: true},
-            variableHeight: true,
-            cellContextMenu: cellMenu,
-        },
-        {
-            title: "Исполнитель",
-            field: "performer",
-            width: 170,
-            minWidth: 120,
-            editor: "list",
-            editorParams: () => autocompleteParams("performer"),
-            headerFilter: "input",
-            headerFilterPlaceholder: "Исполнитель",
-            formatter: journalFormatter,
-            cellContextMenu: cellMenu,
-        },
-        {
-            title: "Дата пуска",
-            field: "end_date",
-            width: 112,
-            minWidth: 96,
-            editor: "input",
-            headerFilter: "input",
-            headerFilterPlaceholder: "Дата",
-            formatter: journalFormatter,
-            cellContextMenu: cellMenu,
-        },
-        {
-            title: "Время",
-            field: "end_time",
-            width: 78,
-            minWidth: 68,
-            editor: "input",
-            headerFilter: "input",
-            headerFilterPlaceholder: "Время",
-            formatter: journalFormatter,
-            cellContextMenu: cellMenu,
-        },
-        {
-            title: "Простой",
-            field: "downtime",
-            width: 118,
-            minWidth: 90,
-            editor: false,
-            headerFilter: "input",
-            headerFilterPlaceholder: "Простой",
-            formatter: journalFormatter,
-            cellContextMenu: cellMenu,
-        },
-        {
-            title: "Кто внёс запись",
-            field: "author",
-            width: 170,
-            minWidth: 120,
-            editor: "list",
-            editorParams: () => autocompleteParams("author"),
-            headerFilter: "input",
-            headerFilterPlaceholder: "Автор",
-            formatter: journalFormatter,
-            cellContextMenu: cellMenu,
-        },
-        {
-            title: "Потери",
-            field: "losses_mwh",
-            width: 105,
-            minWidth: 80,
-            editor: "input",
-            headerFilter: "input",
-            headerFilterPlaceholder: "Потери",
-            formatter: journalFormatter,
-            cellContextMenu: cellMenu,
-        },
-    ];
-
     table = new window.Tabulator(root, {
-        data: initialData,
+        data: initialData(),
         index: "_rowKey",
         height: "100%",
         layout: "fitDataFill",
@@ -815,12 +872,13 @@
         resizableColumnFit: true,
         history: true,
         editTriggerEvent: "dblclick",
-        selectableRows: false,
         selectableRange: 1,
         selectableRangeColumns: true,
         selectableRangeRows: true,
         selectableRangeClearCells: true,
+        selectableRangeClearCellsValue: "",
         selectableRangeAutoFocus: true,
+        selectableRangeBlurEditOnNavigate: true,
         clipboard: true,
         clipboardCopyStyled: false,
         clipboardCopyRowRange: "range",
@@ -841,6 +899,8 @@
         rowHeight: 34,
         rowHeader: {
             formatter: "rownum",
+            field: "rownum",
+            accessorClipboard: "rownum",
             headerSort: false,
             frozen: true,
             width: 46,
@@ -848,31 +908,59 @@
             resizable: false,
             hozAlign: "center",
             cssClass: "journal-row-number",
+            editor: false,
         },
+        rowContextMenu,
         columnDefaults: {
-            resizable: true,
+            resizable: "header",
             headerSort: true,
             vertAlign: "middle",
         },
         rowFormatter,
         columns,
     });
+    window.shiftHelperEventGrid = table;
+
+    function combinedFilter(data) {
+        if (data._draft) {
+            return currentStatus !== "closed" && currentSearch === "";
+        }
+        if (currentStatus !== "all" && data.status !== currentStatus) {
+            return false;
+        }
+        if (!currentSearch) {
+            return true;
+        }
+        return fields
+            .map((field) => String(data[field] ?? ""))
+            .join("\n")
+            .toLocaleLowerCase("ru")
+            .includes(currentSearch);
+    }
+
+    function applyCombinedFilter() {
+        table.setFilter(combinedFilter);
+        updateRecordCount();
+    }
+
+    function updateStatusButtons() {
+        document.querySelectorAll("[data-status-filter]").forEach((button) => {
+            button.setAttribute("aria-pressed", String(button.dataset.statusFilter === currentStatus));
+        });
+    }
 
     table.on("tableBuilt", () => {
-        defaultColumnLayout = columns.map((column) => ({
-            title: column.title,
-            field: column.field,
-            width: column.width,
+        defaultColumnLayout = columns.map((definition) => ({
+            title: definition.title,
+            field: definition.field,
+            width: definition.width,
             visible: true,
-            frozen: Boolean(column.frozen),
+            frozen: Boolean(definition.frozen),
         }));
         root.classList.toggle("header-filters-hidden", !headerFiltersVisible);
-        if (filterToggle) {
-            filterToggle.setAttribute("aria-pressed", String(headerFiltersVisible));
-        }
+        filterToggle?.setAttribute("aria-pressed", String(headerFiltersVisible));
         applyCombinedFilter();
         updateStatusButtons();
-        seedFirstDraft();
         updateRecordCount();
 
         const holder = root.querySelector(".tabulator-tableholder");
@@ -891,15 +979,9 @@
         activeCell = cell;
     });
 
-    table.on("cellEditing", (cell) => {
-        activeCell = cell;
-        const data = cell.getRow().getData();
-        if (data._draft && !data.start_date && !data.start_time) {
-            void cell.getRow().update({
-                start_date: localDateValue(),
-                start_time: localTimeValue(),
-            });
-        }
+    table.on("rangeChanged", (range) => {
+        const bounds = range.getBounds?.();
+        activeCell = bounds?.end || bounds?.bottomRight || activeCell;
     });
 
     table.on("cellEdited", (cell) => {
@@ -913,22 +995,77 @@
             cell.setValue(normalized, true);
             normalizingCell = false;
         }
-        scheduleSave(cell.getRow());
+        const row = cell.getRow();
+        const data = row.getData();
+        if (
+            data._draft
+            && operationalFields.includes(cell.getField())
+            && isMeaningfulDraft(data)
+            && (!String(data.start_date ?? "").trim() || !String(data.start_time ?? "").trim())
+        ) {
+            const timestamp = {};
+            if (!String(data.start_date ?? "").trim()) {
+                timestamp.start_date = localDateValue();
+            }
+            if (!String(data.start_time ?? "").trim()) {
+                timestamp.start_time = localTimeValue();
+            }
+            void row.update(timestamp);
+        }
+        scheduleSave(row);
     });
 
     table.on("clipboardPasted", (_clipboard, _rowData, rows) => {
-        for (const row of rows || []) {
-            scheduleSave(row, 100);
-        }
+        (rows || []).forEach((row) => scheduleSave(row, 100));
+    });
+
+    table.on("clipboardPasteError", () => {
+        setSaveState("error", "Не удалось вставить данные из буфера обмена.");
     });
 
     table.on("dataFiltered", updateRecordCount);
 
-    function updateStatusButtons() {
-        document.querySelectorAll("[data-status-filter]").forEach((button) => {
-            button.setAttribute("aria-pressed", String(button.dataset.statusFilter === currentStatus));
-        });
-    }
+    root.addEventListener("keydown", (event) => {
+        const target = event.target;
+        const editing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+        if (editing) {
+            return;
+        }
+        const modifier = event.ctrlKey || event.metaKey;
+        const key = event.key.toLocaleLowerCase("ru");
+        if (modifier && key === "f") {
+            event.preventDefault();
+            searchInput?.focus();
+            searchInput?.select();
+            return;
+        }
+        if (modifier && key === "d") {
+            event.preventDefault();
+            fillRange("down");
+            return;
+        }
+        if (modifier && key === "r") {
+            event.preventDefault();
+            fillRange("right");
+            return;
+        }
+        if (
+            !modifier
+            && !event.altKey
+            && event.key.length === 1
+            && activeCell
+            && editableFields.includes(activeCell.getField())
+        ) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            pendingTypedSeed = {
+                rowKey: activeCell.getRow().getData()._rowKey,
+                field: activeCell.getField(),
+                text: event.key,
+            };
+            activeCell.edit();
+        }
+    }, true);
 
     document.querySelectorAll("[data-status-filter]").forEach((button) => {
         button.addEventListener("click", () => {
@@ -952,11 +1089,92 @@
     });
 
     document.querySelectorAll("[data-align-horizontal]").forEach((button) => {
-        button.addEventListener("click", () => applyAlignment("horizontal", button.dataset.alignHorizontal));
+        button.addEventListener("click", () => {
+            applyAlignment("horizontal", button.dataset.alignHorizontal);
+        });
     });
 
     document.querySelectorAll("[data-align-vertical]").forEach((button) => {
-        button.addEventListener("click", () => applyAlignment("vertical", button.dataset.alignVertical));
+        button.addEventListener("click", () => {
+            applyAlignment("vertical", button.dataset.alignVertical);
+        });
+    });
+
+    const fillColor = document.getElementById("cell-fill-color");
+    document.getElementById("apply-cell-fill")?.addEventListener("click", () => {
+        applyManualFill(fillColor?.value || "#fff2cc");
+    });
+    document.getElementById("clear-cell-fill")?.addEventListener("click", () => {
+        applyManualFill("");
+    });
+
+    function renderRules() {
+        const list = document.getElementById("format-rules-list");
+        if (!list) {
+            return;
+        }
+        list.replaceChildren();
+        if (!formatRules.length) {
+            const empty = document.createElement("p");
+            empty.className = "format-rules-list__empty";
+            empty.textContent = "Правила ещё не созданы.";
+            list.appendChild(empty);
+            return;
+        }
+        formatRules.forEach((rule) => {
+            const row = document.createElement("div");
+            row.className = "format-rule-row";
+            const swatch = document.createElement("span");
+            swatch.className = "format-rule-row__swatch";
+            swatch.style.backgroundColor = rule.color;
+            const description = document.createElement("span");
+            description.className = "format-rule-row__text";
+            description.textContent = `${rule.field}: ${rule.operator}${rule.value ? ` «${rule.value}»` : ""}`;
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "format-rule-row__remove";
+            remove.textContent = "Удалить";
+            remove.addEventListener("click", () => {
+                const index = formatRules.findIndex((candidate) => candidate.id === rule.id);
+                if (index >= 0) {
+                    formatRules.splice(index, 1);
+                    saveJson(rulesStorageKey, formatRules);
+                    renderRules();
+                    table.getRows().forEach((tableRow) => tableRow.reformat());
+                }
+            });
+            row.append(swatch, description, remove);
+            list.appendChild(row);
+        });
+    }
+
+    const rulesDialog = document.getElementById("format-rules-dialog");
+    document.getElementById("open-format-rules")?.addEventListener("click", () => {
+        renderRules();
+        rulesDialog?.showModal();
+    });
+    document.getElementById("add-format-rule")?.addEventListener("click", () => {
+        const field = document.getElementById("format-rule-column")?.value || "*";
+        const operator = document.getElementById("format-rule-operator")?.value || "contains";
+        const valueInput = document.getElementById("format-rule-value");
+        const value = valueInput?.value.trim() || "";
+        if (!["empty", "nonempty"].includes(operator) && !value) {
+            valueInput?.focus();
+            return;
+        }
+        formatRules.push({
+            id: `rule-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            field,
+            operator,
+            value,
+            color: document.getElementById("format-rule-color")?.value || "#f4cccc",
+        });
+        saveJson(rulesStorageKey, formatRules);
+        if (valueInput) {
+            valueInput.value = "";
+        }
+        renderRules();
+        table.getRows().forEach((row) => row.reformat());
     });
 
     resetLayoutButton?.addEventListener("click", () => {
@@ -970,36 +1188,14 @@
         if (searchInput) {
             searchInput.value = "";
         }
-        for (const key of Object.keys(alignmentStore)) {
-            delete alignmentStore[key];
-        }
+        Object.keys(alignmentStore).forEach((key) => delete alignmentStore[key]);
+        Object.keys(fillStore).forEach((key) => delete fillStore[key]);
         saveJson(alignmentStorageKey, alignmentStore);
+        saveJson(fillStorageKey, fillStore);
         updateStatusButtons();
         applyCombinedFilter();
         table.getRows().forEach((row) => row.reformat());
         setSaveState("saved", "Стандартный вид восстановлен");
-    });
-
-    document.addEventListener("keydown", (event) => {
-        const target = event.target;
-        const editing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
-        if (event.ctrlKey && event.key.toLocaleLowerCase("ru") === "f" && !editing) {
-            event.preventDefault();
-            searchInput?.focus();
-            searchInput?.select();
-            return;
-        }
-        if (!event.ctrlKey || editing) {
-            return;
-        }
-        const key = event.key.toLocaleLowerCase("ru");
-        if (key === "d") {
-            event.preventDefault();
-            fillRange("down");
-        } else if (key === "r") {
-            event.preventDefault();
-            fillRange("right");
-        }
     });
 
     window.addEventListener("beforeunload", (event) => {
