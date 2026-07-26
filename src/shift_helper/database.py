@@ -9,7 +9,7 @@ from sqlalchemy.engine import Engine
 
 from .models import Base
 
-APPLICATION_SCHEMA_VERSION = "3"
+APPLICATION_SCHEMA_VERSION = "4"
 
 
 def create_database_engine(database_path: Path) -> Engine:
