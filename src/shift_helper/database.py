@@ -37,6 +37,10 @@ def initialize_database(database_path: Path) -> Engine:
     engine = create_database_engine(database_path)
     with engine.begin() as connection:
         connection.execute(text("PRAGMA journal_mode = WAL"))
+
+    Base.metadata.create_all(engine)
+
+    with engine.begin() as connection:
         connection.execute(
             text(
                 """
@@ -57,5 +61,4 @@ def initialize_database(database_path: Path) -> Engine:
             ),
             {"schema_version": APPLICATION_SCHEMA_VERSION},
         )
-    Base.metadata.create_all(engine)
     return engine
