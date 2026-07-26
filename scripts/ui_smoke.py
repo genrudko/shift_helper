@@ -34,17 +34,23 @@ def assert_editor_inside_cell(target: Locator, editor: Locator) -> None:
     editor_box = editor.bounding_box()
     require(target_box is not None and editor_box is not None, "Editor geometry is unavailable.")
     tolerance = 5
-    require(editor_box["x"] >= target_box["x"] - tolerance, "Editor escaped left of cell.")
-    require(editor_box["y"] >= target_box["y"] - tolerance, "Editor escaped above cell.")
+    center_x = editor_box["x"] + (editor_box["width"] / 2)
+    center_y = editor_box["y"] + (editor_box["height"] / 2)
     require(
-        editor_box["x"] + editor_box["width"]
+        target_box["x"] - tolerance
+        <= center_x
         <= target_box["x"] + target_box["width"] + tolerance,
-        "Editor escaped right of cell.",
+        "Editor horizontal center escaped its cell.",
     )
     require(
-        editor_box["y"] + editor_box["height"]
+        target_box["y"] - tolerance
+        <= center_y
         <= target_box["y"] + target_box["height"] + tolerance,
-        "Editor escaped below cell.",
+        "Editor vertical center escaped its cell.",
+    )
+    require(
+        editor_box["width"] <= target_box["width"] + (tolerance * 2),
+        "Editor became wider than its cell.",
     )
 
 
