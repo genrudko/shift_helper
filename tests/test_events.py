@@ -103,7 +103,9 @@ def test_invalid_rotor_limit_is_rejected(tmp_path: Path) -> None:
         assert session.scalar(select(Event)) is None
 
 
-def test_inline_journal_has_source_columns_and_permanent_draft_row(tmp_path: Path) -> None:
+def test_spreadsheet_workspace_uses_offline_tabulator_and_no_create_button(
+    tmp_path: Path,
+) -> None:
     app = create_app(testing=True, data_root=tmp_path)
     client = app.test_client()
 
@@ -111,13 +113,47 @@ def test_inline_journal_has_source_columns_and_permanent_draft_row(tmp_path: Pat
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "Дата останова" in page
-    assert "Действия персонала" in page
-    assert "Дата пуска" in page
-    assert "Кто внёс запись" in page
-    assert 'data-draft-row="true"' in page
+    assert 'id="event-journal"' in page
+    assert 'id="event-journal-data"' in page
+    assert 'id="event-journal-suggestions"' in page
+    assert "vendor/tabulator/tabulator.min.css" in page
+    assert "vendor/tabulator/tabulator.min.js" in page
+    assert 'data-status-filter="all"' in page
+    assert 'id="journal-search"' in page
     assert "+ Новое событие" not in page
     assert ">Создать событие<" not in page
+
+    grid_script = client.get("/static/event_journal.js")
+    assert grid_script.status_code == 200
+    script_text = grid_script.get_data(as_text=True)
+    assert "new window.Tabulator" in script_text
+    assert 'title: "Дата останова"' in script_text
+    assert 'title: "Действия персонала"' in script_text
+    assert 'title: "Кто внёс запись"' in script_text
+    assert "selectableRange: 1" in script_text
+    assert 'clipboardPasteAction: "range"' in script_text
+
+    vendor_script = client.get("/static/vendor/tabulator/tabulator.min.js")
+    vendor_styles = client.get("/static/vendor/tabulator/tabulator.min.css")
+    assert vendor_script.status_code == 200
+    assert vendor_styles.status_code == 200
+    assert len(vendor_script.data) > 400_000
+    assert len(vendor_styles.data) > 20_000
+
+
+def test_journal_embeds_history_values_for_autocomplete(tmp_path: Path) -> None:
+    app = create_app(testing=True, data_root=tmp_path)
+    client = app.test_client()
+
+    create_response = client.post("/events/rows", json=_journal_row())
+    assert create_response.status_code == 201
+
+    page = client.get("/events").get_data(as_text=True)
+    assert "ВЭУ №17" in page
+    assert "Иванов И.И." in page
+    assert "Петров П.П." in page
+    assert "Повышенная вибрация" in page
+    assert "Передано дежурному инженеру" in page
 
 
 def test_inline_row_create_update_and_close(tmp_path: Path) -> None:
