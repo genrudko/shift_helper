@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from flask import (
-    abort,
     Blueprint,
+    abort,
     current_app,
     flash,
     redirect,
@@ -25,7 +25,6 @@ from .domain import (
     event_values_from_form,
 )
 from .models import Event
-
 
 events_blueprint = Blueprint("events", __name__, url_prefix="/events")
 EVENT_TYPE_LABELS = dict(EVENT_TYPE_CHOICES)
