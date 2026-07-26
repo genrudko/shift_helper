@@ -1,41 +1,45 @@
-<!doctype html>
-<html lang="ru">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Shift-Helper</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
-</head>
-<body>
-    <main class="shell">
-        <section class="hero">
-            <p class="eyebrow">Кочубеевская ВЭС</p>
-            <h1>Shift-Helper</h1>
-            <p class="lead">Локальное рабочее место сменного персонала.</p>
-        </section>
+{% extends "base.html" %}
 
-        <section class="status-grid" aria-label="Состояние прототипа">
-            <article class="status-card">
-                <span class="status-label">Режим</span>
-                <strong>Локальный</strong>
-                <p>Приложение доступно только на этом компьютере.</p>
-            </article>
-            <article class="status-card">
-                <span class="status-label">База данных</span>
-                <strong>SQLite готова</strong>
-                <p class="path">{{ database_path }}</p>
-            </article>
-            <article class="status-card">
-                <span class="status-label">Данные</span>
-                <strong>Пользовательский каталог</strong>
-                <p class="path">{{ data_root }}</p>
-            </article>
-        </section>
+{% block title %}Главная — Shift-Helper{% endblock %}
 
-        <section class="next-step">
-            <h2>Первый рабочий модуль</h2>
-            <p>Следующим этапом будет журнал событий: быстрый ввод, коды ошибок, ограничения ВЭУ и экспорт в XLSX.</p>
-        </section>
-    </main>
-</body>
-</html>
+{% block content %}
+<section class="hero hero--compact">
+    <p class="eyebrow">Локальное рабочее место</p>
+    <h1>Shift-Helper</h1>
+    <p class="lead">Рабочие журналы и подготовка сменного рапорта Кочубеевской ВЭС.</p>
+</section>
+
+<section class="module-grid" aria-label="Рабочие модули">
+    <a class="module-card module-card--active" href="{{ url_for('events.list_events') }}">
+        <span class="status-label">Рабочий модуль</span>
+        <strong>Журнал событий</strong>
+        <p>Остановы, ограничения, диспетчерские команды, пуски и восстановление режима.</p>
+        <span class="module-card__action">Открыть журнал →</span>
+    </a>
+    <article class="module-card module-card--planned">
+        <span class="status-label">Следующий этап</span>
+        <strong>Журнал работ</strong>
+        <p>Наряды и распоряжения с независимой автоматической нумерацией.</p>
+    </article>
+    <article class="module-card module-card--planned">
+        <span class="status-label">Следующий этап</span>
+        <strong>Рапорт на 07:00</strong>
+        <p>Состояние ВЭУ, события, генерация, работы и дефекты.</p>
+    </article>
+</section>
+
+<section class="system-panel">
+    <div>
+        <span class="status-label">Режим</span>
+        <strong>Локальный, без внешнего сервера</strong>
+    </div>
+    <div>
+        <span class="status-label">База данных</span>
+        <code>{{ database_path }}</code>
+    </div>
+    <div>
+        <span class="status-label">Каталог данных</span>
+        <code>{{ data_root }}</code>
+    </div>
+</section>
+{% endblock %}
