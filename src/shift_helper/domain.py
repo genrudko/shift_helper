@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal, InvalidOperation
 
 from .models import Event
@@ -25,12 +25,96 @@ class EventValidationError(ValueError):
     """Raised when an event form contains invalid operational data."""
 
 
+def _text(values: Mapping[str, object], key: str) -> str:
+    value = values.get(key, "")
+    return "" if value is None else str(value).strip()
+
+
 def parse_local_datetime(value: str, *, field_label: str) -> datetime:
     """Parse an HTML datetime-local value."""
     try:
         return datetime.fromisoformat(value)
     except (TypeError, ValueError) as exc:
         raise EventValidationError(f"Поле «{field_label}» заполнено неверно.") from exc
+
+
+def parse_journal_date(
+    value: str,
+    *,
+    field_label: str,
+    required: bool,
+    current: datetime | None = None,
+) -> date | None:
+    """Parse compact operator-facing dates used by the inline journal."""
+    cleaned = value.strip()
+    if not cleaned:
+        if required:
+            raise EventValidationError(f"Заполните поле «{field_label}».")
+        return None
+
+    now = current or datetime.now()
+    if cleaned == "!":
+        return now.date()
+
+    digit_value = "".join(character for character in cleaned if character.isdigit())
+    candidates: list[tuple[str, str]] = [
+        (cleaned, "%d.%m.%Y"),
+        (cleaned, "%Y-%m-%d"),
+        (cleaned, "%d.%m.%y"),
+    ]
+    if len(digit_value) == 4:
+        candidates.append((f"{digit_value}{now.year}", "%d%m%Y"))
+    elif len(digit_value) == 6:
+        candidates.append((digit_value, "%d%m%y"))
+    elif len(digit_value) == 8:
+        candidates.append((digit_value, "%d%m%Y"))
+
+    for candidate, pattern in candidates:
+        try:
+            return datetime.strptime(candidate, pattern).date()
+        except ValueError:
+            continue
+    raise EventValidationError(f"Поле «{field_label}» заполнено неверно.")
+
+
+def parse_journal_time(
+    value: str,
+    *,
+    field_label: str,
+    required: bool,
+    current: datetime | None = None,
+) -> time | None:
+    """Parse compact operator-facing times used by the inline journal."""
+    cleaned = value.strip()
+    if not cleaned:
+        if required:
+            raise EventValidationError(f"Заполните поле «{field_label}».")
+        return None
+
+    now = current or datetime.now()
+    if cleaned == "!":
+        return now.time().replace(second=0, microsecond=0)
+
+    digits = "".join(character for character in cleaned if character.isdigit())
+    if cleaned.isdigit() and len(digits) in {3, 4}:
+        cleaned = digits.zfill(4)
+        cleaned = f"{cleaned[:2]}:{cleaned[2:]}"
+
+    try:
+        return datetime.strptime(cleaned, "%H:%M").time()
+    except ValueError as exc:
+        raise EventValidationError(f"Поле «{field_label}» заполнено неверно.") from exc
+
+
+def parse_optional_decimal(value: str, *, field_label: str) -> Decimal | None:
+    """Parse an optional decimal accepting comma and dot separators."""
+    cleaned = value.strip().replace(" ", "").replace(",", ".")
+    if not cleaned:
+        return None
+    try:
+        return Decimal(cleaned).quantize(Decimal("0.001"))
+    except InvalidOperation as exc:
+        raise EventValidationError(f"Поле «{field_label}» должно быть числом.") from exc
 
 
 def parse_rotor_limit(value: str) -> Decimal | None:
@@ -73,7 +157,7 @@ def calculate_repair_power_mw(rotor_limit: Decimal | None) -> Decimal | None:
 
 
 def event_values_from_form(form: Mapping[str, str]) -> dict[str, object]:
-    """Validate and normalize form values for creating or updating an event."""
+    """Validate and normalize the legacy full-page event form."""
     asset_label = form.get("asset_label", "").strip()
     description = form.get("description", "").strip()
     event_type = form.get("event_type", "").strip()
@@ -101,6 +185,117 @@ def event_values_from_form(form: Mapping[str, str]) -> dict[str, object]:
         "rotor_limit": rotor_limit,
         "repair_power_mw": calculate_repair_power_mw(rotor_limit),
         "include_in_report": form.get("include_in_report") == "on",
+    }
+
+
+def event_values_from_row(
+    values: Mapping[str, object],
+    *,
+    existing_event: Event | None = None,
+    current: datetime | None = None,
+) -> dict[str, object]:
+    """Validate and normalize one Excel-like inline journal row."""
+    now = current or datetime.now()
+    start_date = parse_journal_date(
+        _text(values, "start_date"),
+        field_label="Дата останова",
+        required=True,
+        current=now,
+    )
+    start_time = parse_journal_time(
+        _text(values, "start_time"),
+        field_label="Время останова",
+        required=True,
+        current=now,
+    )
+    assert start_date is not None
+    assert start_time is not None
+    start_at = datetime.combine(start_date, start_time)
+
+    asset_label = _text(values, "asset_label")
+    description = _text(values, "description")
+    if not asset_label:
+        raise EventValidationError("Заполните поле «№ ВЭУ / оборудование».")
+    if not description:
+        raise EventValidationError("Заполните поле «Описание события».")
+
+    end_date_text = _text(values, "end_date")
+    end_time_text = _text(values, "end_time")
+    if bool(end_date_text) != bool(end_time_text):
+        raise EventValidationError("Дата и время пуска должны быть заполнены вместе.")
+
+    end_at: datetime | None = None
+    if end_date_text and end_time_text:
+        end_date = parse_journal_date(
+            end_date_text,
+            field_label="Дата пуска",
+            required=True,
+            current=now,
+        )
+        end_time = parse_journal_time(
+            end_time_text,
+            field_label="Время пуска",
+            required=True,
+            current=now,
+        )
+        assert end_date is not None
+        assert end_time is not None
+        end_at = datetime.combine(end_date, end_time)
+        if end_at < start_at:
+            raise EventValidationError("Дата и время пуска не могут быть раньше останова.")
+
+    return {
+        "start_at": start_at,
+        "asset_label": asset_label,
+        "event_type": existing_event.event_type if existing_event else "other",
+        "description": description,
+        "reason": _text(values, "reason") or None,
+        "actions": _text(values, "actions") or None,
+        "performer": _text(values, "performer") or None,
+        "author": _text(values, "author") or None,
+        "losses_mwh": parse_optional_decimal(
+            _text(values, "losses_mwh"),
+            field_label="Потери",
+        ),
+        "end_at": end_at,
+        "status": "closed" if end_at else "open",
+        "include_in_report": (
+            existing_event.include_in_report if existing_event else True
+        ),
+    }
+
+
+def format_downtime(start_at: datetime, end_at: datetime | None) -> str:
+    """Format event downtime compactly for the journal table."""
+    if end_at is None:
+        return ""
+    total_minutes = int((end_at - start_at).total_seconds() // 60)
+    hours, minutes = divmod(total_minutes, 60)
+    if hours and minutes:
+        return f"{hours} ч {minutes} мин"
+    if hours:
+        return f"{hours} ч"
+    return f"{minutes} мин"
+
+
+def event_to_row(event: Event) -> dict[str, object]:
+    """Serialize a persisted event for the inline table."""
+    return {
+        "id": event.id,
+        "start_date": event.start_at.strftime("%d.%m.%Y"),
+        "start_time": event.start_at.strftime("%H:%M"),
+        "asset_label": event.asset_label,
+        "description": event.description,
+        "reason": event.reason or "",
+        "actions": event.actions or "",
+        "performer": event.performer or "",
+        "end_date": event.end_at.strftime("%d.%m.%Y") if event.end_at else "",
+        "end_time": event.end_at.strftime("%H:%M") if event.end_at else "",
+        "downtime": format_downtime(event.start_at, event.end_at),
+        "author": event.author or "",
+        "losses_mwh": "" if event.losses_mwh is None else str(event.losses_mwh),
+        "status": event.status,
+        "revision": event.revision,
     }
 
 
