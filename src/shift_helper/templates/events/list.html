@@ -5,205 +5,87 @@
 {% block shell_class %}shell--journal{% endblock %}
 
 {% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabulator/tabulator.min.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='event_journal.css') }}">
 {% endblock %}
-
-{% macro journal_row(row=None, draft=false) %}
-<tr
-    class="journal-row{% if draft %} journal-row--draft{% elif row.status == 'closed' %} journal-row--closed{% endif %}"
-    {% if draft %}
-        data-draft-row="true"
-        data-revision="0"
-    {% else %}
-        data-event-id="{{ row.id }}"
-        data-revision="{{ row.revision }}"
-        data-status="{{ row.status }}"
-    {% endif %}
->
-    <td class="column-start-date">
-        <input
-            data-field="start_date"
-            data-kind="date"
-            aria-label="Дата останова"
-            autocomplete="off"
-            value="{{ draft_date if draft else row.start_date }}"
-        >
-    </td>
-    <td class="column-start-time">
-        <input
-            data-field="start_time"
-            data-kind="time"
-            aria-label="Время останова"
-            autocomplete="off"
-            value="{{ draft_time if draft else row.start_time }}"
-        >
-    </td>
-    <td class="column-asset">
-        <input
-            data-field="asset_label"
-            aria-label="Номер ВЭУ или оборудование"
-            autocomplete="off"
-            value="{{ '' if draft else row.asset_label }}"
-        >
-    </td>
-    <td class="column-description">
-        <textarea
-            data-field="description"
-            aria-label="Описание события"
-            rows="1"
-        >{{ '' if draft else row.description }}</textarea>
-    </td>
-    <td class="column-reason">
-        <textarea
-            data-field="reason"
-            aria-label="Причина"
-            rows="1"
-        >{{ '' if draft else row.reason }}</textarea>
-    </td>
-    <td class="column-actions">
-        <textarea
-            data-field="actions"
-            aria-label="Действия персонала"
-            rows="1"
-        >{{ '' if draft else row.actions }}</textarea>
-    </td>
-    <td class="column-performer">
-        <input
-            data-field="performer"
-            aria-label="Исполнитель"
-            autocomplete="off"
-            value="{{ '' if draft else row.performer }}"
-        >
-    </td>
-    <td class="column-end-date">
-        <input
-            data-field="end_date"
-            data-kind="date"
-            aria-label="Дата пуска"
-            autocomplete="off"
-            value="{{ '' if draft else row.end_date }}"
-        >
-    </td>
-    <td class="column-end-time">
-        <input
-            data-field="end_time"
-            data-kind="time"
-            aria-label="Время пуска"
-            autocomplete="off"
-            value="{{ '' if draft else row.end_time }}"
-        >
-    </td>
-    <td class="column-downtime journal-output" data-output="downtime">
-        {{ '' if draft else row.downtime }}
-    </td>
-    <td class="column-author">
-        <input
-            data-field="author"
-            aria-label="Кто внёс запись"
-            autocomplete="off"
-            value="{{ '' if draft else row.author }}"
-        >
-    </td>
-    <td class="column-losses">
-        <input
-            data-field="losses_mwh"
-            data-kind="decimal"
-            aria-label="Потери"
-            inputmode="decimal"
-            autocomplete="off"
-            value="{{ '' if draft else row.losses_mwh }}"
-        >
-    </td>
-</tr>
-{% endmacro %}
 
 {% block content %}
 <section class="journal-workspace" aria-labelledby="journal-title">
     <header class="journal-toolbar">
-        <div class="journal-toolbar__title">
-            <h1 id="journal-title">Журнал событий</h1>
-            <span class="journal-record-count">Записей: {{ rows|length }}</span>
+        <div class="journal-toolbar__primary">
+            <div class="journal-toolbar__title">
+                <h1 id="journal-title">Журнал событий</h1>
+                <span class="journal-record-count" id="journal-record-count">Записей: {{ rows|length }}</span>
+            </div>
+
+            <div class="journal-status-filter" role="group" aria-label="Состояние записей">
+                <button type="button" data-status-filter="all" {% if selected_status == 'all' %}aria-pressed="true"{% else %}aria-pressed="false"{% endif %}>Все</button>
+                <button type="button" data-status-filter="open" {% if selected_status == 'open' %}aria-pressed="true"{% else %}aria-pressed="false"{% endif %}>Открытые</button>
+                <button type="button" data-status-filter="closed" {% if selected_status == 'closed' %}aria-pressed="true"{% else %}aria-pressed="false"{% endif %}>Завершённые</button>
+            </div>
+
+            <label class="journal-search">
+                <span class="visually-hidden">Поиск по журналу</span>
+                <span class="journal-search__icon" aria-hidden="true">⌕</span>
+                <input id="journal-search" type="search" autocomplete="off" placeholder="Поиск по журналу">
+            </label>
+
+            <button class="toolbar-button" id="toggle-header-filters" type="button" aria-pressed="true" title="Показать или скрыть фильтры в заголовках">
+                Фильтры
+            </button>
         </div>
 
-        <nav class="journal-filters" aria-label="Фильтр событий">
-            <a href="{{ url_for('events.list_events', status='all') }}" {% if selected_status == 'all' %}aria-current="page"{% endif %}>Все</a>
-            <a href="{{ url_for('events.list_events', status='open') }}" {% if selected_status == 'open' %}aria-current="page"{% endif %}>Открытые</a>
-            <a href="{{ url_for('events.list_events', status='closed') }}" {% if selected_status == 'closed' %}aria-current="page"{% endif %}>Завершённые</a>
-        </nav>
+        <div class="journal-toolbar__secondary">
+            <div class="toolbar-group" role="group" aria-label="Горизонтальное выравнивание">
+                <button class="icon-button" type="button" data-align-horizontal="left" title="По левому краю">≡</button>
+                <button class="icon-button" type="button" data-align-horizontal="center" title="По центру">≣</button>
+                <button class="icon-button" type="button" data-align-horizontal="right" title="По правому краю">≡</button>
+            </div>
 
-        <div class="save-state" id="journal-save-state" role="status" aria-live="polite">
-            <span class="save-state__dot"></span>
-            <span class="save-state__text">Все изменения сохранены</span>
+            <div class="toolbar-group" role="group" aria-label="Вертикальное выравнивание">
+                <button class="icon-button icon-button--vertical-top" type="button" data-align-vertical="top" title="По верхнему краю">↥</button>
+                <button class="icon-button" type="button" data-align-vertical="middle" title="По середине">↕</button>
+                <button class="icon-button icon-button--vertical-bottom" type="button" data-align-vertical="bottom" title="По нижнему краю">↧</button>
+            </div>
+
+            <button class="toolbar-button" id="reset-grid-layout" type="button" title="Вернуть исходные ширины, порядок и фильтры колонок">
+                Стандартный вид
+            </button>
+
+            <div class="save-state" id="journal-save-state" data-state="saved" role="status" aria-live="polite">
+                <span class="save-state__dot"></span>
+                <span class="save-state__text">Все изменения сохранены</span>
+            </div>
         </div>
     </header>
 
     <div
-        class="journal-grid-wrap"
         id="event-journal"
+        class="event-grid"
         data-create-url="{{ url_for('events.create_event_row') }}"
         data-update-base="{{ url_for('events.list_events') }}"
+        data-selected-status="{{ selected_status }}"
         data-draft-date="{{ draft_date }}"
         data-draft-time="{{ draft_time }}"
-    >
-        <table class="event-grid">
-            <colgroup>
-                <col class="col-start-date">
-                <col class="col-start-time">
-                <col class="col-asset">
-                <col class="col-description">
-                <col class="col-reason">
-                <col class="col-actions">
-                <col class="col-performer">
-                <col class="col-end-date">
-                <col class="col-end-time">
-                <col class="col-downtime">
-                <col class="col-author">
-                <col class="col-losses">
-            </colgroup>
-            <thead>
-                <tr>
-                    <th>Дата останова</th>
-                    <th>Время</th>
-                    <th>№ ВЭУ / оборудование</th>
-                    <th>Описание события</th>
-                    <th>Причина</th>
-                    <th>Действия персонала</th>
-                    <th>Исполнитель</th>
-                    <th>Дата пуска</th>
-                    <th>Время</th>
-                    <th>Простой</th>
-                    <th>Кто внёс запись</th>
-                    <th>Потери</th>
-                </tr>
-            </thead>
-            <tbody id="event-journal-body">
-                {% for row in rows %}
-                    {{ journal_row(row=row) }}
-                {% endfor %}
-                {% if show_draft %}
-                    {{ journal_row(draft=true) }}
-                {% endif %}
-            </tbody>
-        </table>
-    </div>
+        aria-label="Рабочая таблица журнала событий"
+    ></div>
 
     <footer class="journal-help">
-        <span><kbd>Tab</kbd> вправо</span>
-        <span><kbd>Enter</kbd> вниз</span>
+        <span><kbd>Enter</kbd> редактировать</span>
+        <span><kbd>↑ ↓ ← →</kbd> переход по ячейкам</span>
+        <span><kbd>Ctrl</kbd> + <kbd>C/V</kbd> диапазон</span>
+        <span><kbd>Ctrl</kbd> + <kbd>D</kbd> заполнить вниз</span>
         <span><kbd>!</kbd> текущая дата или время</span>
-        <span><kbd>.</kbd> значение из строки выше</span>
-        <span><kbd>Alt</kbd> + <kbd>Enter</kbd> перенос текста</span>
-        <span class="journal-help__message" id="journal-help-message">
-            Новая строка сохраняется автоматически после заполнения даты, времени, оборудования и описания.
-        </span>
+        <span><kbd>.</kbd> значение сверху</span>
+        <span class="journal-help__message" id="journal-help-message">Пустые строки становятся записями только после ввода данных.</span>
     </footer>
 </section>
 
-<template id="event-draft-row-template">
-    {{ journal_row(draft=true) }}
-</template>
+<script id="event-journal-data" type="application/json">{{ rows|tojson }}</script>
+<script id="event-journal-suggestions" type="application/json">{{ suggestions|tojson }}</script>
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='vendor/tabulator/tabulator.min.js') }}" defer></script>
 <script src="{{ url_for('static', filename='event_journal.js') }}" defer></script>
 {% endblock %}
