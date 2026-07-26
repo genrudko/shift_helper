@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabulator/tabulator.min.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='event_journal.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='event_journal_excel_patch.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='event_journal_excel_features.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -78,6 +79,7 @@
         class="event-grid"
         data-create-url="{{ url_for('events.create_event_row') }}"
         data-update-base="{{ url_for('events.list_events') }}"
+        data-delete-base="{{ url_for('events.list_events') }}"
         data-selected-status="{{ selected_status }}"
         data-draft-date="{{ draft_date }}"
         data-draft-time="{{ draft_time }}"
@@ -90,9 +92,10 @@
         <span><kbd>Shift</kbd> + <kbd>Enter</kbd> новая строка текста</span>
         <span><kbd>Ctrl</kbd> + <kbd>C/X/V</kbd> копировать / вырезать / вставить</span>
         <span><kbd>ПКМ</kbd> меню ячейки или строки</span>
+        <span><kbd>Маркер</kbd> автозаполнение</span>
         <span><kbd>!</kbd> текущая дата или время</span>
         <span><kbd>.</kbd> значение сверху</span>
-        <span class="journal-help__message" id="journal-help-message">Для копирования строки нажмите её номер слева.</span>
+        <span class="journal-help__message" id="journal-help-message">Для операций со строкой нажмите её номер слева.</span>
     </footer>
 </section>
 
@@ -162,4 +165,5 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='vendor/tabulator/tabulator.min.js') }}" defer></script>
 <script src="{{ url_for('static', filename='event_journal.js') }}" defer></script>
+<script src="{{ url_for('static', filename='event_journal_excel_features.js') }}" defer></script>
 {% endblock %}
