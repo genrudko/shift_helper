@@ -30,7 +30,11 @@ class Event(Base):
     error_codes: Mapped[str | None] = mapped_column(String(255))
     rotor_limit: Mapped[Decimal | None] = mapped_column(Numeric(4, 2))
     repair_power_mw: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
-    losses_mwh: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    # The physical SQLite column keeps its prototype name for backward compatibility.
+    downtime_losses_rub: Mapped[Decimal | None] = mapped_column(
+        "losses_mwh",
+        Numeric(12, 2),
+    )
     end_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="open", index=True)
     include_in_report: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
