@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from shift_helper import create_app
-from shift_helper.models import Event
+from shift_helper.models import DeletedEvent, Event
 
 
 def _event_form(**overrides: str) -> dict[str, str]:
@@ -115,7 +115,7 @@ def test_invalid_rotor_limit_is_rejected(tmp_path: Path) -> None:
         assert session.scalar(select(Event)) is None
 
 
-def test_spreadsheet_workspace_uses_one_offline_controller(tmp_path: Path) -> None:
+def test_spreadsheet_workspace_loads_excel_features(tmp_path: Path) -> None:
     app = create_app(testing=True, data_root=tmp_path)
     client = app.test_client()
 
@@ -124,11 +124,14 @@ def test_spreadsheet_workspace_uses_one_offline_controller(tmp_path: Path) -> No
 
     assert response.status_code == 200
     assert 'id="event-journal"' in page
+    assert 'data-delete-base="/events"' in page
     assert 'id="event-journal-data"' in page
     assert 'id="event-journal-suggestions"' in page
     assert "vendor/tabulator/tabulator.min.css" in page
     assert "vendor/tabulator/tabulator.min.js" in page
     assert "event_journal_excel_patch.css" in page
+    assert "event_journal_excel_features.css" in page
+    assert "event_journal_excel_features.js" in page
     assert "event_journal_excel_patch.js" not in page
     assert "event_journal_menu_guard.js" not in page
     assert "event_journal_row_context.js" not in page
@@ -140,10 +143,15 @@ def test_spreadsheet_workspace_uses_one_offline_controller(tmp_path: Path) -> No
     assert ">Создать событие<" not in page
 
     grid_script = client.get("/static/event_journal.js")
+    feature_script = client.get("/static/event_journal_excel_features.js")
     grid_styles = client.get("/static/event_journal_excel_patch.css")
+    feature_styles = client.get("/static/event_journal_excel_features.css")
     assert grid_script.status_code == 200
+    assert feature_script.status_code == 200
     assert grid_styles.status_code == 200
+    assert feature_styles.status_code == 200
     script_text = grid_script.get_data(as_text=True)
+    feature_text = feature_script.get_data(as_text=True)
     style_text = grid_styles.get_data(as_text=True)
     assert "new window.Tabulator" in script_text
     assert 'title: "Дата останова"' in script_text
@@ -159,6 +167,11 @@ def test_spreadsheet_workspace_uses_one_offline_controller(tmp_path: Path) -> No
     assert "contextMenu: rowHeaderMenu" in script_text
     assert "contextMenu: cellMenu" in script_text
     assert "downtime_losses_rub" in script_text
+    assert "function applyMatrixToSelection" in feature_text
+    assert "function seriesValue" in feature_text
+    assert "journal-fill-handle" in feature_text
+    assert "Удалить строку" in feature_text
+    assert "Вырезать строку" in feature_text
     assert ".journal-stable-editor" in style_text
     assert "position: fixed" not in style_text
 
@@ -232,3 +245,32 @@ def test_inline_row_calculates_downtime_and_source_workbook_losses(
         assert event.status == "closed"
         assert event.author == "Петров П.П."
         assert event.downtime_losses_rub == Decimal("6250.00")
+
+
+def test_delete_row_keeps_an_audit_snapshot(tmp_path: Path) -> None:
+    app = create_app(testing=True, data_root=tmp_path)
+    client = app.test_client()
+
+    create_response = client.post("/events/rows", json=_journal_row())
+    create_payload = create_response.get_json()
+    event_id = create_payload["row"]["id"]
+    revision = create_payload["row"]["revision"]
+
+    delete_response = client.delete(
+        f"/events/{event_id}/row",
+        json={"revision": revision},
+    )
+    delete_payload = delete_response.get_json()
+
+    assert delete_response.status_code == 200
+    assert delete_payload == {"ok": True, "deleted_id": event_id}
+
+    engine = app.extensions["shift_helper_database_engine"]
+    with Session(engine) as session:
+        assert session.get(Event, event_id) is None
+        deleted = session.scalar(select(DeletedEvent))
+        assert deleted is not None
+        assert deleted.original_event_id == event_id
+        snapshot = json.loads(deleted.snapshot_json)
+        assert snapshot["asset_label"] == "ВЭУ №17"
+        assert snapshot["description"] == "Останов ВЭУ"
