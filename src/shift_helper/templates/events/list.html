@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Журнал событий — Shift-Helper{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Оперативная работа</p>
+        <h1>Журнал событий</h1>
+        <p class="lead">Остановы, ограничения, команды и восстановление режима.</p>
+    </div>
+    <a class="button button--primary" href="{{ url_for('events.create_event') }}">+ Новое событие</a>
+</section>
+
+<nav class="filter-bar" aria-label="Фильтр событий">
+    <a href="{{ url_for('events.list_events', status='all') }}" {% if selected_status == 'all' %}aria-current="page"{% endif %}>Все</a>
+    <a href="{{ url_for('events.list_events', status='open') }}" {% if selected_status == 'open' %}aria-current="page"{% endif %}>Открытые</a>
+    <a href="{{ url_for('events.list_events', status='closed') }}" {% if selected_status == 'closed' %}aria-current="page"{% endif %}>Завершённые</a>
+</nav>
+
+<section class="table-panel">
+    {% if events %}
+        <div class="table-scroll">
+            <table class="journal-table">
+                <thead>
+                    <tr>
+                        <th>Начало</th>
+                        <th>Оборудование</th>
+                        <th>Тип</th>
+                        <th>Описание и причина</th>
+                        <th>Ограничение</th>
+                        <th>P ремонт</th>
+                        <th>Состояние</th>
+                        <th><span class="visually-hidden">Действия</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for event in events %}
+                        <tr>
+                            <td class="nowrap">
+                                <strong>{{ event.start_at.strftime('%d.%m.%Y') }}</strong>
+                                <span class="cell-secondary">{{ event.start_at.strftime('%H:%M') }}</span>
+                            </td>
+                            <td><strong>{{ event.asset_label }}</strong></td>
+                            <td>{{ event_type_labels.get(event.event_type, event.event_type) }}</td>
+                            <td class="description-cell">
+                                <strong>{{ event.description }}</strong>
+                                {% if event.reason %}<span class="cell-secondary">{{ event.reason }}</span>{% endif %}
+                                {% if event.error_codes %}<span class="code-chip">{{ event.error_codes }}</span>{% endif %}
+                            </td>
+                            <td class="number-cell">{{ event.rotor_limit if event.rotor_limit is not none else '—' }}</td>
+                            <td class="number-cell">{{ event.repair_power_mw if event.repair_power_mw is not none else '—' }}</td>
+                            <td>
+                                {% if event.status == 'open' %}
+                                    <span class="badge badge--warning">Открыто</span>
+                                {% else %}
+                                    <span class="badge badge--success">Завершено</span>
+                                    {% if event.end_at %}<span class="cell-secondary">{{ event.end_at.strftime('%d.%m %H:%M') }}</span>{% endif %}
+                                {% endif %}
+                            </td>
+                            <td class="actions-cell">
+                                <a class="button button--quiet" href="{{ url_for('events.edit_event', event_id=event.id) }}">Изменить</a>
+                                {% if event.status == 'open' %}
+                                    <form method="post" action="{{ url_for('events.close_event', event_id=event.id) }}">
+                                        <button class="button button--success" type="submit">Завершить</button>
+                                    </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <h2>Записей пока нет</h2>
+            <p>Создайте первое событие. Оно сохранится в локальной базе приложения.</p>
+            <a class="button button--primary" href="{{ url_for('events.create_event') }}">Создать событие</a>
+        </div>
+    {% endif %}
+</section>
+{% endblock %}

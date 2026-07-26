@@ -7,7 +7,9 @@ from pathlib import Path
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 
-APPLICATION_SCHEMA_VERSION = "1"
+from .models import Base
+
+APPLICATION_SCHEMA_VERSION = "2"
 
 
 def create_database_engine(database_path: Path) -> Engine:
@@ -31,10 +33,14 @@ def create_database_engine(database_path: Path) -> Engine:
 
 
 def initialize_database(database_path: Path) -> Engine:
-    """Create the database and minimum metadata table when absent."""
+    """Create the database and current application schema when absent."""
     engine = create_database_engine(database_path)
     with engine.begin() as connection:
         connection.execute(text("PRAGMA journal_mode = WAL"))
+
+    Base.metadata.create_all(engine)
+
+    with engine.begin() as connection:
         connection.execute(
             text(
                 """

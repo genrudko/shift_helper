@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }} — Shift-Helper{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Журнал событий</p>
+        <h1>{{ page_title }}</h1>
+        {% if event and event.status == 'closed' %}
+            <p class="lead">Событие завершено {{ event.end_at.strftime('%d.%m.%Y в %H:%M') if event.end_at else '' }}.</p>
+        {% else %}
+            <p class="lead">Заполните структурированные данные. Текст можно уточнить позднее.</p>
+        {% endif %}
+    </div>
+    <a class="button button--quiet" href="{{ url_for('events.list_events') }}">← Вернуться в журнал</a>
+</section>
+
+<form class="event-form" method="post">
+    <section class="form-panel">
+        <div class="form-grid form-grid--three">
+            <label class="field">
+                <span>Дата и время начала</span>
+                <input type="datetime-local" name="start_at" value="{{ values.get('start_at', '') }}" required>
+            </label>
+            <label class="field">
+                <span>Оборудование или ВЭУ</span>
+                <input type="text" name="asset_label" value="{{ values.get('asset_label', '') }}" placeholder="Например, ВЭУ №17" required autofocus>
+            </label>
+            <label class="field">
+                <span>Тип события</span>
+                <select name="event_type" required>
+                    {% for value, label in event_types %}
+                        <option value="{{ value }}" {% if values.get('event_type') == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </div>
+
+        <label class="field">
+            <span>Описание события</span>
+            <textarea name="description" rows="3" required placeholder="Что произошло или какая команда получена">{{ values.get('description', '') }}</textarea>
+        </label>
+
+        <label class="field">
+            <span>Причина</span>
+            <textarea name="reason" rows="2" placeholder="Причина останова, ограничения или изменения режима">{{ values.get('reason', '') }}</textarea>
+        </label>
+
+        <div class="form-grid form-grid--two">
+            <label class="field">
+                <span>Коды ошибок</span>
+                <input type="text" name="error_codes" value="{{ values.get('error_codes', '') }}" placeholder="Например, 214, 317">
+                <small>Автоподстановка из справочника будет добавлена следующим этапом.</small>
+            </label>
+            <label class="field">
+                <span>Исполнитель</span>
+                <input type="text" name="performer" value="{{ values.get('performer', '') }}" placeholder="Фамилия или состав смены">
+            </label>
+        </div>
+
+        <label class="field">
+            <span>Действия персонала</span>
+            <textarea name="actions" rows="2" placeholder="Что выполнено по событию">{{ values.get('actions', '') }}</textarea>
+        </label>
+    </section>
+
+    <section class="form-panel form-panel--accent">
+        <div class="form-grid form-grid--two">
+            <label class="field">
+                <span>Ограничение по оборотам</span>
+                <input type="text" inputmode="decimal" name="rotor_limit" value="{{ values.get('rotor_limit', '') }}" placeholder="0,80">
+                <small>Можно вводить через запятую или точку. `P ремонт` рассчитывается автоматически.</small>
+            </label>
+            <label class="check-field">
+                <input type="checkbox" name="include_in_report" {% if values.get('include_in_report') == 'on' %}checked{% endif %}>
+                <span>
+                    <strong>Учитывать при формировании рапорта</strong>
+                    <small>Признак можно изменить позднее без удаления записи.</small>
+                </span>
+            </label>
+        </div>
+    </section>
+
+    <footer class="form-actions">
+        <a class="button button--quiet" href="{{ url_for('events.list_events') }}">Отмена</a>
+        <button class="button button--primary" type="submit">{{ submit_label }}</button>
+    </footer>
+</form>
+{% endblock %}
