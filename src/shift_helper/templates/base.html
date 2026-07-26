@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Shift-Helper{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+    <header class="app-header">
+        <div class="app-header__inner">
+            <a class="brand" href="{{ url_for('index') }}">
+                <span class="brand__mark">SH</span>
+                <span>
+                    <strong>Shift-Helper</strong>
+                    <small>Кочубеевская ВЭС</small>
+                </span>
+            </a>
+            <nav class="main-nav" aria-label="Основная навигация">
+                <a href="{{ url_for('index') }}" {% if request.endpoint == 'index' %}aria-current="page"{% endif %}>Главная</a>
+                <a href="{{ url_for('events.list_events') }}" {% if request.blueprint == 'events' %}aria-current="page"{% endif %}>Журнал событий</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="shell">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <section class="messages" aria-label="Сообщения приложения">
+                    {% for category, message in messages %}
+                        <div class="message message--{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </section>
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
