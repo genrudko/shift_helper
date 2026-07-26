@@ -129,6 +129,21 @@
         );
     }
 
+    function isCellComponent(candidate) {
+        return Boolean(
+            candidate
+            && typeof candidate.getField === "function"
+            && typeof candidate.getRow === "function"
+            && typeof candidate.edit === "function",
+        );
+    }
+
+    function lastCellInRange(range) {
+        const cells = range?.getCells?.() || [];
+        const flat = cells.length && Array.isArray(cells[0]) ? cells.flat() : cells;
+        return [...flat].reverse().find(isCellComponent) || null;
+    }
+
     function pad(value) {
         return String(value).padStart(2, "0");
     }
@@ -442,6 +457,9 @@
     suggestionFields.forEach(rebuildDatalist);
 
     function rowAndFieldTarget(cell, direction) {
+        if (!isCellComponent(cell)) {
+            return null;
+        }
         const rows = table.getRows("active");
         const rowIndex = rows.indexOf(cell.getRow());
         const fieldIndex = editableFields.indexOf(cell.getField());
@@ -476,7 +494,7 @@
     }
 
     function selectCell(cell) {
-        if (!cell) {
+        if (!isCellComponent(cell)) {
             return;
         }
         clearSelectedRow();
@@ -667,7 +685,7 @@
         }
         const range = table.getRanges?.().at(-1);
         if (!range) {
-            return activeCell ? [[activeCell]] : [];
+            return isCellComponent(activeCell) ? [[activeCell]] : [];
         }
         const cells = range.getCells?.() || [];
         return cells.length && !Array.isArray(cells[0]) ? [cells] : cells;
@@ -681,7 +699,7 @@
 
     function selectedEditableCells() {
         return [...new Set(rangeMatrix().flat())]
-            .filter((cell) => cell && editableFields.includes(cell.getField()));
+            .filter((cell) => isCellComponent(cell) && editableFields.includes(cell.getField()));
     }
 
     function clearSelection() {
@@ -711,7 +729,8 @@
     }
 
     async function pasteText(text) {
-        const startCell = selectedRow?.getCell(editableFields[0]) || activeCell;
+        const startCell = selectedRow?.getCell(editableFields[0])
+            || (isCellComponent(activeCell) ? activeCell : null);
         if (!startCell || !text) {
             return;
         }
@@ -818,7 +837,7 @@
     }
 
     function setActiveCell(cell) {
-        if (!cell) {
+        if (!isCellComponent(cell)) {
             return;
         }
         const element = cell.getElement();
@@ -1029,8 +1048,10 @@
         if (selectedRow) {
             return;
         }
-        const bounds = range.getBounds?.();
-        activeCell = bounds?.end || bounds?.bottomRight || activeCell;
+        const candidate = lastCellInRange(range);
+        if (candidate) {
+            activeCell = candidate;
+        }
     });
 
     table.on("cellEdited", (cell) => {
@@ -1069,23 +1090,23 @@
         }
         const modifier = event.ctrlKey || event.metaKey;
         const key = event.key.toLocaleLowerCase("ru");
-        if (modifier && key === "f" && activeCell) {
+        if (modifier && key === "f" && isCellComponent(activeCell)) {
             event.preventDefault();
             searchInput?.focus();
             searchInput?.select();
             return;
         }
-        if (modifier && key === "d" && activeCell) {
+        if (modifier && key === "d" && isCellComponent(activeCell)) {
             event.preventDefault();
             fillRange("down");
             return;
         }
-        if (modifier && key === "r" && activeCell) {
+        if (modifier && key === "r" && isCellComponent(activeCell)) {
             event.preventDefault();
             fillRange("right");
             return;
         }
-        if (!activeCell || !editableFields.includes(activeCell.getField())) {
+        if (!isCellComponent(activeCell) || !editableFields.includes(activeCell.getField())) {
             return;
         }
         if (event.key === "F2") {
@@ -1111,7 +1132,7 @@
     }, true);
 
     document.addEventListener("copy", (event) => {
-        if (!activeCell || isRealTextControl(event.target) || !event.clipboardData) {
+        if (!isCellComponent(activeCell) || isRealTextControl(event.target) || !event.clipboardData) {
             return;
         }
         const text = matrixText();
@@ -1125,7 +1146,7 @@
     });
 
     document.addEventListener("cut", (event) => {
-        if (!activeCell || isRealTextControl(event.target) || !event.clipboardData) {
+        if (!isCellComponent(activeCell) || isRealTextControl(event.target) || !event.clipboardData) {
             return;
         }
         const text = matrixText();
@@ -1139,7 +1160,7 @@
     });
 
     document.addEventListener("paste", (event) => {
-        if (!activeCell || isRealTextControl(event.target) || !event.clipboardData) {
+        if (!isCellComponent(activeCell) || isRealTextControl(event.target) || !event.clipboardData) {
             return;
         }
         const text = event.clipboardData.getData("text/plain");
