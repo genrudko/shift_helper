@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import sys
 import time
-import urllib.error
 import urllib.request
 
 
@@ -21,7 +20,7 @@ def wait_for_health(port: int, *, attempts: int = 60, delay_seconds: float = 0.5
             if payload.get("application") == "Shift-Helper" and payload.get("status") == "ok":
                 print(f"Shift-Helper is healthy at {url}")
                 return
-        except (OSError, ValueError, urllib.error.URLError) as exc:
+        except (OSError, ValueError) as exc:
             last_error = exc
         time.sleep(delay_seconds)
 
