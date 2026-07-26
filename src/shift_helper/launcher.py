@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import threading
-import urllib.error
 import urllib.request
 import webbrowser
 
@@ -30,7 +29,7 @@ def is_shift_helper_running(host: str, port: int) -> bool:
         ) as response:
             payload = json.loads(response.read().decode("utf-8"))
             return payload.get("application") == "Shift-Helper" and payload.get("status") == "ok"
-    except (OSError, ValueError, urllib.error.URLError):
+    except (OSError, ValueError):
         return False
 
 
