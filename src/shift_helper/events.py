@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from .domain import (
     EVENT_TYPE_CHOICES,
     EventValidationError,
+    calculate_downtime_losses_rub,
     event_to_row,
     event_values_for_form,
     event_values_from_form,
@@ -72,6 +73,7 @@ def list_events() -> str:
         rows = [event_to_row(event) for event in session.scalars(statement)]
         suggestions = {
             "asset_label": _distinct_values(session, Event.asset_label),
+            "description": _distinct_values(session, Event.description),
             "performer": _distinct_values(session, Event.performer),
             "author": _distinct_values(session, Event.author),
             "reason": _distinct_values(session, Event.reason),
@@ -212,6 +214,10 @@ def close_event(event_id: int):
             flash("Событие уже завершено.", "info")
         else:
             event.end_at = datetime.now().replace(second=0, microsecond=0)
+            event.downtime_losses_rub = calculate_downtime_losses_rub(
+                event.start_at,
+                event.end_at,
+            )
             event.status = "closed"
             event.revision += 1
             session.commit()
