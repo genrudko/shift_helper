@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from flask import (
-    Blueprint,
     abort,
+    Blueprint,
     current_app,
     flash,
     redirect,
