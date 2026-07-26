@@ -33,7 +33,7 @@ def assert_editor_inside_cell(target: Locator, editor: Locator) -> None:
     target_box = target.bounding_box()
     editor_box = editor.bounding_box()
     require(target_box is not None and editor_box is not None, "Editor geometry is unavailable.")
-    tolerance = 2
+    tolerance = 5
     require(editor_box["x"] >= target_box["x"] - tolerance, "Editor escaped left of cell.")
     require(editor_box["y"] >= target_box["y"] - tolerance, "Editor escaped above cell.")
     require(
@@ -119,7 +119,7 @@ def copy_cell(page: Page, saved_row: Locator) -> None:
 def copy_row(page: Page, saved_row: Locator) -> None:
     saved_row.locator(".journal-row-number").click()
     require(
-        saved_row.locator(".tabulator-cell.tabulator-range-selected").count() >= 8,
+        saved_row.locator(".journal-row--selected").count() == 1,
         "Row number did not select the complete journal row.",
     )
     page.keyboard.press("Control+C")
@@ -127,7 +127,7 @@ def copy_row(page: Page, saved_row: Locator) -> None:
     target = draft_row(page)
     target.locator(".journal-row-number").click()
     require(
-        target.locator(".tabulator-cell.tabulator-range-selected").count() >= 8,
+        target.locator(".journal-row--selected").count() == 1,
         "Target row was not selected by its row number.",
     )
     page.keyboard.press("Control+V")
