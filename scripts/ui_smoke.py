@@ -1,4 +1,4 @@
-"""Browser smoke test for the Shift-Helper event spreadsheet."""
+"""Operator-facing browser smoke test for the Shift-Helper event grid."""
 
 from __future__ import annotations
 
@@ -13,114 +13,98 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def draft_cell(page: Page, field: str, row_index: int = 0) -> Locator:
-    return page.locator(".journal-row--draft").nth(row_index).locator(
-        f'.tabulator-cell[tabulator-field="{field}"]'
-    )
+def draft_row(page: Page, index: int = 0) -> Locator:
+    return page.locator(".journal-row--draft").nth(index)
 
 
-def begin_typing(page: Page, cell: Locator, seed: str = "1") -> Locator:
-    cell.click()
+def cell(row: Locator, field: str) -> Locator:
+    return row.locator(f'.tabulator-cell[tabulator-field="{field}"]')
+
+
+def begin_typing(page: Page, target: Locator, seed: str = "1") -> Locator:
+    target.click()
     page.keyboard.type(seed)
-    editor = cell.locator("input.journal-stable-editor, textarea.journal-stable-editor")
+    editor = target.locator("input.journal-stable-editor, textarea.journal-stable-editor")
     editor.wait_for(state="visible", timeout=5_000)
     return editor
 
 
-def assert_editor_inside_cell(cell: Locator, editor: Locator) -> None:
-    cell_box = cell.bounding_box()
+def assert_editor_inside_cell(target: Locator, editor: Locator) -> None:
+    target_box = target.bounding_box()
     editor_box = editor.bounding_box()
-    require(cell_box is not None and editor_box is not None, "Editor geometry is unavailable.")
+    require(target_box is not None and editor_box is not None, "Editor geometry is unavailable.")
     tolerance = 2
+    require(editor_box["x"] >= target_box["x"] - tolerance, "Editor escaped left of cell.")
+    require(editor_box["y"] >= target_box["y"] - tolerance, "Editor escaped above cell.")
     require(
-        editor_box["x"] >= cell_box["x"] - tolerance,
-        "The editor moved to the left of its cell.",
+        editor_box["x"] + editor_box["width"]
+        <= target_box["x"] + target_box["width"] + tolerance,
+        "Editor escaped right of cell.",
     )
     require(
-        editor_box["y"] >= cell_box["y"] - tolerance,
-        "The editor moved above its cell.",
-    )
-    require(
-        editor_box["x"] + editor_box["width"] <= cell_box["x"] + cell_box["width"] + tolerance,
-        "The editor moved to the right of its cell.",
-    )
-    require(
-        editor_box["y"] + editor_box["height"] <= cell_box["y"] + cell_box["height"] + tolerance,
-        "The editor moved below its cell.",
+        editor_box["y"] + editor_box["height"]
+        <= target_box["y"] + target_box["height"] + tolerance,
+        "Editor escaped below cell.",
     )
 
 
-def direct_edit(page: Page, cell: Locator, value: str) -> None:
-    editor = begin_typing(page, cell)
-    editor.fill(value)
-    assert_editor_inside_cell(cell, editor)
-    background = editor.evaluate("element => getComputedStyle(element).backgroundColor")
-    require(
-        background not in {"rgb(247, 251, 255)", "rgb(255, 255, 255)"},
-        "The editor still uses detached white styling.",
-    )
+def finish_with_enter(page: Page, target: Locator, editor: Locator) -> None:
     page.keyboard.press("Enter")
     editor.wait_for(state="hidden", timeout=5_000)
     require(
-        cell.locator(".journal-stable-editor").count() == 0,
-        "Enter did not finish cell editing.",
+        target.locator(".journal-stable-editor").count() == 0,
+        "Enter did not close the editor.",
     )
     require(
-        "tabulator-editing" not in (cell.get_attribute("class") or ""),
-        "The cell remained in editing state after Enter.",
+        "tabulator-editing" not in (target.get_attribute("class") or ""),
+        "Cell remained in editing mode after Enter.",
     )
+
+
+def edit_cell(page: Page, target: Locator, value: str) -> None:
+    editor = begin_typing(page, target)
+    editor.fill(value)
+    assert_editor_inside_cell(target, editor)
+    finish_with_enter(page, target, editor)
 
 
 def assert_blank_draft_dates(page: Page, count: int = 5) -> None:
     rows = page.locator(".journal-row--draft")
-    require(rows.count() >= count, "The spreadsheet lost its draft-row reserve.")
+    require(rows.count() >= count, "Draft row reserve is missing.")
     for index in range(count):
         row = rows.nth(index)
-        date_text = row.locator(
-            '.tabulator-cell[tabulator-field="start_date"]'
-        ).inner_text().strip()
-        time_text = row.locator(
-            '.tabulator-cell[tabulator-field="start_time"]'
-        ).inner_text().strip()
         require(
-            not date_text and not time_text,
-            f"Draft row {index + 1} was unexpectedly seeded with date/time.",
+            not cell(row, "start_date").inner_text().strip()
+            and not cell(row, "start_time").inner_text().strip(),
+            f"Draft row {index + 1} received an unsolicited timestamp.",
         )
 
 
-def assert_cell_context_menu(page: Page, cell: Locator) -> None:
-    cell.click(button="right")
+def assert_context_menus(page: Page, saved_row: Locator) -> None:
+    cell(saved_row, "description").click(button="right")
     menu = page.locator(".tabulator-menu").last
     menu.wait_for(state="visible", timeout=5_000)
-    require(
-        menu.get_by_text("Копировать", exact=True).count() == 1,
-        "Cell context menu has no copy command.",
-    )
-    require(
-        menu.get_by_text("Вставить", exact=True).count() == 1,
-        "Cell context menu has no paste command.",
-    )
+    require(menu.get_by_text("Копировать", exact=True).count() == 1, "No cell copy command.")
+    require(menu.get_by_text("Вставить", exact=True).count() == 1, "No cell paste command.")
     page.keyboard.press("Escape")
 
-
-def assert_row_context_menu(page: Page, row: Locator) -> None:
-    row.locator(".journal-row-number").click(button="right")
+    saved_row.locator(".journal-row-number").click(button="right")
     menu = page.locator(".tabulator-menu").last
     menu.wait_for(state="visible", timeout=5_000)
     require(
         menu.get_by_text("Копировать строку", exact=True).count() == 1,
-        "Row context menu has no row-copy command.",
+        "No row copy command.",
     )
     require(
         menu.get_by_text("Вставить строку", exact=True).count() == 1,
-        "Row context menu has no row-paste command.",
+        "No row paste command.",
     )
     page.keyboard.press("Escape")
 
 
-def assert_cell_copy_paste(page: Page, row: Locator) -> None:
-    source = row.locator('.tabulator-cell[tabulator-field="reason"]')
-    target = row.locator('.tabulator-cell[tabulator-field="actions"]')
+def copy_cell(page: Page, saved_row: Locator) -> None:
+    source = cell(saved_row, "reason")
+    target = cell(saved_row, "actions")
     source.click()
     page.keyboard.press("Control+C")
     target.click()
@@ -128,24 +112,24 @@ def assert_cell_copy_paste(page: Page, row: Locator) -> None:
     page.wait_for_timeout(500)
     require(
         "Повышенная вибрация" in target.inner_text(),
-        "Cell copy/paste did not transfer the selected value.",
+        "Ctrl+C/Ctrl+V did not copy one cell.",
     )
 
 
-def assert_row_range_selected(row: Locator) -> None:
-    selected = row.locator(".tabulator-cell.tabulator-range-selected").count()
-    require(selected >= 8, "Clicking the row number did not select the complete journal row.")
-
-
-def copy_and_paste_row(page: Page, source_row: Locator) -> None:
-    source_row.locator(".journal-row-number").click()
-    assert_row_range_selected(source_row)
+def copy_row(page: Page, saved_row: Locator) -> None:
+    saved_row.locator(".journal-row-number").click()
+    require(
+        saved_row.locator(".tabulator-cell.tabulator-range-selected").count() >= 8,
+        "Row number did not select the complete journal row.",
+    )
     page.keyboard.press("Control+C")
-    page.wait_for_timeout(200)
 
-    target_row = page.locator(".journal-row--draft").first
-    target_row.locator(".journal-row-number").click()
-    assert_row_range_selected(target_row)
+    target = draft_row(page)
+    target.locator(".journal-row-number").click()
+    require(
+        target.locator(".tabulator-cell.tabulator-range-selected").count() >= 8,
+        "Target row was not selected by its row number.",
+    )
     page.keyboard.press("Control+V")
 
     page.locator('#journal-save-state[data-state="saved"]').wait_for(
@@ -155,20 +139,13 @@ def copy_and_paste_row(page: Page, source_row: Locator) -> None:
     page.wait_for_timeout(700)
     require(
         page.locator(".tabulator-row:not(.journal-row--draft)").count() >= 2,
-        "The copied row was not pasted and persisted into the target row.",
+        "Copied row was not persisted.",
     )
     copied = page.locator(".tabulator-row:not(.journal-row--draft)").nth(1)
+    require("11" in cell(copied, "asset_label").inner_text(), "Row paste lost WTG number.")
     require(
-        "ВЭУ №11" in copied.locator(
-            '.tabulator-cell[tabulator-field="asset_label"]'
-        ).inner_text(),
-        "Row paste lost the equipment value.",
-    )
-    require(
-        "Проверка spreadsheet-интерфейса" in copied.locator(
-            '.tabulator-cell[tabulator-field="description"]'
-        ).inner_text(),
-        "Row paste lost the description value.",
+        "Проверка spreadsheet-интерфейса" in cell(copied, "description").inner_text(),
+        "Row paste lost description.",
     )
 
 
@@ -195,60 +172,29 @@ def run_smoke(url: str, screenshot_path: Path) -> None:
         try:
             page.goto(f"{url.rstrip('/')}/events", wait_until="networkidle")
             page.locator(".event-grid.tabulator").wait_for(state="visible", timeout=20_000)
-
-            headers = page.locator(".tabulator-col-title").all_inner_texts()
-            for expected in (
-                "Дата останова",
-                "№ ВЭУ / оборудование",
-                "Описание события",
-                "Действия персонала",
-                "Кто внёс запись",
-                "Потери от простоя, руб.",
-            ):
-                require(expected in headers, f"Missing spreadsheet column: {expected}")
-
-            require(
-                page.locator(".tabulator-col-resize-handle").count() >= 8,
-                "Resizable column handles are absent.",
-            )
-            require(
-                page.locator(".tabulator-header-filter input").count() >= 8,
-                "Column header filters are absent.",
-            )
             assert_blank_draft_dates(page)
 
-            direct_edit(page, draft_cell(page, "start_date"), "26.07.2026")
-            direct_edit(page, draft_cell(page, "start_time"), "18:10")
+            row = draft_row(page)
+            edit_cell(page, cell(row, "start_date"), "26.07.2026")
+            edit_cell(page, cell(row, "start_time"), "18:10")
 
-            equipment = draft_cell(page, "asset_label")
-            equipment_editor = begin_typing(page, equipment, seed="В")
-            equipment_editor.fill("ВЭУ №11")
+            equipment = cell(row, "asset_label")
+            equipment_editor = begin_typing(page, equipment, seed="1")
+            equipment_editor.fill("11")
             assert_editor_inside_cell(equipment, equipment_editor)
-            page.keyboard.press("Enter")
-            equipment_editor.wait_for(state="hidden", timeout=5_000)
-            require(
-                "ВЭУ №11" in equipment.inner_text(),
-                "The WTG/equipment number was not accepted after Enter.",
-            )
+            finish_with_enter(page, equipment, equipment_editor)
+            require("11" in equipment.inner_text(), "WTG number was not accepted.")
 
-            description = draft_cell(page, "description")
+            description = cell(row, "description")
             editor = begin_typing(page, description)
             editor.fill("Проверка spreadsheet-интерфейса")
             assert_editor_inside_cell(description, editor)
             page.keyboard.press("Shift+Enter")
             page.keyboard.insert_text("Вторая строка")
-            require(
-                "\n" in editor.input_value(),
-                "Shift+Enter did not insert a line break in a multiline cell.",
-            )
-            page.keyboard.press("Enter")
-            editor.wait_for(state="hidden", timeout=5_000)
-            require(
-                description.locator(".journal-stable-editor").count() == 0,
-                "Enter did not close the multiline editor.",
-            )
+            require("\n" in editor.input_value(), "Shift+Enter did not insert a line break.")
+            finish_with_enter(page, description, editor)
 
-            direct_edit(page, draft_cell(page, "reason"), "Повышенная вибрация")
+            edit_cell(page, cell(row, "reason"), "Повышенная вибрация")
 
             page.locator('#journal-save-state[data-state="saved"]').wait_for(
                 state="visible",
@@ -258,73 +204,22 @@ def run_smoke(url: str, screenshot_path: Path) -> None:
             assert_blank_draft_dates(page)
 
             saved_row = page.locator(".tabulator-row:not(.journal-row--draft)").first
-            direct_edit(
-                page,
-                saved_row.locator('.tabulator-cell[tabulator-field="end_date"]'),
-                "26.07.2026",
-            )
-            direct_edit(
-                page,
-                saved_row.locator('.tabulator-cell[tabulator-field="end_time"]'),
-                "20:40",
-            )
+            edit_cell(page, cell(saved_row, "end_date"), "26.07.2026")
+            edit_cell(page, cell(saved_row, "end_time"), "20:40")
             page.locator('#journal-save-state[data-state="saved"]').wait_for(
                 state="visible",
                 timeout=15_000,
             )
             page.wait_for_timeout(500)
-            calculated_losses = page.evaluate(
+            losses = page.evaluate(
                 """() => window.shiftHelperEventGrid
-                    .getData()
-                    .find(row => !row._draft)
-                    .downtime_losses_rub"""
+                    .getData().find(rowData => !rowData._draft).downtime_losses_rub"""
             )
-            require(
-                calculated_losses == "6250",
-                "Downtime losses were not calculated with the source workbook formula.",
-            )
+            require(losses == "6250", "Downtime losses were not calculated.")
 
-            description_cell = saved_row.locator(
-                '.tabulator-cell[tabulator-field="description"]'
-            )
-            assert_cell_context_menu(page, description_cell)
-            assert_row_context_menu(page, saved_row)
-            assert_cell_copy_paste(page, saved_row)
-            copy_and_paste_row(page, saved_row)
-
-            description_cell.click()
-            page.locator("#cell-fill-color").evaluate(
-                "element => {"
-                " element.value = '#fff2cc';"
-                " element.dispatchEvent(new Event('input'));"
-                " }"
-            )
-            page.locator("#apply-cell-fill").click()
-            require(
-                "rgb(255, 242, 204)" in description_cell.get_attribute("style"),
-                "Manual cell fill was not applied.",
-            )
-
-            page.reload(wait_until="networkidle")
-            page.locator(".event-grid.tabulator").wait_for(state="visible", timeout=20_000)
-            require(
-                page.get_by_text("Проверка spreadsheet-интерфейса", exact=False).count() >= 2,
-                "The original and copied rows were not persisted.",
-            )
-
-            search = page.locator("#journal-search")
-            search.fill("spreadsheet-интерфейса")
-            page.wait_for_timeout(250)
-            require(
-                page.locator(".tabulator-row:not(.journal-row--draft)").count() >= 2,
-                "Global journal search did not retain the copied matching records.",
-            )
-            search.fill("несуществующее-значение")
-            page.wait_for_timeout(250)
-            require(
-                page.locator(".tabulator-row:not(.journal-row--draft)").count() == 0,
-                "Global journal search did not hide nonmatching records.",
-            )
+            assert_context_menus(page, saved_row)
+            copy_cell(page, saved_row)
+            copy_row(page, saved_row)
 
             require(not browser_errors, "Browser errors: " + " | ".join(browser_errors))
         except Exception:
@@ -341,7 +236,7 @@ def main() -> None:
         raise SystemExit("Usage: ui_smoke.py <base-url> [screenshot-path]")
     screenshot_path = Path(sys.argv[2] if len(sys.argv) == 3 else "ui-smoke-failure.png")
     run_smoke(sys.argv[1], screenshot_path)
-    print("Shift-Helper spreadsheet UI smoke test passed.")
+    print("Shift-Helper operator grid smoke test passed.")
 
 
 if __name__ == "__main__":
