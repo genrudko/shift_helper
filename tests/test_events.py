@@ -115,9 +115,7 @@ def test_invalid_rotor_limit_is_rejected(tmp_path: Path) -> None:
         assert session.scalar(select(Event)) is None
 
 
-def test_spreadsheet_workspace_uses_offline_tabulator_and_excel_patch(
-    tmp_path: Path,
-) -> None:
+def test_spreadsheet_workspace_uses_one_offline_controller(tmp_path: Path) -> None:
     app = create_app(testing=True, data_root=tmp_path)
     client = app.test_client()
 
@@ -131,7 +129,9 @@ def test_spreadsheet_workspace_uses_offline_tabulator_and_excel_patch(
     assert "vendor/tabulator/tabulator.min.css" in page
     assert "vendor/tabulator/tabulator.min.js" in page
     assert "event_journal_excel_patch.css" in page
-    assert "event_journal_excel_patch.js" in page
+    assert "event_journal_excel_patch.js" not in page
+    assert "event_journal_menu_guard.js" not in page
+    assert "event_journal_row_context.js" not in page
     assert 'data-status-filter="all"' in page
     assert 'id="journal-search"' in page
     assert 'id="cell-fill-color"' in page
@@ -140,23 +140,24 @@ def test_spreadsheet_workspace_uses_offline_tabulator_and_excel_patch(
     assert ">Создать событие<" not in page
 
     grid_script = client.get("/static/event_journal.js")
-    patch_script = client.get("/static/event_journal_excel_patch.js")
-    patch_styles = client.get("/static/event_journal_excel_patch.css")
+    grid_styles = client.get("/static/event_journal_excel_patch.css")
     assert grid_script.status_code == 200
-    assert patch_script.status_code == 200
-    assert patch_styles.status_code == 200
+    assert grid_styles.status_code == 200
     script_text = grid_script.get_data(as_text=True)
-    patch_text = patch_script.get_data(as_text=True)
+    style_text = grid_styles.get_data(as_text=True)
     assert "new window.Tabulator" in script_text
     assert 'title: "Дата останова"' in script_text
+    assert 'title: "№ ВЭУ / оборудование"' in script_text
     assert "selectableRange: 1" in script_text
     assert 'clipboardPasteAction: "range"' in script_text
-    assert "function excelEditor" in patch_text
-    assert 'event.key === "Enter"' in patch_text
-    assert "multiline && event.shiftKey" in patch_text
-    assert "navigator.clipboard.writeText" in patch_text
-    assert "format-rules" in patch_text
-    assert "downtime_losses_rub" in patch_text
+    assert "function journalEditor" in script_text
+    assert 'event.key === "Enter"' in script_text
+    assert "multiline && event.shiftKey" in script_text
+    assert "rowContextMenu" in script_text
+    assert "contextMenu: cellContextMenu" in script_text
+    assert "downtime_losses_rub" in script_text
+    assert ".journal-stable-editor" in style_text
+    assert "position: fixed" not in style_text
 
     vendor_script = client.get("/static/vendor/tabulator/tabulator.min.js")
     vendor_styles = client.get("/static/vendor/tabulator/tabulator.min.css")
