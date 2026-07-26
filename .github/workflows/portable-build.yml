@@ -1,0 +1,131 @@
+name: portable-build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install build dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[build]"
+
+      - name: Build portable Windows folder
+        run: >-
+          python -m PyInstaller
+          --noconfirm
+          --clean
+          --onedir
+          --name Shift-Helper
+          --collect-all shift_helper
+          packaging/shift_helper_entry.py
+
+      - name: Smoke-test packaged Windows executable
+        shell: pwsh
+        run: |
+          $env:SHIFT_HELPER_PORT = "17943"
+          $process = Start-Process `
+            -FilePath ".\dist\Shift-Helper\Shift-Helper.exe" `
+            -PassThru `
+            -RedirectStandardOutput "shift-helper-windows.out.log" `
+            -RedirectStandardError "shift-helper-windows.err.log"
+          try {
+            python scripts/wait_for_health.py 17943
+          }
+          finally {
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+            }
+          }
+
+      - name: Package Windows folder
+        shell: pwsh
+        run: Compress-Archive -Path ".\dist\Shift-Helper\*" -DestinationPath ".\Shift-Helper-windows-x64.zip" -Force
+
+      - name: Upload Windows portable build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Shift-Helper-windows-x64
+          path: Shift-Helper-windows-x64.zip
+          if-no-files-found: error
+
+      - name: Upload Windows smoke logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Shift-Helper-windows-smoke-logs
+          path: shift-helper-windows.*.log
+          if-no-files-found: ignore
+
+  build-linux:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install build dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[build]"
+
+      - name: Build portable Linux folder
+        run: >-
+          python -m PyInstaller
+          --noconfirm
+          --clean
+          --onedir
+          --name Shift-Helper
+          --collect-all shift_helper
+          packaging/shift_helper_entry.py
+
+      - name: Smoke-test packaged Linux executable
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export SHIFT_HELPER_PORT=17943
+          ./dist/Shift-Helper/Shift-Helper >shift-helper-linux.out.log 2>shift-helper-linux.err.log &
+          app_pid=$!
+          trap 'kill "$app_pid" 2>/dev/null || true' EXIT
+          python scripts/wait_for_health.py 17943
+          kill "$app_pid" 2>/dev/null || true
+          wait "$app_pid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Package Linux folder
+        run: tar -czf Shift-Helper-linux-x64.tar.gz -C dist Shift-Helper
+
+      - name: Upload Linux portable build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Shift-Helper-linux-x64
+          path: Shift-Helper-linux-x64.tar.gz
+          if-no-files-found: error
+
+      - name: Upload Linux smoke logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Shift-Helper-linux-smoke-logs
+          path: shift-helper-linux.*.log
+          if-no-files-found: ignore
