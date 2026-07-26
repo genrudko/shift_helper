@@ -47,6 +47,12 @@
         );
     }
 
+    function rowKey(cell) {
+        return cell.getRow()?.getData?._rowKey
+            || cell.getRow()?.getData?.()?._rowKey
+            || "";
+    }
+
     function canonicalMatrix(cells) {
         if (!Array.isArray(cells) || !cells.length) {
             return [];
@@ -54,17 +60,20 @@
         const flat = (Array.isArray(cells[0]) ? cells.flat() : cells)
             .filter(isCellComponent);
         const tableRows = table.getRows();
+        const rowOrder = new Map(
+            tableRows.map((row, index) => [row.getData()._rowKey, index]),
+        );
         const grouped = new Map();
         flat.forEach((cell) => {
-            const row = cell.getRow();
-            if (!grouped.has(row)) {
-                grouped.set(row, []);
+            const key = rowKey(cell);
+            if (!grouped.has(key)) {
+                grouped.set(key, []);
             }
-            grouped.get(row).push(cell);
+            grouped.get(key).push(cell);
         });
         return [...grouped.entries()]
-            .sort(([left], [right]) => tableRows.indexOf(left) - tableRows.indexOf(right))
-            .map(([_row, rowCells]) => rowCells.sort(
+            .sort(([left], [right]) => (rowOrder.get(left) ?? 0) - (rowOrder.get(right) ?? 0))
+            .map(([_key, rowCells]) => rowCells.sort(
                 (left, right) => editableFields.indexOf(left.getField())
                     - editableFields.indexOf(right.getField()),
             ));
@@ -81,12 +90,15 @@
             return null;
         }
         const cells = matrix[0];
-        const row = cells[0]?.getRow?.();
-        if (!row || cells.some((cell) => cell.getRow?.() !== row)) {
+        const key = rowKey(cells[0]);
+        if (!key || cells.some((cell) => rowKey(cell) !== key)) {
             return null;
         }
         const fields = new Set(cells.map((cell) => cell.getField?.()));
-        return editableFields.every((field) => fields.has(field)) ? row : null;
+        if (!editableFields.every((field) => fields.has(field))) {
+            return null;
+        }
+        return table.getRows().find((row) => row.getData()._rowKey === key) || null;
     }
 
     function escapeTsv(value) {
@@ -151,7 +163,9 @@
 
     function expandTarget(startCell, rowCount, columnCount) {
         const rows = table.getRows();
-        const startRow = rows.indexOf(startCell.getRow());
+        const startRow = rows.findIndex(
+            (row) => row.getData()._rowKey === rowKey(startCell),
+        );
         const startColumn = editableFields.indexOf(startCell.getField());
         if (startRow < 0 || startColumn < 0) {
             return [];
