@@ -49,6 +49,7 @@ jobs:
           node --check src/shift_helper/static/event_journal_excel_patch.js
           node --check src/shift_helper/static/event_journal.js
           node --check src/shift_helper/static/event_journal_runtime_fixes.js
+          node --check src/shift_helper/static/event_journal_keyboard_bridge.js
 
       - name: Ruff
         id: ruff
