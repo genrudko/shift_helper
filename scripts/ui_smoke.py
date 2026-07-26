@@ -30,8 +30,21 @@ def begin_typing(page: Page, cell: Locator, seed: str = "1") -> Locator:
 def direct_edit(page: Page, cell: Locator, value: str) -> None:
     editor = begin_typing(page, cell)
     editor.fill(value)
+    background = editor.evaluate("element => getComputedStyle(element).backgroundColor")
+    require(
+        background == "rgb(23, 33, 42)",
+        "The editor is visually detached from the dark spreadsheet cell.",
+    )
     page.keyboard.press("Enter")
     editor.wait_for(state="hidden", timeout=5_000)
+    require(
+        cell.locator(".journal-excel-editor").count() == 0,
+        "Enter did not finish spreadsheet cell editing.",
+    )
+    require(
+        "tabulator-editing" not in (cell.get_attribute("class") or ""),
+        "The cell remained in Tabulator editing state after Enter.",
+    )
 
 
 def assert_blank_draft_dates(page: Page, count: int = 5) -> None:
@@ -49,6 +62,77 @@ def assert_blank_draft_dates(page: Page, count: int = 5) -> None:
             not date_text and not time_text,
             f"Draft row {index + 1} was unexpectedly seeded with date/time.",
         )
+
+
+def assert_cell_context_menu(page: Page, cell: Locator) -> None:
+    cell.click(button="right")
+    menu = page.locator(".tabulator-menu").last
+    menu.wait_for(state="visible", timeout=5_000)
+    require(
+        menu.get_by_text("Копировать", exact=True).count() == 1,
+        "Cell context menu has no copy command.",
+    )
+    require(
+        menu.get_by_text("Вставить", exact=True).count() == 1,
+        "Cell context menu has no paste command.",
+    )
+    page.keyboard.press("Escape")
+
+
+def assert_row_context_menu(page: Page, row: Locator) -> None:
+    row.locator(".journal-row-number").click(button="right")
+    menu = page.locator(".tabulator-menu").last
+    menu.wait_for(state="visible", timeout=5_000)
+    require(
+        menu.get_by_text("Копировать строку", exact=True).count() == 1,
+        "Row context menu has no row-copy command.",
+    )
+    require(
+        menu.get_by_text("Вставить строку", exact=True).count() == 1,
+        "Row context menu has no row-paste command.",
+    )
+    page.keyboard.press("Escape")
+
+
+def copy_and_paste_row(page: Page, source_row: Locator) -> None:
+    source_row.locator(".journal-row-number").click()
+    require(
+        "journal-row--selected" in (source_row.get_attribute("class") or ""),
+        "Clicking the row number did not select the whole row.",
+    )
+    page.keyboard.press("Control+C")
+    page.wait_for_timeout(300)
+
+    target_row = page.locator(".journal-row--draft").first
+    target_row.locator(".journal-row-number").click()
+    require(
+        "journal-row--selected" in (target_row.get_attribute("class") or ""),
+        "The target row was not selected by its row number.",
+    )
+    page.keyboard.press("Control+V")
+
+    page.locator('#journal-save-state[data-state="saved"]').wait_for(
+        state="visible",
+        timeout=15_000,
+    )
+    page.wait_for_timeout(700)
+    require(
+        page.locator(".tabulator-row:not(.journal-row--draft)").count() >= 2,
+        "The copied row was not pasted and persisted into the target row.",
+    )
+    copied = page.locator(".tabulator-row:not(.journal-row--draft)").nth(1)
+    require(
+        "ВЭУ №11" in copied.locator(
+            '.tabulator-cell[tabulator-field="asset_label"]'
+        ).inner_text(),
+        "Row paste lost the equipment value.",
+    )
+    require(
+        "Проверка spreadsheet-интерфейса" in copied.locator(
+            '.tabulator-cell[tabulator-field="description"]'
+        ).inner_text(),
+        "Row paste lost the description value.",
+    )
 
 
 def run_smoke(url: str, screenshot_path: Path) -> None:
@@ -111,6 +195,10 @@ def run_smoke(url: str, screenshot_path: Path) -> None:
             )
             page.keyboard.press("Enter")
             editor.wait_for(state="hidden", timeout=5_000)
+            require(
+                description.locator(".journal-excel-editor").count() == 0,
+                "Enter did not close the multiline editor.",
+            )
 
             page.locator('#journal-save-state[data-state="saved"]').wait_for(
                 state="visible",
@@ -149,6 +237,10 @@ def run_smoke(url: str, screenshot_path: Path) -> None:
             description_cell = saved_row.locator(
                 '.tabulator-cell[tabulator-field="description"]'
             )
+            assert_cell_context_menu(page, description_cell)
+            assert_row_context_menu(page, saved_row)
+            copy_and_paste_row(page, saved_row)
+
             description_cell.click()
             page.locator("#cell-fill-color").evaluate(
                 "element => {"
@@ -165,16 +257,16 @@ def run_smoke(url: str, screenshot_path: Path) -> None:
             page.reload(wait_until="networkidle")
             page.locator(".event-grid.tabulator").wait_for(state="visible", timeout=20_000)
             require(
-                page.get_by_text("Проверка spreadsheet-интерфейса", exact=False).count() >= 1,
-                "A row entered through direct typing was not persisted.",
+                page.get_by_text("Проверка spreadsheet-интерфейса", exact=False).count() >= 2,
+                "The original and copied rows were not persisted.",
             )
 
             search = page.locator("#journal-search")
             search.fill("spreadsheet-интерфейса")
             page.wait_for_timeout(250)
             require(
-                page.locator(".tabulator-row:not(.journal-row--draft)").count() >= 1,
-                "Global journal search did not retain the matching record.",
+                page.locator(".tabulator-row:not(.journal-row--draft)").count() >= 2,
+                "Global journal search did not retain the copied matching records.",
             )
             search.fill("несуществующее-значение")
             page.wait_for_timeout(250)
