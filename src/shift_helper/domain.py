@@ -6,6 +6,8 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Mapping
 
+from .models import Event
+
 EVENT_TYPE_CHOICES: tuple[tuple[str, str], ...] = (
     ("emergency_stop", "Аварийный останов"),
     ("work_stop", "Останов для работ"),
@@ -102,18 +104,17 @@ def event_values_from_form(form: Mapping[str, str]) -> dict[str, object]:
     }
 
 
-def event_values_for_form(event: object) -> dict[str, str]:
+def event_values_for_form(event: Event) -> dict[str, str]:
     """Convert a persisted event into values suitable for an HTML form."""
-    rotor_limit = getattr(event, "rotor_limit", None)
     return {
-        "start_at": getattr(event, "start_at").strftime("%Y-%m-%dT%H:%M"),
-        "asset_label": getattr(event, "asset_label"),
-        "event_type": getattr(event, "event_type"),
-        "description": getattr(event, "description"),
-        "reason": getattr(event, "reason") or "",
-        "actions": getattr(event, "actions") or "",
-        "performer": getattr(event, "performer") or "",
-        "error_codes": getattr(event, "error_codes") or "",
-        "rotor_limit": "" if rotor_limit is None else str(rotor_limit),
-        "include_in_report": "on" if getattr(event, "include_in_report") else "",
+        "start_at": event.start_at.strftime("%Y-%m-%dT%H:%M"),
+        "asset_label": event.asset_label,
+        "event_type": event.event_type,
+        "description": event.description,
+        "reason": event.reason or "",
+        "actions": event.actions or "",
+        "performer": event.performer or "",
+        "error_codes": event.error_codes or "",
+        "rotor_limit": "" if event.rotor_limit is None else str(event.rotor_limit),
+        "include_in_report": "on" if event.include_in_report else "",
     }
