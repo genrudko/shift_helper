@@ -24,6 +24,25 @@ def _event_form(**overrides: str) -> dict[str, str]:
     return values
 
 
+def _journal_row(**overrides: object) -> dict[str, object]:
+    values: dict[str, object] = {
+        "start_date": "26.07.2026",
+        "start_time": "18:10",
+        "asset_label": "ВЭУ №17",
+        "description": "Останов ВЭУ",
+        "reason": "Повышенная вибрация",
+        "actions": "Передано дежурному инженеру",
+        "performer": "Иванов И.И.",
+        "end_date": "",
+        "end_time": "",
+        "author": "Петров П.П.",
+        "losses_mwh": "1,250",
+        "revision": 0,
+    }
+    values.update(overrides)
+    return values
+
+
 def test_event_create_edit_and_close(tmp_path: Path) -> None:
     app = create_app(testing=True, data_root=tmp_path)
     client = app.test_client()
@@ -82,3 +101,60 @@ def test_invalid_rotor_limit_is_rejected(tmp_path: Path) -> None:
     engine = app.extensions["shift_helper_database_engine"]
     with Session(engine) as session:
         assert session.scalar(select(Event)) is None
+
+
+def test_inline_journal_has_source_columns_and_permanent_draft_row(tmp_path: Path) -> None:
+    app = create_app(testing=True, data_root=tmp_path)
+    client = app.test_client()
+
+    response = client.get("/events")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Дата останова" in page
+    assert "Действия персонала" in page
+    assert "Дата пуска" in page
+    assert "Кто внёс запись" in page
+    assert 'data-draft-row="true"' in page
+    assert "+ Новое событие" not in page
+    assert ">Создать событие<" not in page
+
+
+def test_inline_row_create_update_and_close(tmp_path: Path) -> None:
+    app = create_app(testing=True, data_root=tmp_path)
+    client = app.test_client()
+
+    create_response = client.post("/events/rows", json=_journal_row())
+    create_payload = create_response.get_json()
+
+    assert create_response.status_code == 201
+    assert create_payload["ok"] is True
+    assert create_payload["row"]["status"] == "open"
+    assert create_payload["row"]["author"] == "Петров П.П."
+    assert create_payload["row"]["losses_mwh"] == "1.250"
+    event_id = create_payload["row"]["id"]
+    revision = create_payload["row"]["revision"]
+
+    update_response = client.patch(
+        f"/events/{event_id}/row",
+        json=_journal_row(
+            end_date="26.07.2026",
+            end_time="20:40",
+            revision=revision,
+        ),
+    )
+    update_payload = update_response.get_json()
+
+    assert update_response.status_code == 200
+    assert update_payload["ok"] is True
+    assert update_payload["row"]["status"] == "closed"
+    assert update_payload["row"]["downtime"] == "2 ч 30 мин"
+
+    engine = app.extensions["shift_helper_database_engine"]
+    with Session(engine) as session:
+        event = session.get(Event, event_id)
+        assert event is not None
+        assert event.end_at is not None
+        assert event.status == "closed"
+        assert event.author == "Петров П.П."
+        assert str(event.losses_mwh) == "1.250"
