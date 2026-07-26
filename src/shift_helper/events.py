@@ -51,27 +51,41 @@ def _request_json() -> dict[str, object]:
     return payload
 
 
+def _distinct_values(session: Session, column) -> list[str]:
+    statement = (
+        select(column)
+        .where(column.is_not(None), column != "")
+        .distinct()
+        .order_by(column)
+    )
+    return [str(value) for value in session.scalars(statement) if value]
+
+
 @events_blueprint.get("")
 def list_events() -> str:
-    status = request.args.get("status", "all")
-    if status not in {"all", "open", "closed"}:
-        status = "all"
+    selected_status = request.args.get("status", "all")
+    if selected_status not in {"all", "open", "closed"}:
+        selected_status = "all"
 
     statement = select(Event).order_by(Event.start_at.asc(), Event.id.asc())
-    if status != "all":
-        statement = statement.where(Event.status == status)
-
     with Session(_database_engine()) as session:
         rows = [event_to_row(event) for event in session.scalars(statement)]
+        suggestions = {
+            "asset_label": _distinct_values(session, Event.asset_label),
+            "performer": _distinct_values(session, Event.performer),
+            "author": _distinct_values(session, Event.author),
+            "reason": _distinct_values(session, Event.reason),
+            "actions": _distinct_values(session, Event.actions),
+        }
 
     now = datetime.now().replace(second=0, microsecond=0)
     return render_template(
         "events/list.html",
         rows=rows,
-        selected_status=status,
+        suggestions=suggestions,
+        selected_status=selected_status,
         draft_date=now.strftime("%d.%m.%Y"),
         draft_time=now.strftime("%H:%M"),
-        show_draft=status != "closed",
     )
 
 
