@@ -39,7 +39,11 @@ jobs:
           python scripts/wait_for_health.py 17944
 
       - name: Exercise spreadsheet in Chromium
-        run: python scripts/ui_smoke.py http://127.0.0.1:17944 ui-smoke-failure.png
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/ui_smoke.py http://127.0.0.1:17944 ui-smoke-failure.png \
+            2>&1 | tee ui-smoke.log
 
       - name: Stop isolated instance
         if: always()
@@ -56,5 +60,6 @@ jobs:
           name: spreadsheet-ui-smoke-diagnostics
           path: |
             ui-server.*.log
+            ui-smoke.log
             ui-smoke-failure.png
           if-no-files-found: ignore
