@@ -45,7 +45,9 @@ jobs:
       - name: Check journal JavaScript syntax
         if: runner.os == 'Linux'
         shell: bash
-        run: node --check src/shift_helper/static/event_journal.js
+        run: |
+          node --check src/shift_helper/static/event_journal.js
+          node --check src/shift_helper/static/event_journal_excel_features.js
 
       - name: Ruff
         id: ruff
