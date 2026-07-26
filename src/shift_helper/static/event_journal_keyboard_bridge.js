@@ -20,17 +20,37 @@
         "author",
     ]);
     let activeCell = null;
+    root.dataset.keyboardBridge = "ready";
 
     table.on("cellClick", (_event, cell) => {
         activeCell = cell;
     });
     table.on("rangeChanged", (range) => {
-        activeCell = range.getBounds?.().end || activeCell;
+        const bounds = range.getBounds?.();
+        activeCell = bounds?.end || bounds?.bottomRight || activeCell;
     });
 
+    function cellFromSelectedElement() {
+        const element = root.querySelector(
+            ".tabulator-cell.tabulator-range-active, "
+            + ".tabulator-cell.tabulator-range-selected, "
+            + ".tabulator-cell[aria-selected='true']"
+        );
+        if (!element) {
+            return null;
+        }
+        for (const row of table.getRows("active")) {
+            for (const cell of row.getCells()) {
+                if (cell.getElement() === element) {
+                    return cell;
+                }
+            }
+        }
+        return null;
+    }
+
     function currentCell() {
-        const ranges = table.getRanges?.() || [];
-        return ranges.at(-1)?.getBounds?.().end || activeCell;
+        return cellFromSelectedElement() || activeCell;
     }
 
     function replaceEditorValue(cell, value) {
