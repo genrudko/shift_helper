@@ -135,10 +135,14 @@ def run_smoke(url: str, screenshot_path: Path) -> None:
                 timeout=15_000,
             )
             page.wait_for_timeout(500)
+            calculated_losses = page.evaluate(
+                """() => window.shiftHelperEventGrid
+                    .getData()
+                    .find(row => !row._draft)
+                    .downtime_losses_rub"""
+            )
             require(
-                "6 250" in saved_row.locator(
-                    '.tabulator-cell[tabulator-field="downtime_losses_rub"]'
-                ).inner_text(),
+                calculated_losses == "6250",
                 "Downtime losses were not calculated with the source workbook formula.",
             )
 
