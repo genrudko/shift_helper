@@ -1,82 +1,209 @@
 {% extends "base.html" %}
 
 {% block title %}Журнал событий — Shift-Helper{% endblock %}
+{% block body_class %}page-events{% endblock %}
+{% block shell_class %}shell--journal{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='event_journal.css') }}">
+{% endblock %}
+
+{% macro journal_row(row=None, draft=false) %}
+<tr
+    class="journal-row{% if draft %} journal-row--draft{% elif row.status == 'closed' %} journal-row--closed{% endif %}"
+    {% if draft %}
+        data-draft-row="true"
+        data-revision="0"
+    {% else %}
+        data-event-id="{{ row.id }}"
+        data-revision="{{ row.revision }}"
+        data-status="{{ row.status }}"
+    {% endif %}
+>
+    <td class="column-start-date">
+        <input
+            data-field="start_date"
+            data-kind="date"
+            aria-label="Дата останова"
+            autocomplete="off"
+            value="{{ draft_date if draft else row.start_date }}"
+        >
+    </td>
+    <td class="column-start-time">
+        <input
+            data-field="start_time"
+            data-kind="time"
+            aria-label="Время останова"
+            autocomplete="off"
+            value="{{ draft_time if draft else row.start_time }}"
+        >
+    </td>
+    <td class="column-asset">
+        <input
+            data-field="asset_label"
+            aria-label="Номер ВЭУ или оборудование"
+            autocomplete="off"
+            value="{{ '' if draft else row.asset_label }}"
+        >
+    </td>
+    <td class="column-description">
+        <textarea
+            data-field="description"
+            aria-label="Описание события"
+            rows="1"
+        >{{ '' if draft else row.description }}</textarea>
+    </td>
+    <td class="column-reason">
+        <textarea
+            data-field="reason"
+            aria-label="Причина"
+            rows="1"
+        >{{ '' if draft else row.reason }}</textarea>
+    </td>
+    <td class="column-actions">
+        <textarea
+            data-field="actions"
+            aria-label="Действия персонала"
+            rows="1"
+        >{{ '' if draft else row.actions }}</textarea>
+    </td>
+    <td class="column-performer">
+        <input
+            data-field="performer"
+            aria-label="Исполнитель"
+            autocomplete="off"
+            value="{{ '' if draft else row.performer }}"
+        >
+    </td>
+    <td class="column-end-date">
+        <input
+            data-field="end_date"
+            data-kind="date"
+            aria-label="Дата пуска"
+            autocomplete="off"
+            value="{{ '' if draft else row.end_date }}"
+        >
+    </td>
+    <td class="column-end-time">
+        <input
+            data-field="end_time"
+            data-kind="time"
+            aria-label="Время пуска"
+            autocomplete="off"
+            value="{{ '' if draft else row.end_time }}"
+        >
+    </td>
+    <td class="column-downtime journal-output" data-output="downtime">
+        {{ '' if draft else row.downtime }}
+    </td>
+    <td class="column-author">
+        <input
+            data-field="author"
+            aria-label="Кто внёс запись"
+            autocomplete="off"
+            value="{{ '' if draft else row.author }}"
+        >
+    </td>
+    <td class="column-losses">
+        <input
+            data-field="losses_mwh"
+            data-kind="decimal"
+            aria-label="Потери"
+            inputmode="decimal"
+            autocomplete="off"
+            value="{{ '' if draft else row.losses_mwh }}"
+        >
+    </td>
+</tr>
+{% endmacro %}
 
 {% block content %}
-<section class="page-heading">
-    <div>
-        <p class="eyebrow">Оперативная работа</p>
-        <h1>Журнал событий</h1>
-        <p class="lead">Остановы, ограничения, команды и восстановление режима.</p>
+<section class="journal-workspace" aria-labelledby="journal-title">
+    <header class="journal-toolbar">
+        <div class="journal-toolbar__title">
+            <h1 id="journal-title">Журнал событий</h1>
+            <span class="journal-record-count">Записей: {{ rows|length }}</span>
+        </div>
+
+        <nav class="journal-filters" aria-label="Фильтр событий">
+            <a href="{{ url_for('events.list_events', status='all') }}" {% if selected_status == 'all' %}aria-current="page"{% endif %}>Все</a>
+            <a href="{{ url_for('events.list_events', status='open') }}" {% if selected_status == 'open' %}aria-current="page"{% endif %}>Открытые</a>
+            <a href="{{ url_for('events.list_events', status='closed') }}" {% if selected_status == 'closed' %}aria-current="page"{% endif %}>Завершённые</a>
+        </nav>
+
+        <div class="save-state" id="journal-save-state" role="status" aria-live="polite">
+            <span class="save-state__dot"></span>
+            <span class="save-state__text">Все изменения сохранены</span>
+        </div>
+    </header>
+
+    <div
+        class="journal-grid-wrap"
+        id="event-journal"
+        data-create-url="{{ url_for('events.create_event_row') }}"
+        data-update-base="{{ url_for('events.list_events') }}"
+        data-draft-date="{{ draft_date }}"
+        data-draft-time="{{ draft_time }}"
+    >
+        <table class="event-grid">
+            <colgroup>
+                <col class="col-start-date">
+                <col class="col-start-time">
+                <col class="col-asset">
+                <col class="col-description">
+                <col class="col-reason">
+                <col class="col-actions">
+                <col class="col-performer">
+                <col class="col-end-date">
+                <col class="col-end-time">
+                <col class="col-downtime">
+                <col class="col-author">
+                <col class="col-losses">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th>Дата останова</th>
+                    <th>Время</th>
+                    <th>№ ВЭУ / оборудование</th>
+                    <th>Описание события</th>
+                    <th>Причина</th>
+                    <th>Действия персонала</th>
+                    <th>Исполнитель</th>
+                    <th>Дата пуска</th>
+                    <th>Время</th>
+                    <th>Простой</th>
+                    <th>Кто внёс запись</th>
+                    <th>Потери</th>
+                </tr>
+            </thead>
+            <tbody id="event-journal-body">
+                {% for row in rows %}
+                    {{ journal_row(row=row) }}
+                {% endfor %}
+                {% if show_draft %}
+                    {{ journal_row(draft=true) }}
+                {% endif %}
+            </tbody>
+        </table>
     </div>
-    <a class="button button--primary" href="{{ url_for('events.create_event') }}">+ Новое событие</a>
+
+    <footer class="journal-help">
+        <span><kbd>Tab</kbd> вправо</span>
+        <span><kbd>Enter</kbd> вниз</span>
+        <span><kbd>!</kbd> текущая дата или время</span>
+        <span><kbd>.</kbd> значение из строки выше</span>
+        <span><kbd>Alt</kbd> + <kbd>Enter</kbd> перенос текста</span>
+        <span class="journal-help__message" id="journal-help-message">
+            Новая строка сохраняется автоматически после заполнения даты, времени, оборудования и описания.
+        </span>
+    </footer>
 </section>
 
-<nav class="filter-bar" aria-label="Фильтр событий">
-    <a href="{{ url_for('events.list_events', status='all') }}" {% if selected_status == 'all' %}aria-current="page"{% endif %}>Все</a>
-    <a href="{{ url_for('events.list_events', status='open') }}" {% if selected_status == 'open' %}aria-current="page"{% endif %}>Открытые</a>
-    <a href="{{ url_for('events.list_events', status='closed') }}" {% if selected_status == 'closed' %}aria-current="page"{% endif %}>Завершённые</a>
-</nav>
+<template id="event-draft-row-template">
+    {{ journal_row(draft=true) }}
+</template>
+{% endblock %}
 
-<section class="table-panel">
-    {% if events %}
-        <div class="table-scroll">
-            <table class="journal-table">
-                <thead>
-                    <tr>
-                        <th>Начало</th>
-                        <th>Оборудование</th>
-                        <th>Тип</th>
-                        <th>Описание и причина</th>
-                        <th>Ограничение</th>
-                        <th>P ремонт</th>
-                        <th>Состояние</th>
-                        <th><span class="visually-hidden">Действия</span></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for event in events %}
-                        <tr>
-                            <td class="nowrap">
-                                <strong>{{ event.start_at.strftime('%d.%m.%Y') }}</strong>
-                                <span class="cell-secondary">{{ event.start_at.strftime('%H:%M') }}</span>
-                            </td>
-                            <td><strong>{{ event.asset_label }}</strong></td>
-                            <td>{{ event_type_labels.get(event.event_type, event.event_type) }}</td>
-                            <td class="description-cell">
-                                <strong>{{ event.description }}</strong>
-                                {% if event.reason %}<span class="cell-secondary">{{ event.reason }}</span>{% endif %}
-                                {% if event.error_codes %}<span class="code-chip">{{ event.error_codes }}</span>{% endif %}
-                            </td>
-                            <td class="number-cell">{{ event.rotor_limit if event.rotor_limit is not none else '—' }}</td>
-                            <td class="number-cell">{{ event.repair_power_mw if event.repair_power_mw is not none else '—' }}</td>
-                            <td>
-                                {% if event.status == 'open' %}
-                                    <span class="badge badge--warning">Открыто</span>
-                                {% else %}
-                                    <span class="badge badge--success">Завершено</span>
-                                    {% if event.end_at %}<span class="cell-secondary">{{ event.end_at.strftime('%d.%m %H:%M') }}</span>{% endif %}
-                                {% endif %}
-                            </td>
-                            <td class="actions-cell">
-                                <a class="button button--quiet" href="{{ url_for('events.edit_event', event_id=event.id) }}">Изменить</a>
-                                {% if event.status == 'open' %}
-                                    <form method="post" action="{{ url_for('events.close_event', event_id=event.id) }}">
-                                        <button class="button button--success" type="submit">Завершить</button>
-                                    </form>
-                                {% endif %}
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    {% else %}
-        <div class="empty-state">
-            <h2>Записей пока нет</h2>
-            <p>Создайте первое событие. Оно сохранится в локальной базе приложения.</p>
-            <a class="button button--primary" href="{{ url_for('events.create_event') }}">Создать событие</a>
-        </div>
-    {% endif %}
-</section>
+{% block scripts %}
+<script src="{{ url_for('static', filename='event_journal.js') }}" defer></script>
 {% endblock %}
