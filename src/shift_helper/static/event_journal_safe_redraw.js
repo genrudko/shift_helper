@@ -27,23 +27,12 @@
         event.stopImmediatePropagation();
     }
 
-    function normalizePointerLayers() {
-        root.querySelectorAll(".tabulator-table").forEach((element) => {
-            element.style.pointerEvents = "none";
-        });
-        root.querySelectorAll(".tabulator-row, .tabulator-cell").forEach((element) => {
-            element.style.pointerEvents = "auto";
-        });
-    }
-
     document.addEventListener("pointerdown", preserveRowSelectionOnSecondaryPress, true);
     document.addEventListener("mousedown", preserveRowSelectionOnSecondaryPress, true);
 
     const originalRedraw = table.redraw.bind(table);
     const originalGetRows = table.getRows.bind(table);
     let ready = Boolean(root.querySelector(".tabulator-tableholder"));
-    let bootstrapSettled = false;
-    let bootstrapFrame = 0;
     let pending = false;
     let pendingForce = false;
 
@@ -55,22 +44,11 @@
         );
     }
 
-    function settleBootstrap() {
-        window.cancelAnimationFrame(bootstrapFrame);
-        bootstrapFrame = window.requestAnimationFrame(() => {
-            bootstrapFrame = window.requestAnimationFrame(() => {
-                bootstrapSettled = true;
-                normalizePointerLayers();
-                flushPending();
-            });
-        });
-    }
-
     function flushPending() {
         if (!pending || !ready || !internalElementReady()) {
             return;
         }
-        const force = bootstrapSettled && pendingForce;
+        const force = pendingForce;
         pending = false;
         pendingForce = false;
         window.requestAnimationFrame(() => {
@@ -80,7 +58,6 @@
                 return;
             }
             originalRedraw(force);
-            normalizePointerLayers();
         });
     }
 
@@ -104,32 +81,22 @@
             pendingForce ||= Boolean(force);
             return undefined;
         }
-        const effectiveForce = bootstrapSettled && Boolean(force);
-        const result = originalRedraw(effectiveForce);
-        normalizePointerLayers();
-        return result;
+        return originalRedraw(force);
     };
 
     table.on("tableBuilt", () => {
         ready = true;
         pending = true;
-        pendingForce = false;
-        normalizePointerLayers();
-        settleBootstrap();
         flushPending();
     });
     table.on("renderComplete", () => {
         ready = true;
-        normalizePointerLayers();
         flushPending();
     });
 
     if (ready) {
-        normalizePointerLayers();
-        settleBootstrap();
         window.requestAnimationFrame(() => {
             pending = true;
-            pendingForce = false;
             flushPending();
         });
     }
