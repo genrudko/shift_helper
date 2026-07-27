@@ -63,6 +63,7 @@ def test_excel_edit_modes(page: Page) -> None:
         editor_box["x"] + click_offset,
         editor_box["y"] + (editor_box["height"] / 2),
     )
+    page.wait_for_timeout(80)
     require(editor.is_visible(), "A click inside the editor unexpectedly closed editing.")
     second_caret = editor.evaluate("element => element.selectionStart")
     require(second_caret != first_caret, "A click inside the editor did not move the caret.")
