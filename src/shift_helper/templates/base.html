@@ -6,12 +6,6 @@
     <title>{% block title %}Shift-Helper{% endblock %}</title>
     <script>
         (() => {
-            window.addEventListener("error", (event) => {
-                if (event.error?.stack) {
-                    console.error(`UNCAUGHT_STACK\n${event.error.stack}`);
-                }
-            });
-
             const defaults = {
                 theme: "dark",
                 zoom: 100,
