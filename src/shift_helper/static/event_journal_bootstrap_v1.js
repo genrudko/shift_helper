@@ -139,9 +139,37 @@
         if (document.getElementById("event-journal-operator-repair-v1-js")) {
             return;
         }
+
+        const table = window.shiftHelperEventGrid;
+        const originalUpdateColumnDefinition = table?.updateColumnDefinition?.bind(table);
+        if (table && originalUpdateColumnDefinition) {
+            table.updateColumnDefinition = (field, definition) => {
+                if (
+                    window.shiftHelperDraftSortBootstrap === "ready"
+                    && typeof definition?.sorter === "function"
+                ) {
+                    return Promise.resolve(table.getColumn(field));
+                }
+                return originalUpdateColumnDefinition(field, definition);
+            };
+        }
+
+        const restoreColumnApi = () => {
+            const root = document.getElementById("event-journal");
+            if (!table || !originalUpdateColumnDefinition) {
+                return;
+            }
+            if (root?.dataset.operatorRepairReady === "true") {
+                table.updateColumnDefinition = originalUpdateColumnDefinition;
+                return;
+            }
+            window.requestAnimationFrame(restoreColumnApi);
+        };
+
         const script = document.createElement("script");
         script.id = "event-journal-operator-repair-v1-js";
         script.src = "/static/event_journal_operator_repair_v1.js";
+        script.addEventListener("load", restoreColumnApi, {once: true});
         document.body.appendChild(script);
     };
 
