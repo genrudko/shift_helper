@@ -1,4 +1,4 @@
-"""Final browser-smoke entry point with virtualization-safe row-drag checks."""
+"""Final browser-smoke entry point with virtualization-safe row checks."""
 
 from __future__ import annotations
 
@@ -16,6 +16,12 @@ RIBBON = runpy.run_path(
 BASE_FUNCTION = RIBBON["BASE_FUNCTION"]
 
 
+def reset_table_viewport(page: Page) -> None:
+    holder = page.locator(".tabulator-tableholder")
+    holder.evaluate("element => { element.scrollTop = 0; }")
+    page.wait_for_timeout(300)
+
+
 def test_row_drag_selection(page: Page) -> None:
     """Verify continuous row selection without clicking a virtualized stale row."""
 
@@ -23,6 +29,7 @@ def test_row_drag_selection(page: Page) -> None:
     saved_rows = BASE_FUNCTION("saved_rows")
     cell = BASE_FUNCTION("cell")
 
+    reset_table_viewport(page)
     first_number = saved_rows(page).nth(0).locator(".journal-row-number")
     third_number = saved_rows(page).nth(2).locator(".journal-row-number")
     first_box = first_number.bounding_box()
@@ -48,7 +55,6 @@ def test_row_drag_selection(page: Page) -> None:
 
     # Tabulator virtualizes rows. After a drag, the first selected row may be just
     # outside the viewport even though its old component is still addressable.
-    # Click the third row that was used as the visible drag endpoint instead.
     visible_target = saved_rows(page).nth(2)
     cell(visible_target, "description").click()
     require(
@@ -56,16 +62,54 @@ def test_row_drag_selection(page: Page) -> None:
         "Clicking a visible cell did not leave row-selection mode.",
     )
 
-    holder = page.locator(".tabulator-tableholder")
-    holder.evaluate("element => { element.scrollTop = 0; }")
-    page.wait_for_timeout(250)
+    reset_table_viewport(page)
     require(
         cell(saved_rows(page).first, "description").is_visible(),
         "The first saved row did not return after resetting the viewport.",
     )
 
 
-BASE_FUNCTION("run_smoke").__globals__["test_row_drag_selection"] = test_row_drag_selection
+def test_multi_row_delete_without_dialog(page: Page) -> None:
+    """Exercise grouped row deletion on two rows fully inside the viewport."""
+
+    require = BASE_FUNCTION("require")
+    saved_rows = BASE_FUNCTION("saved_rows")
+    dialog_messages: list[str] = []
+    page.on("dialog", lambda dialog: (dialog_messages.append(dialog.message), dialog.dismiss()))
+
+    reset_table_viewport(page)
+    before = saved_rows(page).count()
+    first = saved_rows(page).nth(1)
+    second = saved_rows(page).nth(2)
+    first.locator(".journal-row-number").click()
+    second.locator(".journal-row-number").click(modifiers=["Shift"])
+    require(
+        page.locator(".journal-row--multi-selected").count() == 2,
+        "Shift-click did not select two visible rows.",
+    )
+
+    page.keyboard.press("Delete")
+    page.wait_for_timeout(900)
+    require(not dialog_messages, "Deletion still opened a confirmation dialog.")
+    require(saved_rows(page).count() == before - 2, "Multiple rows were not deleted.")
+
+    page.keyboard.press("Control+Z")
+    page.wait_for_timeout(1_000)
+    require(saved_rows(page).count() == before, "Undo did not restore deleted rows.")
+
+    page.keyboard.press("Control+Y")
+    page.wait_for_timeout(900)
+    require(saved_rows(page).count() == before - 2, "Redo did not delete rows again.")
+
+    page.keyboard.press("Control+Z")
+    page.wait_for_timeout(1_000)
+    require(saved_rows(page).count() == before, "Final undo did not restore rows.")
+    reset_table_viewport(page)
+
+
+smoke_globals = BASE_FUNCTION("run_smoke").__globals__
+smoke_globals["test_row_drag_selection"] = test_row_drag_selection
+smoke_globals["test_multi_row_delete_without_dialog"] = test_multi_row_delete_without_dialog
 
 
 def main() -> None:
