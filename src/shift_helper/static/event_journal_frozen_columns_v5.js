@@ -34,16 +34,17 @@
             .filter(Boolean);
     }
 
-    function expectedFields(boundary) {
-        const fields = orderedFields();
+    function expectedFields(boundary, fields) {
         if (boundary === "none") {
             return new Set();
         }
         const index = fields.indexOf(boundary);
-        if (index < 0 || index === fields.length - 1) {
-            return index === fields.length - 1 ? new Set() : new Set(
-                fields.slice(0, fields.indexOf(defaultBoundary) + 1),
-            );
+        if (index < 0) {
+            const fallbackIndex = fields.indexOf(defaultBoundary);
+            return new Set(fields.slice(0, fallbackIndex + 1));
+        }
+        if (index === fields.length - 1) {
+            return new Set(fields.slice(0, -1));
         }
         return new Set(fields.slice(0, index + 1));
     }
@@ -62,6 +63,14 @@
         });
     }
 
+    async function setFrozen(field, frozen) {
+        const column = table.getColumn(field);
+        if (!column || Boolean(column.getDefinition().frozen) === frozen) {
+            return;
+        }
+        await table.updateColumnDefinition(field, {frozen});
+    }
+
     async function applyBoundary(boundary) {
         if (applying) {
             queuedBoundary = boundary;
@@ -70,17 +79,20 @@
         applying = true;
         clearTransientState();
         try {
-            const expected = expectedFields(boundary);
-            for (const field of orderedFields()) {
-                const column = table.getColumn(field);
-                if (!column) {
-                    continue;
-                }
-                const frozen = expected.has(field);
-                if (Boolean(column.getDefinition().frozen) !== frozen) {
-                    await table.updateColumnDefinition(field, {frozen});
+            const fields = orderedFields();
+            const expected = expectedFields(boundary, fields);
+
+            for (const field of [...fields].reverse()) {
+                if (!expected.has(field)) {
+                    await setFrozen(field, false);
                 }
             }
+            for (const field of fields) {
+                if (expected.has(field)) {
+                    await setFrozen(field, true);
+                }
+            }
+
             saveBoundary(boundary);
             table.redraw(true);
         } finally {
