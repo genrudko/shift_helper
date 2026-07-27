@@ -217,18 +217,82 @@
         root.dataset.stableZoom = "ready";
         const baseWidths = new Map(Object.entries(loadJson(widthKey, {})));
         let currentScale = 1;
-        let scalingColumns = false;
+        let applyingDomWidths = false;
         let zoomFrame = 0;
+        let widthFrame = 0;
         let pendingZoom = 100;
 
+        const connectedElement = (component) => {
+            try {
+                const element = component?.getElement?.();
+                return element instanceof HTMLElement && element.isConnected ? element : null;
+            } catch (_error) {
+                return null;
+            }
+        };
         const initializeBaseWidths = () => {
             table.getColumns().forEach((column) => {
                 const field = column.getField();
                 if (field && !baseWidths.has(field)) {
-                    baseWidths.set(field, column.getWidth() / Math.max(0.1, currentScale));
+                    const header = connectedElement(column);
+                    const visibleWidth = header?.getBoundingClientRect().width;
+                    const internalWidth = Number(column.getWidth());
+                    const measured = Number(visibleWidth) > 0 ? Number(visibleWidth) : internalWidth;
+                    if (Number.isFinite(measured) && measured > 0) {
+                        baseWidths.set(field, measured / Math.max(0.1, currentScale));
+                    }
                 }
             });
             saveJson(widthKey, Object.fromEntries(baseWidths));
+        };
+        const setDomWidth = (element, width) => {
+            if (!(element instanceof HTMLElement)) return;
+            const pixels = `${width}px`;
+            element.style.width = pixels;
+            element.style.minWidth = pixels;
+            element.style.maxWidth = pixels;
+            element.style.flex = `0 0 ${pixels}`;
+            element.style.boxSizing = "border-box";
+        };
+        const applyDomColumnWidths = () => {
+            cancelAnimationFrame(widthFrame);
+            widthFrame = 0;
+            initializeBaseWidths();
+            applyingDomWidths = true;
+            try {
+                const rowHeader = root.querySelector(".journal-row-number");
+                const rowHeaderWidth = rowHeader instanceof HTMLElement
+                    ? Math.max(32, rowHeader.getBoundingClientRect().width)
+                    : 46;
+                let totalWidth = rowHeaderWidth;
+
+                table.getColumns().forEach((column) => {
+                    const field = column.getField();
+                    if (!field || (typeof column.isVisible === "function" && !column.isVisible())) return;
+                    const base = Number(baseWidths.get(field));
+                    if (!(base > 0)) return;
+                    const width = Math.max(12, Math.round(base * currentScale));
+                    totalWidth += width;
+                    const escaped = CSS.escape(field);
+                    root.querySelectorAll(
+                        `[tabulator-field="${escaped}"], [data-field="${escaped}"]`,
+                    ).forEach((element) => setDomWidth(element, width));
+                });
+
+                root.querySelectorAll(".tabulator-table, .tabulator-row, .tabulator-headers")
+                    .forEach((element) => {
+                        if (!(element instanceof HTMLElement)) return;
+                        element.style.width = `${Math.ceil(totalWidth)}px`;
+                        element.style.minWidth = `${Math.ceil(totalWidth)}px`;
+                    });
+                root.dataset.domColumnWidths = "ready";
+            } finally {
+                applyingDomWidths = false;
+            }
+        };
+        const scheduleDomColumnWidths = () => {
+            cancelAnimationFrame(widthFrame);
+            widthFrame = requestAnimationFrame(applyDomColumnWidths);
         };
         const captureViewPreferences = (zoomValue) => {
             const preferences = loadJson(preferenceKey, {});
@@ -291,20 +355,14 @@
             } else {
                 initializeBaseWidths();
             }
-            scalingColumns = true;
-            try {
-                table.getColumns().forEach((column) => {
-                    const field = column.getField();
-                    const base = field ? Number(baseWidths.get(field)) : 0;
-                    if (base > 0) column.setWidth(Math.max(12, Math.round(base * currentScale)));
-                });
-            } finally {
-                scalingColumns = false;
-            }
             saveJson(widthKey, Object.fromEntries(baseWidths));
             root.dataset.sheetZoom = String(value);
             syncControls(value);
-            requestAnimationFrame(() => table.redraw(false));
+            scheduleDomColumnWidths();
+            requestAnimationFrame(() => {
+                table.redraw(false);
+                scheduleDomColumnWidths();
+            });
         };
         const requestZoom = (rawValue, persist = true) => {
             pendingZoom = clampZoom(rawValue);
@@ -368,14 +426,22 @@
             }, 40);
         });
         table.on("columnResized", (column) => {
-            if (scalingColumns) return;
+            if (applyingDomWidths) return;
             const field = column?.getField?.();
             if (!field) return;
-            baseWidths.set(field, column.getWidth() / Math.max(0.1, currentScale));
-            saveJson(widthKey, Object.fromEntries(baseWidths));
+            const header = connectedElement(column);
+            const measured = header?.getBoundingClientRect().width || Number(column.getWidth());
+            if (Number.isFinite(measured) && measured > 0) {
+                baseWidths.set(field, measured / Math.max(0.1, currentScale));
+                saveJson(widthKey, Object.fromEntries(baseWidths));
+            }
+            scheduleDomColumnWidths();
         });
+        table.on("renderComplete", scheduleDomColumnWidths);
+        table.on("columnMoved", scheduleDomColumnWidths);
+        table.on("columnVisibilityChanged", scheduleDomColumnWidths);
         window.addEventListener("resize", () => {
-            setTimeout(() => requestZoom(pendingZoom, false), 0);
+            setTimeout(scheduleDomColumnWidths, 0);
         });
         const initial = loadJson(zoomKey, null) ?? loadJson(preferenceKey, {}).zoom ?? 100;
         pendingZoom = clampZoom(initial);
