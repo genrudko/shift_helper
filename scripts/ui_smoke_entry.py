@@ -5,7 +5,7 @@ from __future__ import annotations  # noqa: I001
 import runpy
 from pathlib import Path
 
-from playwright.sync_api import Page
+from playwright.sync_api import Locator, Page
 
 
 RIBBON_SCRIPT = Path(__file__).with_name("ui_smoke_ribbon.py")
@@ -33,8 +33,32 @@ def reset_table_viewport(page: Page) -> None:
     page.wait_for_timeout(300)
 
 
-def visible_saved_rows(page: Page):
+def visible_saved_rows(page: Page) -> Locator:
     return page.locator(".tabulator-row:not(.journal-row--draft):visible")
+
+
+def click_row_header(
+    page: Page,
+    row: Locator,
+    *,
+    button: str = "left",
+    shift: bool = False,
+) -> None:
+    """Click the visual row-header coordinates so browser hit testing is exercised."""
+
+    header = row.locator(".journal-row-number")
+    box = header.bounding_box()
+    if box is None:
+        raise AssertionError("Row-header geometry is unavailable.")
+    x = box["x"] + (box["width"] / 2)
+    y = box["y"] + (box["height"] / 2)
+    if shift:
+        page.keyboard.down("Shift")
+    try:
+        page.mouse.click(x, y, button=button)
+    finally:
+        if shift:
+            page.keyboard.up("Shift")
 
 
 def test_row_drag_selection(page: Page) -> None:
@@ -97,8 +121,8 @@ def test_multi_row_delete_without_dialog(page: Page) -> None:
     rows = visible_saved_rows(page)
     first = rows.nth(1)
     second = rows.nth(2)
-    first.locator(".journal-row-number").click()
-    second.locator(".journal-row-number").click(modifiers=["Shift"])
+    click_row_header(page, first)
+    click_row_header(page, second, shift=True)
     require(
         page.locator(".journal-row--multi-selected").count() == 2,
         "Shift-click did not select two visible rows.",
@@ -169,10 +193,10 @@ def test_ribbon_contract(page: Page) -> None:
     page.keyboard.press("Escape")
     shell.wait_for(state="hidden", timeout=5_000)
 
-    first.locator(".journal-row-number").click()
-    second.locator(".journal-row-number").click(modifiers=["Shift"])
+    click_row_header(page, first)
+    click_row_header(page, second, shift=True)
     require(page.locator(".journal-row--multi-selected").count() == 2, "Two rows were not selected.")
-    second.locator(".journal-row-number").click(button="right")
+    click_row_header(page, second, button="right")
     shell.wait_for(state="visible", timeout=5_000)
     require(
         page.locator(".journal-row--multi-selected").count() == 2,
