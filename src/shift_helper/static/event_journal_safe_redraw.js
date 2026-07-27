@@ -27,6 +27,15 @@
         event.stopImmediatePropagation();
     }
 
+    function normalizePointerLayers() {
+        root.querySelectorAll(".tabulator-table").forEach((element) => {
+            element.style.pointerEvents = "none";
+        });
+        root.querySelectorAll(".tabulator-row, .tabulator-cell").forEach((element) => {
+            element.style.pointerEvents = "auto";
+        });
+    }
+
     document.addEventListener("pointerdown", preserveRowSelectionOnSecondaryPress, true);
     document.addEventListener("mousedown", preserveRowSelectionOnSecondaryPress, true);
 
@@ -51,6 +60,7 @@
         bootstrapFrame = window.requestAnimationFrame(() => {
             bootstrapFrame = window.requestAnimationFrame(() => {
                 bootstrapSettled = true;
+                normalizePointerLayers();
                 flushPending();
             });
         });
@@ -70,6 +80,7 @@
                 return;
             }
             originalRedraw(force);
+            normalizePointerLayers();
         });
     }
 
@@ -93,26 +104,28 @@
             pendingForce ||= Boolean(force);
             return undefined;
         }
-        if (!bootstrapSettled) {
-            pendingForce = false;
-            return originalRedraw(false);
-        }
-        return originalRedraw(Boolean(force));
+        const effectiveForce = bootstrapSettled && Boolean(force);
+        const result = originalRedraw(effectiveForce);
+        normalizePointerLayers();
+        return result;
     };
 
     table.on("tableBuilt", () => {
         ready = true;
         pending = true;
         pendingForce = false;
+        normalizePointerLayers();
         settleBootstrap();
         flushPending();
     });
     table.on("renderComplete", () => {
         ready = true;
+        normalizePointerLayers();
         flushPending();
     });
 
     if (ready) {
+        normalizePointerLayers();
         settleBootstrap();
         window.requestAnimationFrame(() => {
             pending = true;
