@@ -29,6 +29,17 @@
 
     const svg = (name) => `<svg class="ribbon-icon" aria-hidden="true"><use href="${ICONS}#${name}"></use></svg>`;
 
+    function pinRowHeaders() {
+        root.querySelectorAll(".tabulator-row-header, .journal-row-number").forEach((element) => {
+            if (!(element instanceof HTMLElement)) return;
+            element.style.position = "sticky";
+            element.style.left = "0px";
+            element.style.right = "auto";
+            element.style.zIndex = element.closest(".tabulator-header") ? "70" : "60";
+        });
+        root.dataset.rowHeaderPinned = "true";
+    }
+
     function containsPoint(element, x, y) {
         const rect = element.getBoundingClientRect();
         return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
@@ -280,4 +291,7 @@
             closeFallbackShell();
         }
     }, true);
+    window.addEventListener("resize", pinRowHeaders);
+    table.on("renderComplete", pinRowHeaders);
+    pinRowHeaders();
 })();
