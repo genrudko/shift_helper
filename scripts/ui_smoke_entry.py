@@ -16,6 +16,17 @@ RIBBON = runpy.run_path(
 BASE_FUNCTION = RIBBON["BASE_FUNCTION"]
 
 
+def wait_for_full_repair(page: Page) -> None:
+    page.wait_for_function(
+        """() => {
+            const root = document.getElementById('event-journal');
+            return root?.dataset.operatorRepairReady === 'true'
+                && root?.dataset.contextFallback === 'ready';
+        }""",
+        timeout=20_000,
+    )
+
+
 def reset_table_viewport(page: Page) -> None:
     holder = page.locator(".tabulator-tableholder")
     holder.evaluate("element => { element.scrollTop = 0; }")
@@ -117,9 +128,8 @@ def test_ribbon_contract(page: Page) -> None:
 
     require = BASE_FUNCTION("require")
     cell = BASE_FUNCTION("cell")
-    wait_for_operator_repair = RIBBON["wait_for_operator_repair"]
 
-    wait_for_operator_repair(page)
+    wait_for_full_repair(page)
     reset_table_viewport(page)
     ribbon = page.locator("#journal-ribbon")
     require(ribbon.is_visible(), "The journal ribbon is not visible.")
@@ -180,6 +190,7 @@ def test_ribbon_contract(page: Page) -> None:
 smoke_globals = BASE_FUNCTION("run_smoke").__globals__
 smoke_globals["test_row_drag_selection"] = test_row_drag_selection
 smoke_globals["test_multi_row_delete_without_dialog"] = test_multi_row_delete_without_dialog
+RIBBON["wait_for_operator_repair"] = wait_for_full_repair
 RIBBON["test_viewport_and_frozen_columns"].__globals__["test_ribbon_contract"] = test_ribbon_contract
 
 
