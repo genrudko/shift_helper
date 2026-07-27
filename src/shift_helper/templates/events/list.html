@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 
+{% macro icon(name) -%}
+<svg class="ribbon-icon" aria-hidden="true" focusable="false">
+    <use href="{{ url_for('static', filename='shift_helper_icons_v1.svg') }}#{{ name }}"></use>
+</svg>
+{%- endmacro %}
+
 {% block title %}Журнал событий — Shift-Helper{% endblock %}
 {% block body_class %}page-events{% endblock %}
 {% block shell_class %}shell--journal{% endblock %}
@@ -10,79 +16,182 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='event_journal_excel_patch.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='event_journal_workspace_v4.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='event_journal_viewport_v5.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='event_journal_ribbon_v1.css') }}">
 {% endblock %}
 
 {% block content %}
-<section class="journal-workspace" aria-labelledby="journal-title">
-    <header class="journal-toolbar">
-        <div class="journal-toolbar__primary">
-            <div class="journal-toolbar__title">
+<section class="journal-workspace journal-workspace--ribbon" aria-labelledby="journal-title">
+    <header class="journal-ribbon" id="journal-ribbon" data-ribbon-state="expanded">
+        <div class="journal-ribbon__topbar">
+            <div class="quick-access" role="group" aria-label="Панель быстрого доступа">
+                <button class="ribbon-icon-button history-button" id="journal-undo" type="button" disabled title="Нечего отменять">
+                    {{ icon('undo') }}<span class="visually-hidden">Отменить</span>
+                </button>
+                <button class="ribbon-icon-button history-button" id="journal-redo" type="button" disabled title="Нечего повторять">
+                    {{ icon('redo') }}<span class="visually-hidden">Повторить</span>
+                </button>
+            </div>
+
+            <div class="journal-ribbon__identity">
                 <h1 id="journal-title">Журнал событий</h1>
-                <span class="journal-record-count" id="journal-record-count">Записей: {{ rows|length }}</span>
+                <span class="journal-ribbon__subtitle">Кочубеевская ВЭС</span>
             </div>
-
-            <div class="journal-status-filter" role="group" aria-label="Состояние записей">
-                <button type="button" data-status-filter="all" {% if selected_status == 'all' %}aria-pressed="true"{% else %}aria-pressed="false"{% endif %}>Все</button>
-                <button type="button" data-status-filter="open" {% if selected_status == 'open' %}aria-pressed="true"{% else %}aria-pressed="false"{% endif %}>Открытые</button>
-                <button type="button" data-status-filter="closed" {% if selected_status == 'closed' %}aria-pressed="true"{% else %}aria-pressed="false"{% endif %}>Завершённые</button>
-            </div>
-
-            <label class="journal-search">
-                <span class="visually-hidden">Поиск по журналу</span>
-                <span class="journal-search__icon" aria-hidden="true">⌕</span>
-                <input id="journal-search" type="search" autocomplete="off" placeholder="Поиск по журналу">
-            </label>
-
-            <button class="toolbar-button" id="toggle-header-filters" type="button" aria-pressed="true" title="Показать или скрыть фильтры в заголовках">
-                Фильтры
-            </button>
-        </div>
-
-        <div class="journal-toolbar__secondary">
-            <div class="toolbar-group" role="group" aria-label="История действий">
-                <button class="icon-button history-button" id="journal-undo" type="button" disabled title="Нечего отменять">↶</button>
-                <button class="icon-button history-button" id="journal-redo" type="button" disabled title="Нечего повторять">↷</button>
-            </div>
-
-            <div class="toolbar-group" role="group" aria-label="Горизонтальное выравнивание">
-                <button class="icon-button" type="button" data-align-horizontal="left" title="По левому краю">≡</button>
-                <button class="icon-button" type="button" data-align-horizontal="center" title="По центру">≣</button>
-                <button class="icon-button" type="button" data-align-horizontal="right" title="По правому краю">≡</button>
-            </div>
-
-            <div class="toolbar-group" role="group" aria-label="Вертикальное выравнивание">
-                <button class="icon-button icon-button--vertical-top" type="button" data-align-vertical="top" title="По верхнему краю">↥</button>
-                <button class="icon-button" type="button" data-align-vertical="middle" title="По середине">↕</button>
-                <button class="icon-button icon-button--vertical-bottom" type="button" data-align-vertical="bottom" title="По нижнему краю">↧</button>
-            </div>
-
-            <div class="toolbar-group toolbar-group--fill" role="group" aria-label="Заливка ячеек">
-                <label class="color-picker" title="Цвет заливки">
-                    <span class="visually-hidden">Цвет заливки</span>
-                    <input id="cell-fill-color" type="color" value="#fff2cc">
-                </label>
-                <button class="toolbar-button toolbar-button--inside" id="apply-cell-fill" type="button">Заливка</button>
-                <button class="icon-button" id="clear-cell-fill" type="button" title="Убрать заливку">×</button>
-            </div>
-
-            <button class="toolbar-button" id="open-format-rules" type="button" title="Настроить автоматическое выделение">
-                Условия
-            </button>
-
-            <button class="toolbar-button" id="open-view-settings" type="button" title="Тема, масштаб и шрифт">
-                Вид
-            </button>
-
-            <button class="toolbar-button" id="reset-grid-layout" type="button" title="Вернуть исходные ширины, порядок и фильтры колонок">
-                Стандартный вид
-            </button>
 
             <div class="save-state" id="journal-save-state" data-state="saved" role="status" aria-live="polite">
                 <span class="save-state__dot"></span>
                 <span class="save-state__text">Все изменения сохранены</span>
             </div>
         </div>
+
+        <div class="journal-ribbon__tabs" role="tablist" aria-label="Команды журнала">
+            <button class="ribbon-tab" type="button" role="tab" data-ribbon-tab="home" aria-selected="true">Главная</button>
+            <button class="ribbon-tab" type="button" role="tab" data-ribbon-tab="data" aria-selected="false">Данные</button>
+            <button class="ribbon-tab" type="button" role="tab" data-ribbon-tab="view" aria-selected="false">Вид</button>
+            <button class="ribbon-collapse-button" id="ribbon-collapse" type="button" aria-expanded="true" title="Свернуть ленту">
+                {{ icon('collapse') }}<span class="visually-hidden">Свернуть ленту</span>
+            </button>
+        </div>
+
+        <div class="journal-ribbon__panels">
+            <div class="ribbon-panel" data-ribbon-panel="home" role="tabpanel">
+                <section class="ribbon-group ribbon-group--clipboard" aria-label="Буфер обмена">
+                    <button class="ribbon-command ribbon-command--large" type="button" data-ribbon-command="paste" title="Вставить (Ctrl+V)">
+                        {{ icon('paste') }}<span>Вставить</span>
+                    </button>
+                    <div class="ribbon-command-stack">
+                        <button class="ribbon-command" type="button" data-ribbon-command="cut" title="Вырезать (Ctrl+X)">{{ icon('cut') }}<span>Вырезать</span></button>
+                        <button class="ribbon-command" type="button" data-ribbon-command="copy" title="Копировать (Ctrl+C)">{{ icon('copy') }}<span>Копировать</span></button>
+                    </div>
+                    <span class="ribbon-group__label">Буфер обмена</span>
+                </section>
+
+                <section class="ribbon-group ribbon-group--font" aria-label="Шрифт">
+                    <div class="ribbon-font-row">
+                        <label class="ribbon-select-label">
+                            <span class="visually-hidden">Шрифт</span>
+                            <select id="ribbon-font-family" title="Шрифт выделенных ячеек">
+                                <option value="Segoe UI">Segoe UI</option>
+                                <option value="Arial">Arial</option>
+                                <option value="Tahoma">Tahoma</option>
+                                <option value="Verdana">Verdana</option>
+                                <option value="Georgia">Georgia</option>
+                            </select>
+                        </label>
+                        <label class="ribbon-size-label">
+                            <span class="visually-hidden">Размер шрифта</span>
+                            <select id="ribbon-font-size" title="Размер шрифта выделенных ячеек">
+                                {% for size in [10, 11, 12, 13, 14, 16, 18, 20] %}
+                                <option value="{{ size }}" {% if size == 13 %}selected{% endif %}>{{ size }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                    </div>
+                    <div class="ribbon-button-row">
+                        <button class="ribbon-icon-button" type="button" data-text-style="bold" title="Полужирный (Ctrl+B)">{{ icon('bold') }}</button>
+                        <button class="ribbon-icon-button" type="button" data-text-style="italic" title="Курсив (Ctrl+I)">{{ icon('italic') }}</button>
+                        <button class="ribbon-icon-button" type="button" data-text-style="underline" title="Подчёркивание (Ctrl+U)">{{ icon('underline') }}</button>
+                        <label class="ribbon-color-button" title="Цвет текста">
+                            {{ icon('font-color') }}
+                            <input id="ribbon-text-color" type="color" value="#1f2937">
+                        </label>
+                        <label class="ribbon-color-button" title="Цвет заливки">
+                            {{ icon('fill') }}
+                            <input id="cell-fill-color" type="color" value="#fff2cc">
+                        </label>
+                        <button class="ribbon-icon-button" id="apply-cell-fill" type="button" title="Применить выбранную заливку">{{ icon('fill') }}</button>
+                        <button class="ribbon-icon-button" id="clear-cell-fill" type="button" title="Убрать заливку">{{ icon('clear') }}</button>
+                    </div>
+                    <span class="ribbon-group__label">Шрифт</span>
+                </section>
+
+                <section class="ribbon-group ribbon-group--alignment" aria-label="Выравнивание">
+                    <div class="ribbon-button-row">
+                        <button class="ribbon-icon-button" type="button" data-align-horizontal="left" title="По левому краю">{{ icon('align-left') }}</button>
+                        <button class="ribbon-icon-button" type="button" data-align-horizontal="center" title="По центру">{{ icon('align-center') }}</button>
+                        <button class="ribbon-icon-button" type="button" data-align-horizontal="right" title="По правому краю">{{ icon('align-right') }}</button>
+                    </div>
+                    <div class="ribbon-button-row">
+                        <button class="ribbon-icon-button" type="button" data-align-vertical="top" title="По верхнему краю">{{ icon('vertical-top') }}</button>
+                        <button class="ribbon-icon-button" type="button" data-align-vertical="middle" title="По середине">{{ icon('vertical-middle') }}</button>
+                        <button class="ribbon-icon-button" type="button" data-align-vertical="bottom" title="По нижнему краю">{{ icon('vertical-bottom') }}</button>
+                        <button class="ribbon-icon-button" type="button" data-ribbon-command="wrap" title="Перенос текста">{{ icon('wrap') }}</button>
+                    </div>
+                    <span class="ribbon-group__label">Выравнивание</span>
+                </section>
+
+                <section class="ribbon-group ribbon-group--cells" aria-label="Ячейки и строки">
+                    <button class="ribbon-command" type="button" data-ribbon-command="clear" title="Очистить содержимое выделения">{{ icon('clear') }}<span>Очистить</span></button>
+                    <button class="ribbon-command" type="button" data-ribbon-command="delete-rows" title="Удалить выбранные строки">{{ icon('delete-row') }}<span>Удалить строки</span></button>
+                    <button class="ribbon-command" id="open-format-rules" type="button" title="Условное форматирование">{{ icon('conditional') }}<span>Условия</span></button>
+                    <span class="ribbon-group__label">Ячейки</span>
+                </section>
+            </div>
+
+            <div class="ribbon-panel" data-ribbon-panel="data" role="tabpanel" hidden>
+                <section class="ribbon-group ribbon-group--views" aria-label="Быстрые представления">
+                    <div class="journal-status-filter" role="group" aria-label="Состояние записей">
+                        <button type="button" data-status-filter="all" {% if selected_status == 'all' %}aria-pressed="true"{% else %}aria-pressed="false"{% endif %}>Все</button>
+                        <button type="button" data-status-filter="open" {% if selected_status == 'open' %}aria-pressed="true"{% else %}aria-pressed="false"{% endif %}>Открытые</button>
+                        <button type="button" data-status-filter="closed" {% if selected_status == 'closed' %}aria-pressed="true"{% else %}aria-pressed="false"{% endif %}>Завершённые</button>
+                    </div>
+                    <span class="ribbon-group__label">Представление</span>
+                </section>
+
+                <section class="ribbon-group ribbon-group--search" aria-label="Поиск">
+                    <label class="journal-search">
+                        {{ icon('search') }}
+                        <input id="journal-search" type="search" autocomplete="off" placeholder="Поиск по журналу">
+                    </label>
+                    <span class="ribbon-group__label">Поиск</span>
+                </section>
+
+                <section class="ribbon-group ribbon-group--filters" aria-label="Фильтры">
+                    <button class="ribbon-command" id="toggle-header-filters" type="button" aria-pressed="true" title="Показать фильтры в заголовках">{{ icon('filter') }}<span>Фильтры</span></button>
+                    <button class="ribbon-command" id="clear-all-filters" type="button" title="Сбросить поиск и фильтры">{{ icon('reset') }}<span>Очистить</span></button>
+                    <span class="ribbon-group__label">Фильтры</span>
+                </section>
+            </div>
+
+            <div class="ribbon-panel" data-ribbon-panel="view" role="tabpanel" hidden>
+                <section class="ribbon-group ribbon-group--theme" aria-label="Тема">
+                    <button class="ribbon-theme-choice" type="button" data-theme-choice="light"><span class="theme-swatch theme-swatch--light"></span><span>Светлая</span></button>
+                    <button class="ribbon-theme-choice" type="button" data-theme-choice="dark"><span class="theme-swatch theme-swatch--dark"></span><span>Тёмная</span></button>
+                    <button class="ribbon-theme-choice" type="button" data-theme-choice="system">{{ icon('theme') }}<span>Системная</span></button>
+                    <span class="ribbon-group__label">Тема</span>
+                </section>
+
+                <section class="ribbon-group ribbon-group--freeze" aria-label="Закрепление областей">
+                    <label class="ribbon-field-label">
+                        {{ icon('freeze') }}
+                        <span>Закрепить области</span>
+                        <select id="ribbon-frozen-through">
+                            <option value="none">Не закреплять</option>
+                            <option value="start_date">Дата останова</option>
+                            <option value="start_time">Дата и время</option>
+                            <option value="asset_label">До оборудования</option>
+                            <option value="description">До описания</option>
+                            <option value="reason">До причины</option>
+                            <option value="actions">До действий</option>
+                        </select>
+                    </label>
+                    <span class="ribbon-group__label">Окно</span>
+                </section>
+
+                <section class="ribbon-group ribbon-group--layout" aria-label="Вид таблицы">
+                    <button class="ribbon-command" id="reset-grid-layout" type="button" title="Вернуть исходный вид таблицы">{{ icon('reset') }}<span>Стандартный вид</span></button>
+                    <button class="ribbon-command" id="open-view-settings" type="button" title="Дополнительные параметры вида">{{ icon('theme') }}<span>Параметры</span></button>
+                    <button class="ribbon-command" type="button" data-ribbon-command="collapse">{{ icon('collapse') }}<span>Свернуть ленту</span></button>
+                    <span class="ribbon-group__label">Рабочее место</span>
+                </section>
+            </div>
+        </div>
     </header>
+
+    <div class="journal-active-filters" id="journal-active-filters" hidden>
+        {{ icon('filter') }}
+        <span id="journal-active-filters-text">Активны фильтры</span>
+        <button type="button" data-ribbon-command="clear-filters">Сбросить</button>
+    </div>
 
     <div
         id="event-journal"
@@ -93,17 +202,22 @@
         data-selected-status="{{ selected_status }}"
         data-draft-date="{{ draft_date }}"
         data-draft-time="{{ draft_time }}"
+        data-selection-mode="cells"
         aria-label="Рабочая таблица журнала событий"
     ></div>
 
-    <footer class="journal-help">
-        <span><kbd>Печать</kbd> заменить значение и начать ввод</span>
-        <span><kbd>F2</kbd> редактировать с конца</span>
-        <span><kbd>Двойной щелчок</kbd> каретка в месте щелчка</span>
-        <span><kbd>Enter</kbd> сохранить и вниз</span>
-        <span><kbd>Shift</kbd> + <kbd>Enter</kbd> перенос строки</span>
-        <span><kbd>Ctrl</kbd> + <kbd>Z/Y</kbd> отмена / повтор</span>
-        <span class="journal-help__message" id="journal-help-message">Потяните по номерам строк с зажатой ЛКМ — непрерывное выделение.</span>
+    <footer class="journal-statusbar">
+        <div class="journal-statusbar__summary">
+            <span class="journal-record-count" id="journal-record-count">Записей: {{ rows|length }}</span>
+            <span id="journal-selection-summary">Выделение отсутствует</span>
+            <span class="journal-statusbar__hint" id="journal-help-message">Потяните по номерам строк с зажатой ЛКМ — непрерывное выделение.</span>
+        </div>
+        <div class="journal-statusbar__zoom" aria-label="Масштаб интерфейса">
+            <button class="ribbon-icon-button" id="ribbon-zoom-out" type="button" title="Уменьшить масштаб">{{ icon('zoom-out') }}</button>
+            <input id="ribbon-zoom" type="range" min="75" max="140" step="5" value="100">
+            <output id="ribbon-zoom-value">100%</output>
+            <button class="ribbon-icon-button" id="ribbon-zoom-in" type="button" title="Увеличить масштаб">{{ icon('zoom-in') }}</button>
+        </div>
     </footer>
 </section>
 
@@ -111,15 +225,13 @@
     <form method="dialog" class="format-rules-dialog__panel">
         <header class="format-rules-dialog__header">
             <div>
-                <h2>Автоматическое выделение</h2>
-                <p>Правила применяются к значениям ячеек и сохраняются на этом рабочем месте.</p>
+                <h2>Условное форматирование</h2>
+                <p>Автоматически выделяйте важные значения в журнале.</p>
             </div>
             <button class="dialog-close" value="close" aria-label="Закрыть">×</button>
         </header>
-
         <div class="format-rule-editor">
-            <label>
-                Колонка
+            <label>Колонка
                 <select id="format-rule-column">
                     <option value="*">Любая колонка</option>
                     <option value="start_date">Дата останова</option>
@@ -136,9 +248,7 @@
                     <option value="downtime_losses_rub">Потери от простоя</option>
                 </select>
             </label>
-
-            <label>
-                Условие
+            <label>Условие
                 <select id="format-rule-operator">
                     <option value="contains">содержит</option>
                     <option value="equals">равно</option>
@@ -148,20 +258,12 @@
                     <option value="empty">пусто</option>
                 </select>
             </label>
-
-            <label class="format-rule-value-label">
-                Значение или маска
-                <input id="format-rule-value" type="text" autocomplete="off" placeholder="Например: Авария или ^ВЭУ №[1-9]$">
+            <label class="format-rule-value-label">Значение или маска
+                <input id="format-rule-value" type="text" autocomplete="off" placeholder="Например: Авария">
             </label>
-
-            <label>
-                Цвет
-                <input id="format-rule-color" type="color" value="#f4cccc">
-            </label>
-
+            <label>Цвет<input id="format-rule-color" type="color" value="#f4cccc"></label>
             <button class="toolbar-button" id="add-format-rule" type="button">Добавить правило</button>
         </div>
-
         <div class="format-rules-list" id="format-rules-list"></div>
     </form>
 </dialog>
@@ -170,49 +272,37 @@
     <form method="dialog" class="journal-settings-dialog__panel">
         <header class="journal-settings-dialog__header">
             <div>
-                <h2>Вид рабочего места</h2>
-                <p>Настройки сохраняются локально только на этом компьютере.</p>
+                <h2>Параметры рабочего места</h2>
+                <p>Дополнительные настройки сохраняются на этом компьютере.</p>
             </div>
             <button class="dialog-close" value="close" aria-label="Закрыть">×</button>
         </header>
-
         <div class="journal-settings-grid">
-            <label>
-                Тема
+            <label>Тема
                 <select id="journal-theme">
                     <option value="dark">Тёмная</option>
                     <option value="light">Светлая</option>
                     <option value="system">Как в системе</option>
-                </select>
-                <span></span>
+                </select><span></span>
             </label>
-
-            <label>
-                Масштаб интерфейса
+            <label>Масштаб интерфейса
                 <input id="journal-zoom" type="range" min="75" max="140" step="5" value="100">
                 <span class="journal-settings-value" id="journal-zoom-value">100%</span>
             </label>
-
-            <label>
-                Размер шрифта таблицы
+            <label>Размер шрифта таблицы
                 <input id="journal-font-size" type="range" min="10" max="18" step="1" value="13">
                 <span class="journal-settings-value" id="journal-font-size-value">13px</span>
             </label>
-
-            <label>
-                Шрифт
+            <label>Шрифт таблицы
                 <select id="journal-font-family">
                     <option value="Segoe UI">Segoe UI</option>
                     <option value="Arial">Arial</option>
                     <option value="Tahoma">Tahoma</option>
                     <option value="Verdana">Verdana</option>
                     <option value="Georgia">Georgia</option>
-                </select>
-                <span></span>
+                </select><span></span>
             </label>
-
-            <label>
-                Закреплённые столбцы
+            <label>Закреплённые столбцы
                 <select id="journal-frozen-through">
                     <option value="none">Не закреплять</option>
                     <option value="start_date">До «Дата останова»</option>
@@ -227,11 +317,9 @@
                     <option value="downtime">До «Простой»</option>
                     <option value="author">До «Кто внёс запись»</option>
                     <option value="downtime_losses_rub">Закрепить все столбцы</option>
-                </select>
-                <span></span>
+                </select><span></span>
             </label>
         </div>
-
         <footer class="journal-settings-dialog__footer">
             <button class="toolbar-button" id="reset-view-settings" type="button">Сбросить настройки</button>
             <button class="toolbar-button" value="close">Готово</button>
@@ -244,6 +332,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='event_journal_bootstrap_v1.js') }}" defer></script>
 <script src="{{ url_for('static', filename='vendor/tabulator/tabulator.min.js') }}" defer></script>
 <script src="{{ url_for('static', filename='event_journal.js') }}" defer></script>
 <script src="{{ url_for('static', filename='event_journal_lifecycle_guard.js') }}" defer></script>
@@ -252,4 +341,5 @@
 <script src="{{ url_for('static', filename='event_journal_workspace_v4.js') }}" defer></script>
 <script src="{{ url_for('static', filename='event_journal_viewport_v5.js') }}" defer></script>
 <script src="{{ url_for('static', filename='event_journal_editor_caret_v5.js') }}" defer></script>
+<script src="{{ url_for('static', filename='event_journal_ribbon_v1.js') }}" defer></script>
 {% endblock %}
