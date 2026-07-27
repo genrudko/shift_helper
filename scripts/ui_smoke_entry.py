@@ -27,30 +27,6 @@ def wait_for_full_repair(page: Page) -> None:
     )
 
 
-def install_rerender_trace(page: Page) -> None:
-    page.evaluate(
-        """() => {
-            const table = window.shiftHelperEventGrid;
-            if (!table || window.__shiftHelperRerenderTrace === 'ready') return;
-            window.__shiftHelperRerenderTrace = 'ready';
-            const candidates = [table.columnManager];
-            for (const value of Object.values(table)) {
-                if (value && typeof value.rerenderColumns === 'function') candidates.push(value);
-            }
-            for (const target of [...new Set(candidates.filter(Boolean))]) {
-                if (target.__shiftHelperRerenderTraced) continue;
-                const original = target.rerenderColumns;
-                if (typeof original !== 'function') continue;
-                target.__shiftHelperRerenderTraced = true;
-                target.rerenderColumns = function rerenderColumns(...args) {
-                    console.error(`SHIFT_HELPER_RERENDER_CALL\n${new Error().stack}`);
-                    return original.apply(this, args);
-                };
-            }
-        }"""
-    )
-
-
 def reset_table_viewport(page: Page) -> None:
     holder = page.locator(".tabulator-tableholder")
     holder.evaluate("element => { element.scrollTop = 0; }")
@@ -234,15 +210,6 @@ def test_ribbon_contract(page: Page) -> None:
 
 
 smoke_globals = BASE_FUNCTION("run_smoke").__globals__
-original_excel_edit_modes = smoke_globals["test_excel_edit_modes"]
-
-
-def traced_excel_edit_modes(page: Page) -> None:
-    install_rerender_trace(page)
-    original_excel_edit_modes(page)
-
-
-smoke_globals["test_excel_edit_modes"] = traced_excel_edit_modes
 smoke_globals["test_row_drag_selection"] = test_row_drag_selection
 smoke_globals["test_multi_row_delete_without_dialog"] = test_multi_row_delete_without_dialog
 RIBBON["wait_for_operator_repair"] = wait_for_full_repair
