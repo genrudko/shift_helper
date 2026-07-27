@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='event_journal.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='event_journal_excel_patch.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='event_journal_workspace_v4.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='event_journal_viewport_v5.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -102,7 +103,7 @@
         <span><kbd>Enter</kbd> сохранить и вниз</span>
         <span><kbd>Shift</kbd> + <kbd>Enter</kbd> перенос строки</span>
         <span><kbd>Ctrl</kbd> + <kbd>Z/Y</kbd> отмена / повтор</span>
-        <span class="journal-help__message" id="journal-help-message">Shift и Ctrl по номерам строк — множественное выделение.</span>
+        <span class="journal-help__message" id="journal-help-message">Потяните по номерам строк с зажатой ЛКМ — непрерывное выделение.</span>
     </footer>
 </section>
 
@@ -209,6 +210,26 @@
                 </select>
                 <span></span>
             </label>
+
+            <label>
+                Закреплённые столбцы
+                <select id="journal-frozen-through">
+                    <option value="none">Не закреплять</option>
+                    <option value="start_date">До «Дата останова»</option>
+                    <option value="start_time">До первого «Время»</option>
+                    <option value="asset_label">До «№ ВЭУ / оборудование»</option>
+                    <option value="description">До «Описание события»</option>
+                    <option value="reason">До «Причина»</option>
+                    <option value="actions">До «Действия персонала»</option>
+                    <option value="performer">До «Исполнитель»</option>
+                    <option value="end_date">До «Дата пуска»</option>
+                    <option value="end_time">До второго «Время»</option>
+                    <option value="downtime">До «Простой»</option>
+                    <option value="author">До «Кто внёс запись»</option>
+                    <option value="downtime_losses_rub">Закрепить все столбцы</option>
+                </select>
+                <span></span>
+            </label>
         </div>
 
         <footer class="journal-settings-dialog__footer">
@@ -229,4 +250,5 @@
 <script src="{{ url_for('static', filename='event_journal_history_v6.js') }}" defer></script>
 <script src="{{ url_for('static', filename='event_journal_safe_redraw.js') }}" defer></script>
 <script src="{{ url_for('static', filename='event_journal_workspace_v4.js') }}" defer></script>
+<script src="{{ url_for('static', filename='event_journal_viewport_v5.js') }}" defer></script>
 {% endblock %}
