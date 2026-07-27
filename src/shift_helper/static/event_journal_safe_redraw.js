@@ -78,4 +78,12 @@
             flushPending();
         });
     }
+
+    if (!document.querySelector('script[data-shift-helper-editor-caret="v5"]')) {
+        const script = document.createElement("script");
+        script.src = "/static/event_journal_editor_caret_v5.js";
+        script.defer = true;
+        script.dataset.shiftHelperEditorCaret = "v5";
+        document.head.appendChild(script);
+    }
 })();
