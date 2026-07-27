@@ -146,7 +146,6 @@
         !root
         || !table
         || !select
-        || root.dataset.frozenColumnsController === "ready"
         || typeof table.getColumnLayout !== "function"
         || typeof table.setColumnLayout !== "function"
     ) {
