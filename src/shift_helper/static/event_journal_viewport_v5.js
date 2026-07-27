@@ -106,12 +106,11 @@
             hideFillHandle();
             return;
         }
-        if (handle.parentElement !== root) root.appendChild(handle);
-        handle.style.position = "absolute";
+        if (handle.parentElement !== document.body) document.body.appendChild(handle);
+        handle.style.position = "fixed";
         const cellRect = cellElement.getBoundingClientRect();
-        const rootRect = root.getBoundingClientRect();
-        handle.style.left = `${cellRect.right - rootRect.left - (handle.offsetWidth / 2)}px`;
-        handle.style.top = `${cellRect.bottom - rootRect.top - (handle.offsetHeight / 2)}px`;
+        handle.style.left = `${cellRect.right - (handle.offsetWidth / 2)}px`;
+        handle.style.top = `${cellRect.bottom - (handle.offsetHeight / 2)}px`;
         handle.hidden = false;
     }
 
