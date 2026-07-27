@@ -133,7 +133,10 @@
             valueCache.set(key, after);
             return;
         }
-        const before = valueCache.get(key) ?? "";
+        const oldValue = typeof cell.getOldValue === "function"
+            ? String(cell.getOldValue() ?? "")
+            : "";
+        const before = valueCache.has(key) ? valueCache.get(key) : oldValue;
         valueCache.set(key, after);
         const existing = pendingChanges.get(key);
         pendingChanges.set(key, {
