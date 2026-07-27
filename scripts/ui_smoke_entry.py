@@ -37,6 +37,59 @@ def visible_saved_rows(page: Page) -> Locator:
     return page.locator(".tabulator-row:not(.journal-row--draft):visible")
 
 
+def authoritative_frozen_fields(page: Page) -> list[str]:
+    """Check both the virtual layout contract and its live sticky rendering."""
+
+    page.wait_for_function(
+        """() => {
+            const root = document.getElementById('event-journal');
+            const select = document.getElementById('journal-frozen-through');
+            const table = window.shiftHelperEventGrid;
+            if (
+                !root
+                || !select
+                || !table
+                || root.dataset.frozenColumnsController !== 'ready'
+                || root.dataset.frozenColumnsApplied !== select.value
+            ) return false;
+
+            const fields = table.getColumnLayout()
+                .filter(item => item?.field && item.frozen)
+                .map(item => item.field);
+            const headerFields = table.getColumns()
+                .filter(column => {
+                    const field = column.getField();
+                    const element = column.getElement?.();
+                    return field && element?.classList.contains('operator-stable-frozen');
+                })
+                .map(column => column.getField());
+            if (JSON.stringify(fields) !== JSON.stringify(headerFields)) return false;
+
+            const firstVisible = table.getRows('visible')[0];
+            if (!firstVisible) return false;
+            const stickyCells = fields.every(field => {
+                const element = firstVisible.getCell(field)?.getElement?.();
+                return element?.classList.contains('operator-stable-frozen');
+            });
+            const nonFrozenCells = table.getColumns()
+                .map(column => column.getField())
+                .filter(Boolean)
+                .filter(field => !fields.includes(field))
+                .every(field => {
+                    const element = firstVisible.getCell(field)?.getElement?.();
+                    return !element?.classList.contains('operator-stable-frozen');
+                });
+            return stickyCells && nonFrozenCells;
+        }""",
+        timeout=10_000,
+    )
+    return page.evaluate(
+        """() => window.shiftHelperEventGrid.getColumnLayout()
+            .filter(item => item?.field && item.frozen)
+            .map(item => item.field)"""
+    )
+
+
 def click_row_header(
     page: Page,
     row: Locator,
@@ -219,6 +272,7 @@ smoke_globals = BASE_FUNCTION("run_smoke").__globals__
 smoke_globals["test_row_drag_selection"] = test_row_drag_selection
 smoke_globals["test_multi_row_delete_without_dialog"] = test_multi_row_delete_without_dialog
 RIBBON["wait_for_operator_repair"] = wait_for_full_repair
+RIBBON["VIEWPORT"]["frozen_fields"] = authoritative_frozen_fields
 RIBBON["test_viewport_and_frozen_columns"].__globals__["test_ribbon_contract"] = test_ribbon_contract
 
 
