@@ -55,7 +55,9 @@ def test_ribbon_contract(page: Page) -> None:
         "The ribbon did not return to the expanded state.",
     )
 
-    first = saved_rows(page).first
+    rows = saved_rows(page)
+    first = rows.nth(0)
+    second = rows.nth(1)
     description = cell(first, "description")
     description.click(button="right")
     shell = page.locator(".journal-context-shell")
@@ -67,17 +69,16 @@ def test_ribbon_contract(page: Page) -> None:
     page.keyboard.press("Escape")
     shell.wait_for(state="hidden", timeout=5_000)
 
-    row_numbers = page.locator(".journal-row-number")
-    row_numbers.nth(0).click()
-    row_numbers.nth(1).click(modifiers=["Shift"])
+    first.locator(".journal-row-number").click()
+    second.locator(".journal-row-number").click(modifiers=["Shift"])
     require(
-        page.evaluate("() => (window.shiftHelperSelectedRowKeys || []).length") == 2,
+        page.locator(".journal-row--multi-selected").count() == 2,
         "Two rows were not selected before the context-menu check.",
     )
-    row_numbers.nth(1).click(button="right")
+    second.locator(".journal-row-number").click(button="right")
     shell.wait_for(state="visible", timeout=5_000)
     require(
-        page.evaluate("() => (window.shiftHelperSelectedRowKeys || []).length") == 2,
+        page.locator(".journal-row--multi-selected").count() == 2,
         "Right click collapsed the existing multi-row selection.",
     )
     require(
