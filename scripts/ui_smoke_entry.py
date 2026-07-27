@@ -181,8 +181,13 @@ def test_ribbon_contract(page: Page) -> None:
     first = rows.nth(0)
     second = rows.nth(1)
     description = cell(first, "description")
+    description.click()
+    require(
+        page.locator("#event-journal").get_attribute("data-selection-mode") == "cells",
+        "A cell click did not leave column-selection mode.",
+    )
     description.click(button="right")
-    shell = page.locator(".journal-context-shell")
+    shell = page.locator(".journal-context-shell:visible")
     shell.wait_for(state="visible", timeout=5_000)
     require(
         shell.locator(".journal-mini-toolbar").is_visible(),
@@ -195,6 +200,7 @@ def test_ribbon_contract(page: Page) -> None:
     click_row_header(page, second, shift=True)
     require(page.locator(".journal-row--multi-selected").count() == 2, "Two rows were not selected.")
     click_row_header(page, second, button="right")
+    shell = page.locator(".journal-context-shell:visible")
     shell.wait_for(state="visible", timeout=5_000)
     require(
         page.locator(".journal-row--multi-selected").count() == 2,
