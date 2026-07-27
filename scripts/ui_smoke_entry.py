@@ -38,7 +38,7 @@ def visible_saved_rows(page: Page) -> Locator:
 
 
 def authoritative_frozen_fields(page: Page) -> list[str]:
-    """Check both the virtual layout contract and its live sticky rendering."""
+    """Check virtual data-column layout and its live sticky rendering."""
 
     page.wait_for_function(
         """() => {
@@ -53,14 +53,24 @@ def authoritative_frozen_fields(page: Page) -> list[str]:
                 || root.dataset.frozenColumnsApplied !== select.value
             ) return false;
 
+            const businessFields = table.getColumns()
+                .filter(column => {
+                    const field = column.getField();
+                    const element = column.getElement?.();
+                    return field
+                        && !element?.classList.contains('tabulator-row-header')
+                        && !element?.classList.contains('journal-row-number');
+                })
+                .map(column => column.getField());
             const fields = table.getColumnLayout()
-                .filter(item => item?.field && item.frozen)
+                .filter(item => businessFields.includes(item?.field) && item.frozen)
                 .map(item => item.field);
             const headerFields = table.getColumns()
                 .filter(column => {
                     const field = column.getField();
                     const element = column.getElement?.();
-                    return field && element?.classList.contains('operator-stable-frozen');
+                    return businessFields.includes(field)
+                        && element?.classList.contains('operator-stable-frozen');
                 })
                 .map(column => column.getField());
             if (JSON.stringify(fields) !== JSON.stringify(headerFields)) return false;
@@ -71,22 +81,36 @@ def authoritative_frozen_fields(page: Page) -> list[str]:
                 const element = firstVisible.getCell(field)?.getElement?.();
                 return element?.classList.contains('operator-stable-frozen');
             });
-            const nonFrozenCells = table.getColumns()
-                .map(column => column.getField())
-                .filter(Boolean)
+            const nonFrozenCells = businessFields
                 .filter(field => !fields.includes(field))
                 .every(field => {
                     const element = firstVisible.getCell(field)?.getElement?.();
                     return !element?.classList.contains('operator-stable-frozen');
                 });
-            return stickyCells && nonFrozenCells;
+            const rowHeader = firstVisible.getElement?.()?.querySelector?.('.journal-row-number');
+            const rowHeaderPinned = rowHeader
+                && getComputedStyle(rowHeader).position === 'sticky'
+                && Math.abs(Number.parseFloat(getComputedStyle(rowHeader).left) || 0) < 0.5;
+            return stickyCells && nonFrozenCells && rowHeaderPinned;
         }""",
         timeout=10_000,
     )
     return page.evaluate(
-        """() => window.shiftHelperEventGrid.getColumnLayout()
-            .filter(item => item?.field && item.frozen)
-            .map(item => item.field)"""
+        """() => {
+            const table = window.shiftHelperEventGrid;
+            const businessFields = table.getColumns()
+                .filter(column => {
+                    const field = column.getField();
+                    const element = column.getElement?.();
+                    return field
+                        && !element?.classList.contains('tabulator-row-header')
+                        && !element?.classList.contains('journal-row-number');
+                })
+                .map(column => column.getField());
+            return table.getColumnLayout()
+                .filter(item => businessFields.includes(item?.field) && item.frozen)
+                .map(item => item.field);
+        }"""
     )
 
 
