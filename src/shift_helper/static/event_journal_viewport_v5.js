@@ -21,7 +21,10 @@
     let preferences = loadPreferences();
     let frozenApplying = false;
     let geometryFrame = 0;
-    let resizeFrame = 0;
+    let resizeTimer = 0;
+    let viewportRedrawing = false;
+    let lastViewportWidth = root.clientWidth;
+    let lastViewportHeight = root.clientHeight;
     let rowDrag = null;
     let syntheticRowPointer = false;
     let geometryBound = false;
@@ -179,17 +182,39 @@
         }
     }
 
-    function scheduleViewportRedraw() {
-        cancelAnimationFrame(resizeFrame);
-        resizeFrame = requestAnimationFrame(() => {
+    function scheduleViewportRedraw(force = false) {
+        if (viewportRedrawing) return;
+        const width = root.clientWidth;
+        const height = root.clientHeight;
+        if (!force && width === lastViewportWidth && height === lastViewportHeight) {
+            scheduleGeometry();
+            return;
+        }
+        clearTimeout(resizeTimer);
+        resizeTimer = window.setTimeout(() => {
+            if (viewportRedrawing) return;
+            const nextWidth = root.clientWidth;
+            const nextHeight = root.clientHeight;
+            if (
+                !force
+                && nextWidth === lastViewportWidth
+                && nextHeight === lastViewportHeight
+            ) {
+                scheduleGeometry();
+                return;
+            }
+            viewportRedrawing = true;
             const ranges = snapshotRanges();
             clearRanges();
             table.redraw(true);
             requestAnimationFrame(() => {
                 restoreRanges(ranges);
+                lastViewportWidth = root.clientWidth;
+                lastViewportHeight = root.clientHeight;
+                viewportRedrawing = false;
                 scheduleGeometry();
             });
-        });
+        }, 70);
     }
 
     function applyFrozenColumns() {
@@ -215,7 +240,7 @@
         } finally {
             frozenApplying = false;
         }
-        scheduleViewportRedraw();
+        scheduleViewportRedraw(true);
     }
 
     function syncSettings() {
@@ -351,7 +376,7 @@
         } catch (_error) {
             // Ignore unavailable local storage.
         }
-        scheduleViewportRedraw();
+        scheduleViewportRedraw(true);
     });
 
     ["rangeChanged", "cellClick", "renderComplete", "columnMoved", "columnVisibilityChanged"]
@@ -363,7 +388,7 @@
         if (!holder) return;
         geometryBound = true;
         holder.addEventListener("scroll", scheduleGeometry, {passive: true});
-        new ResizeObserver(scheduleViewportRedraw).observe(root);
+        new ResizeObserver(() => scheduleViewportRedraw(false)).observe(root);
         document.querySelector(".journal-fill-handle")?.addEventListener("pointerup", () => {
             requestAnimationFrame(scheduleGeometry);
         });
@@ -372,7 +397,7 @@
     table.on("tableBuilt", bindGeometry);
     table.on("renderComplete", bindGeometry);
     bindGeometry();
-    window.addEventListener("resize", scheduleViewportRedraw);
+    window.addEventListener("resize", () => scheduleViewportRedraw(false));
     matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
         if (preferences.theme === "system") applyAppearance();
     });
