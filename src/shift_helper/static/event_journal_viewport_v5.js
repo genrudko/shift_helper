@@ -107,6 +107,7 @@
             return;
         }
         if (handle.parentElement !== root) root.appendChild(handle);
+        handle.style.position = "absolute";
         const cellRect = cellElement.getBoundingClientRect();
         const rootRect = root.getBoundingClientRect();
         handle.style.left = `${cellRect.right - rootRect.left - (handle.offsetWidth / 2)}px`;
