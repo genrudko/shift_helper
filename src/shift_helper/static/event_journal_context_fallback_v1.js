@@ -9,6 +9,12 @@
     }
     root.dataset.contextFallback = "ready";
 
+    if (root.dataset.lightRedrawGuard !== "ready" && typeof table.redraw === "function") {
+        const guardedRedraw = table.redraw.bind(table);
+        table.redraw = () => guardedRedraw(false);
+        root.dataset.lightRedrawGuard = "ready";
+    }
+
     const ICONS = "/static/shift_helper_icons_v1.svg";
     let redispatching = false;
     let fallbackShell = null;
