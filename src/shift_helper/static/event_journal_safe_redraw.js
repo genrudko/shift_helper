@@ -8,6 +8,28 @@
         return;
     }
 
+    function rowNumberUnderPointer(event) {
+        const pathMatch = event.composedPath?.().find(
+            (item) => item instanceof Element && item.classList.contains("journal-row-number"),
+        );
+        if (pathMatch) {
+            return pathMatch;
+        }
+        return document.elementsFromPoint(event.clientX, event.clientY)
+            .find((item) => item instanceof Element && item.classList.contains("journal-row-number"))
+            || null;
+    }
+
+    function preserveRowSelectionOnSecondaryPress(event) {
+        if (event.button !== 2 || !rowNumberUnderPointer(event)) {
+            return;
+        }
+        event.stopImmediatePropagation();
+    }
+
+    document.addEventListener("pointerdown", preserveRowSelectionOnSecondaryPress, true);
+    document.addEventListener("mousedown", preserveRowSelectionOnSecondaryPress, true);
+
     const originalRedraw = table.redraw.bind(table);
     const originalGetRows = table.getRows.bind(table);
     let ready = Boolean(root.querySelector(".tabulator-tableholder"));
