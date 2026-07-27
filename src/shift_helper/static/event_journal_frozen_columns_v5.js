@@ -5,7 +5,13 @@
     const table = window.shiftHelperEventGrid;
     const select = document.getElementById("journal-frozen-through");
 
-    if (!root || !table || !select || typeof table.updateColumnDefinition !== "function") {
+    if (
+        !root
+        || !table
+        || !select
+        || root.dataset.frozenColumnsController === "ready"
+        || typeof table.updateColumnDefinition !== "function"
+    ) {
         return;
     }
 
