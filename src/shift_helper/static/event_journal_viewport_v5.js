@@ -143,7 +143,7 @@
             frozenApplying = false;
         }
         requestAnimationFrame(() => {
-            table.redraw(false);
+            table.redraw(true);
             scheduleGeometry();
         });
     }
