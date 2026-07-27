@@ -489,13 +489,13 @@
     }
     function bindCollapse() {
         document.getElementById("ribbon-collapse")?.addEventListener("click", (event) => {
-            event.preventDefault(); event.stopImmediatePropagation(); collapse(ribbon.dataset.ribbonState !== "collapsed");
+            event.preventDefault(); event.stopImmediatePropagation(); collapse(ribbon.dataset.ribbonState === "expanded");
         }, true);
         document.querySelector('[data-ribbon-command="collapse"]')?.addEventListener("click", (event) => {
             event.preventDefault(); event.stopImmediatePropagation(); collapse(true);
         }, true);
         document.querySelectorAll("[data-ribbon-tab]").forEach((tab) => tab.addEventListener("dblclick", (event) => {
-            event.preventDefault(); event.stopImmediatePropagation(); collapse(ribbon.dataset.ribbonState !== "collapsed");
+            event.preventDefault(); event.stopImmediatePropagation(); collapse(ribbon.dataset.ribbonState === "expanded");
         }, true));
     }
 
