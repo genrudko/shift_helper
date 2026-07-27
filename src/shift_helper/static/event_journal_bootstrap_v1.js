@@ -230,11 +230,21 @@
             });
             saveJson(widthKey, Object.fromEntries(baseWidths));
         };
-        const persistZoom = (value) => {
+        const captureViewPreferences = (zoomValue) => {
             const preferences = loadJson(preferenceKey, {});
-            preferences.zoom = value;
+            const controls = {
+                theme: document.getElementById("journal-theme"),
+                fontSize: document.getElementById("journal-font-size"),
+                fontFamily: document.getElementById("journal-font-family"),
+                frozenThrough: document.getElementById("journal-frozen-through"),
+            };
+            preferences.zoom = zoomValue;
+            if (controls.theme) preferences.theme = controls.theme.value;
+            if (controls.fontSize) preferences.fontSize = Number(controls.fontSize.value);
+            if (controls.fontFamily) preferences.fontFamily = controls.fontFamily.value;
+            if (controls.frozenThrough) preferences.frozenThrough = controls.frozenThrough.value;
             saveJson(preferenceKey, preferences);
-            saveJson(zoomKey, value);
+            saveJson(zoomKey, zoomValue);
         };
         const syncControls = (value) => {
             ["journal-zoom", "ribbon-zoom"].forEach((id) => {
@@ -298,7 +308,7 @@
         };
         const requestZoom = (rawValue, persist = true) => {
             pendingZoom = clampZoom(rawValue);
-            if (persist) persistZoom(pendingZoom);
+            if (persist) captureViewPreferences(pendingZoom);
             cancelAnimationFrame(zoomFrame);
             zoomFrame = requestAnimationFrame(() => applyZoom(pendingZoom));
         };
