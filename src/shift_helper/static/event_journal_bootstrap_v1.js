@@ -135,12 +135,78 @@
         document.head.appendChild(stylesheet);
     }
 
+    const bindColumnHeaders = (table) => {
+        const root = document.getElementById("event-journal");
+        if (!root || !table || root.dataset.columnHeaderSelection === "ready") {
+            return;
+        }
+        root.dataset.columnHeaderSelection = "ready";
+        let anchorField = null;
+
+        root.addEventListener("pointerdown", (event) => {
+            if (!(event.target instanceof Element) || event.button !== 0) {
+                return;
+            }
+            const header = event.target.closest(
+                ".tabulator-col[tabulator-field], .tabulator-col[data-field]",
+            );
+            if (!header || !root.contains(header)) {
+                return;
+            }
+            if (event.target.closest(
+                ".tabulator-col-sorter, .tabulator-header-filter, "
+                + ".tabulator-col-resize-handle, input, select, textarea",
+            )) {
+                return;
+            }
+
+            const field = header.getAttribute("tabulator-field") || header.dataset.field;
+            const fields = table.getColumns().map((column) => column.getField()).filter(Boolean);
+            const targetIndex = fields.indexOf(field);
+            const rows = table.getRows("active");
+            if (targetIndex < 0 || !rows.length) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            let startIndex = targetIndex;
+            let endIndex = targetIndex;
+            if (event.shiftKey && anchorField && fields.includes(anchorField)) {
+                startIndex = Math.min(fields.indexOf(anchorField), targetIndex);
+                endIndex = Math.max(fields.indexOf(anchorField), targetIndex);
+            } else {
+                anchorField = field;
+            }
+
+            if (!event.ctrlKey && !event.metaKey) {
+                (table.getRanges?.() || []).forEach((range) => range.remove());
+                root.querySelectorAll(".operator-column-selected").forEach((node) => {
+                    node.classList.remove("operator-column-selected");
+                });
+            }
+
+            const selectedFields = fields.slice(startIndex, endIndex + 1);
+            table.addRange(
+                rows[0].getCell(selectedFields[0]),
+                rows.at(-1).getCell(selectedFields.at(-1)),
+            );
+            selectedFields.forEach((selectedField) => {
+                table.getColumn(selectedField)?.getElement?.()?.classList.add(
+                    "operator-column-selected",
+                );
+            });
+            root.dataset.selectionMode = "columns";
+        }, true);
+    };
+
     const loadRepair = () => {
         if (document.getElementById("event-journal-operator-repair-v1-js")) {
             return;
         }
 
         const table = window.shiftHelperEventGrid;
+        bindColumnHeaders(table);
         const originalUpdateColumnDefinition = table?.updateColumnDefinition?.bind(table);
         if (table && originalUpdateColumnDefinition) {
             table.updateColumnDefinition = (field, definition) => {
