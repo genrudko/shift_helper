@@ -135,4 +135,12 @@
 
     new MutationObserver(bindEditors).observe(root, {childList: true, subtree: true});
     bindEditors();
+
+    if (!document.querySelector('script[data-shift-helper-frozen-columns="v5"]')) {
+        const script = document.createElement("script");
+        script.src = "/static/event_journal_frozen_columns_v5.js";
+        script.defer = true;
+        script.dataset.shiftHelperFrozenColumns = "v5";
+        document.head.appendChild(script);
+    }
 })();
