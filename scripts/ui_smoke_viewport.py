@@ -34,7 +34,7 @@ def test_excel_edit_modes(page: Page) -> None:
     box = description.bounding_box()
     require(box is not None, "Description cell geometry is unavailable.")
     page.mouse.dblclick(
-        box["x"] + 20,
+        box["x"] + 18,
         box["y"] + (box["height"] / 2),
         delay=90,
     )
@@ -49,8 +49,18 @@ def test_excel_edit_modes(page: Page) -> None:
 
     editor_box = editor.bounding_box()
     require(editor_box is not None, "Editor geometry is unavailable.")
+    text_width = editor.evaluate(
+        """element => {
+            const style = getComputedStyle(element);
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+            return context.measureText(element.value).width;
+        }"""
+    )
+    click_offset = max(12, min(editor_box["width"] - 6, text_width * 0.62))
     page.mouse.click(
-        editor_box["x"] + min(58, editor_box["width"] - 6),
+        editor_box["x"] + click_offset,
         editor_box["y"] + (editor_box["height"] / 2),
     )
     require(editor.is_visible(), "A click inside the editor unexpectedly closed editing.")
