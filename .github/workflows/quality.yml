@@ -53,6 +53,7 @@ jobs:
           node --check src/shift_helper/static/event_journal_workspace_v4.js
           node --check src/shift_helper/static/event_journal_viewport_v5.js
           node --check src/shift_helper/static/event_journal_editor_caret_v5.js
+          node --check src/shift_helper/static/event_journal_frozen_columns_v5.js
 
       - name: Ruff
         id: ruff
