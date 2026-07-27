@@ -6,9 +6,7 @@
     const settingsDialog = document.getElementById("journal-view-settings");
     const frozenSelect = document.getElementById("journal-frozen-through");
 
-    if (!root || !table || !settingsDialog || !frozenSelect) {
-        return;
-    }
+    if (!root || !table || !settingsDialog || !frozenSelect) return;
 
     const preferenceKey = "shift-helper-ui-preferences-v1";
     const widthKey = "shift-helper-column-base-widths-v1";
@@ -19,97 +17,113 @@
         fontFamily: "Segoe UI",
         frozenThrough: "asset_label",
     };
-    let preferences = loadJson(preferenceKey, defaults);
-    const baseWidths = new Map(Object.entries(loadJson(widthKey, {})));
-    let scalingColumns = false;
+
+    let preferences = loadPreferences();
     let frozenApplying = false;
-    let currentScale = 1;
     let geometryFrame = 0;
     let rowDrag = null;
     let syntheticRowPointer = false;
     let geometryBound = false;
 
-    function loadJson(key, fallback) {
+    function loadPreferences() {
         try {
-            const raw = window.localStorage.getItem(key);
-            return raw === null ? structuredClone(fallback) : {
-                ...structuredClone(fallback),
-                ...JSON.parse(raw),
+            return {
+                ...structuredClone(defaults),
+                ...JSON.parse(localStorage.getItem(preferenceKey) || "{}"),
             };
         } catch (_error) {
-            return structuredClone(fallback);
+            return structuredClone(defaults);
         }
     }
 
-    function saveJson(key, value) {
+    function savePreferences() {
         try {
-            window.localStorage.setItem(key, JSON.stringify(value));
+            localStorage.setItem(preferenceKey, JSON.stringify(preferences));
         } catch (_error) {
-            // View settings must never block journal input.
+            // Visual preferences must never block journal input.
         }
-    }
-
-    function saveBaseWidths() {
-        saveJson(widthKey, Object.fromEntries(baseWidths));
     }
 
     function effectiveTheme() {
-        if (preferences.theme !== "system") {
-            return preferences.theme;
-        }
-        return window.matchMedia("(prefers-color-scheme: light)").matches
-            ? "light"
-            : "dark";
+        if (preferences.theme !== "system") return preferences.theme;
+        return matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
     }
 
-    function clampPreferences() {
-        preferences.zoom = Math.min(140, Math.max(75, Number(preferences.zoom) || 100));
-        preferences.fontSize = Math.min(18, Math.max(10, Number(preferences.fontSize) || 13));
-        const fields = new Set(["none", ...table.getColumns()
-            .map((column) => column.getField())
-            .filter(Boolean)]);
-        if (!fields.has(preferences.frozenThrough)) {
+    function availableFields() {
+        return new Set([
+            "none",
+            ...table.getColumns().map((column) => column.getField()).filter(Boolean),
+        ]);
+    }
+
+    function normalizePreferences() {
+        preferences.zoom = Math.min(400, Math.max(10, Number(preferences.zoom) || 100));
+        preferences.fontSize = Math.min(200, Math.max(1, Number(preferences.fontSize) || 13));
+        if (!availableFields().has(preferences.frozenThrough)) {
             preferences.frozenThrough = defaults.frozenThrough;
         }
     }
 
-    function initializeBaseWidths() {
-        table.getColumns().forEach((column) => {
-            const field = column.getField();
-            if (field && !baseWidths.has(field)) {
-                baseWidths.set(field, column.getWidth());
-            }
-        });
-        saveBaseWidths();
+    function applyAppearance() {
+        normalizePreferences();
+        document.body.style.removeProperty("zoom");
+        document.body.style.removeProperty("width");
+        document.documentElement.dataset.theme = effectiveTheme();
+        document.documentElement.style.setProperty(
+            "--ui-font-family",
+            `"${preferences.fontFamily}", "Segoe UI", system-ui, sans-serif`,
+        );
+        document.documentElement.style.setProperty("--ui-viewport-height", "100vh");
+        savePreferences();
     }
 
-    function scaleColumns() {
-        initializeBaseWidths();
-        const scale = preferences.zoom / 100;
-        scalingColumns = true;
+    function hideFillHandle() {
+        const handle = document.querySelector(".journal-fill-handle");
+        if (handle) handle.hidden = true;
+    }
+
+    function selectedLastCellElement() {
+        if ((window.shiftHelperSelectedRowKeys || []).length) return null;
+        const range = table.getRanges?.().at(-1);
+        const raw = range?.getCells?.() || [];
+        const cells = (raw.length && Array.isArray(raw[0]) ? raw.flat() : raw)
+            .filter((cell) => cell && typeof cell.getElement === "function");
+        const cell = cells.at(-1);
+        if (!cell) return null;
         try {
-            table.getColumns().forEach((column) => {
-                const field = column.getField();
-                const base = field ? Number(baseWidths.get(field)) : 0;
-                if (base > 0) {
-                    column.setWidth(Math.max(54, Math.round(base * scale)));
-                }
-            });
-        } finally {
-            scalingColumns = false;
-            currentScale = scale;
+            const element = cell.getElement();
+            return element?.isConnected ? element : null;
+        } catch (_error) {
+            return null;
         }
+    }
+
+    function placeFillHandle() {
+        const handle = document.querySelector(".journal-fill-handle");
+        const cellElement = selectedLastCellElement();
+        if (!handle || !cellElement) {
+            hideFillHandle();
+            return;
+        }
+        if (handle.parentElement !== root) root.appendChild(handle);
+        const cellRect = cellElement.getBoundingClientRect();
+        const rootRect = root.getBoundingClientRect();
+        handle.style.left = `${cellRect.right - rootRect.left - (handle.offsetWidth / 2)}px`;
+        handle.style.top = `${cellRect.bottom - rootRect.top - (handle.offsetHeight / 2)}px`;
+        handle.hidden = false;
+    }
+
+    function scheduleGeometry() {
+        cancelAnimationFrame(geometryFrame);
+        geometryFrame = requestAnimationFrame(placeFillHandle);
     }
 
     function applyFrozenColumns() {
-        if (frozenApplying || typeof table.getColumnLayout !== "function") {
-            return;
-        }
+        if (frozenApplying || typeof table.getColumnLayout !== "function") return;
         const layout = table.getColumnLayout();
-        const boundary = preferences.frozenThrough;
-        const boundaryIndex = boundary === "none"
+        const boundaryIndex = preferences.frozenThrough === "none"
             ? -1
-            : layout.findIndex((column) => column.field === boundary);
+            : layout.findIndex((column) => column.field === preferences.frozenThrough);
         let changed = false;
         layout.forEach((column, index) => {
             const frozen = boundaryIndex >= 0 && index <= boundaryIndex;
@@ -118,9 +132,8 @@
                 changed = true;
             }
         });
-        if (!changed) {
-            return;
-        }
+        if (!changed) return;
+
         frozenApplying = true;
         hideFillHandle();
         try {
@@ -129,121 +142,40 @@
         } finally {
             frozenApplying = false;
         }
-        window.requestAnimationFrame(() => {
-            scaleColumns();
-            table.redraw(true);
+        requestAnimationFrame(() => {
+            table.redraw(false);
             scheduleGeometry();
         });
     }
 
-    function applyView({freeze = true} = {}) {
-        clampPreferences();
-        const scale = preferences.zoom / 100;
-        document.body.style.zoom = "";
-        document.body.style.width = "";
-        document.documentElement.dataset.theme = effectiveTheme();
-        document.documentElement.style.setProperty("--ui-scale-factor", String(scale));
-        document.documentElement.style.setProperty(
-            "--ui-font-family",
-            `"${preferences.fontFamily}", "Segoe UI", system-ui, sans-serif`,
-        );
-        document.documentElement.style.setProperty(
-            "--journal-font-size",
-            `${preferences.fontSize * scale}px`,
-        );
-        document.documentElement.style.setProperty(
-            "--journal-row-height",
-            `${Math.round(34 * scale)}px`,
-        );
-        document.documentElement.style.setProperty(
-            "--journal-control-height",
-            `${Math.round(30 * scale)}px`,
-        );
-        document.documentElement.style.setProperty(
-            "--journal-toolbar-gap",
-            `${Math.max(5, Math.round(8 * scale))}px`,
-        );
-        document.documentElement.style.setProperty("--ui-viewport-height", "100vh");
-        scaleColumns();
-        saveJson(preferenceKey, preferences);
-        if (freeze) {
-            applyFrozenColumns();
-        }
-        window.requestAnimationFrame(() => {
-            table.redraw(true);
-            scheduleGeometry();
-        });
-    }
-
-    function selectedLastCell() {
-        if ((window.shiftHelperSelectedRowKeys || []).length) {
-            return null;
-        }
-        const range = table.getRanges?.().at(-1);
-        const raw = range?.getCells?.() || [];
-        const cells = (raw.length && Array.isArray(raw[0]) ? raw.flat() : raw)
-            .filter((cell) => cell && typeof cell.getElement === "function");
-        return cells.at(-1) || null;
-    }
-
-    function fillHandle() {
-        return document.querySelector(".journal-fill-handle");
-    }
-
-    function hideFillHandle() {
-        const handle = fillHandle();
-        if (handle) {
-            handle.hidden = true;
-        }
-    }
-
-    function placeFillHandle() {
-        const handle = fillHandle();
-        const cell = selectedLastCell();
-        if (!handle || !cell || !cell.getElement()?.isConnected) {
-            hideFillHandle();
-            return;
-        }
-        if (handle.parentElement !== root) {
-            root.appendChild(handle);
-        }
-        const cellRect = cell.getElement().getBoundingClientRect();
-        const rootRect = root.getBoundingClientRect();
-        handle.style.left = `${cellRect.right - rootRect.left - (handle.offsetWidth / 2)}px`;
-        handle.style.top = `${cellRect.bottom - rootRect.top - (handle.offsetHeight / 2)}px`;
-        handle.hidden = false;
-    }
-
-    function scheduleGeometry() {
-        window.cancelAnimationFrame(geometryFrame);
-        geometryFrame = window.requestAnimationFrame(placeFillHandle);
+    function syncSettings() {
+        const theme = document.getElementById("journal-theme");
+        const zoom = document.getElementById("journal-zoom");
+        const fontSize = document.getElementById("journal-font-size");
+        const fontFamily = document.getElementById("journal-font-family");
+        if (theme) theme.value = preferences.theme;
+        if (zoom) zoom.value = String(preferences.zoom);
+        if (fontSize) fontSize.value = String(preferences.fontSize);
+        if (fontFamily) fontFamily.value = preferences.fontFamily;
+        frozenSelect.value = preferences.frozenThrough;
     }
 
     function protectEditor(editor) {
-        if (editor.dataset.caretClickProtected === "true") {
-            return;
-        }
+        if (editor.dataset.caretClickProtected === "true") return;
         editor.dataset.caretClickProtected = "true";
-        const keepEditing = (event) => {
-            event.stopPropagation();
-        };
-        editor.addEventListener("pointerdown", keepEditing);
-        editor.addEventListener("mousedown", keepEditing);
-        editor.addEventListener("pointerup", keepEditing);
-        editor.addEventListener("click", keepEditing);
-        editor.addEventListener("dblclick", keepEditing);
+        const keepEditing = (event) => event.stopPropagation();
+        ["pointerdown", "mousedown", "pointerup", "click", "dblclick"].forEach((type) => {
+            editor.addEventListener(type, keepEditing);
+        });
     }
 
-    const editorObserver = new MutationObserver(() => {
+    new MutationObserver(() => {
         root.querySelectorAll(".journal-stable-editor").forEach(protectEditor);
-    });
-    editorObserver.observe(root, {childList: true, subtree: true});
+    }).observe(root, {childList: true, subtree: true});
 
     function rowNumberAtPoint(x, y) {
         const element = document.elementFromPoint(x, y);
-        return element instanceof Element
-            ? element.closest(".journal-row-number")
-            : null;
+        return element instanceof Element ? element.closest(".journal-row-number") : null;
     }
 
     function dispatchShiftSelection(rowNumber, ctrlKey) {
@@ -264,26 +196,17 @@
     }
 
     window.addEventListener("pointerdown", (event) => {
-        if (syntheticRowPointer || !event.isTrusted || event.button !== 0) {
-            return;
-        }
+        if (syntheticRowPointer || !event.isTrusted || event.button !== 0) return;
         const target = event.target instanceof Element
             ? event.target.closest(".journal-row-number")
             : null;
-        if (!target || !root.contains(target)) {
-            return;
-        }
-        rowDrag = {
-            last: target,
-            ctrlKey: event.ctrlKey || event.metaKey,
-        };
+        if (!target || !root.contains(target)) return;
+        rowDrag = {last: target, ctrlKey: event.ctrlKey || event.metaKey};
         root.classList.add("journal-row-dragging");
     }, true);
 
     window.addEventListener("pointermove", (event) => {
-        if (!rowDrag || !(event.buttons & 1)) {
-            return;
-        }
+        if (!rowDrag || !(event.buttons & 1)) return;
         const target = rowNumberAtPoint(event.clientX, event.clientY);
         if (target && target !== rowDrag.last) {
             rowDrag.last = target;
@@ -292,120 +215,99 @@
         const holder = root.querySelector(".tabulator-tableholder");
         if (holder) {
             const rect = holder.getBoundingClientRect();
-            const edge = Math.max(24, 34 * currentScale);
-            if (event.clientY < rect.top + edge) {
-                holder.scrollTop -= Math.max(12, edge / 2);
-            } else if (event.clientY > rect.bottom - edge) {
+            const rowHeight = Number.parseFloat(
+                getComputedStyle(document.documentElement)
+                    .getPropertyValue("--journal-row-height"),
+            ) || 34;
+            const edge = Math.max(24, rowHeight);
+            if (event.clientY < rect.top + edge) holder.scrollTop -= Math.max(12, edge / 2);
+            else if (event.clientY > rect.bottom - edge) {
                 holder.scrollTop += Math.max(12, edge / 2);
             }
         }
         event.preventDefault();
     }, true);
 
-    function finishRowDrag() {
+    const finishRowDrag = () => {
         rowDrag = null;
         root.classList.remove("journal-row-dragging");
-    }
-
+    };
     window.addEventListener("pointerup", finishRowDrag, true);
     window.addEventListener("pointercancel", finishRowDrag, true);
 
-    function syncSettings() {
-        frozenSelect.value = preferences.frozenThrough;
-    }
-
     document.getElementById("open-view-settings")?.addEventListener("click", () => {
-        preferences = loadJson(preferenceKey, defaults);
+        preferences = loadPreferences();
+        normalizePreferences();
         syncSettings();
     });
-
     document.getElementById("journal-theme")?.addEventListener("change", (event) => {
         preferences.theme = event.target.value;
-        applyView({freeze: false});
-    });
-    document.getElementById("journal-zoom")?.addEventListener("input", (event) => {
-        preferences.zoom = Number(event.target.value);
-        applyView({freeze: false});
+        applyAppearance();
     });
     document.getElementById("journal-font-size")?.addEventListener("input", (event) => {
         preferences.fontSize = Number(event.target.value);
-        applyView({freeze: false});
+        applyAppearance();
+        scheduleGeometry();
     });
     document.getElementById("journal-font-family")?.addEventListener("change", (event) => {
         preferences.fontFamily = event.target.value;
-        applyView({freeze: false});
+        applyAppearance();
+        scheduleGeometry();
     });
     frozenSelect.addEventListener("change", (event) => {
         preferences.frozenThrough = event.target.value;
-        applyView({freeze: true});
+        applyAppearance();
+        applyFrozenColumns();
     });
     document.getElementById("reset-view-settings")?.addEventListener("click", () => {
-        preferences = {...defaults};
-        baseWidths.clear();
-        saveBaseWidths();
-        applyView({freeze: true});
+        preferences = structuredClone(defaults);
+        try {
+            localStorage.removeItem(widthKey);
+        } catch (_error) {
+            // Ignore unavailable local storage.
+        }
+        applyAppearance();
+        syncSettings();
+        document.getElementById("journal-zoom")?.dispatchEvent(new Event("input", {bubbles: true}));
+        applyFrozenColumns();
     });
     document.getElementById("reset-grid-layout")?.addEventListener("click", () => {
-        window.requestAnimationFrame(() => {
-            baseWidths.clear();
-            initializeBaseWidths();
-            scaleColumns();
+        try {
+            localStorage.removeItem(widthKey);
+        } catch (_error) {
+            // Ignore unavailable local storage.
+        }
+        requestAnimationFrame(() => {
+            table.redraw(false);
             scheduleGeometry();
         });
     });
 
-    table.on("columnResized", (column) => {
-        if (scalingColumns || frozenApplying) {
-            return;
-        }
-        const field = column?.getField?.();
-        if (field) {
-            baseWidths.set(field, column.getWidth() / Math.max(0.75, currentScale));
-            saveBaseWidths();
-        }
-        scheduleGeometry();
-    });
-    table.on("rangeChanged", scheduleGeometry);
-    table.on("cellClick", scheduleGeometry);
-    table.on("renderComplete", scheduleGeometry);
-    table.on("columnMoved", scheduleGeometry);
-    table.on("columnVisibilityChanged", scheduleGeometry);
+    ["rangeChanged", "cellClick", "renderComplete", "columnMoved", "columnVisibilityChanged"]
+        .forEach((eventName) => table.on(eventName, scheduleGeometry));
 
     function bindGeometry() {
-        if (geometryBound) {
-            return;
-        }
+        if (geometryBound) return;
         const holder = root.querySelector(".tabulator-tableholder");
-        if (!holder) {
-            return;
-        }
+        if (!holder) return;
         geometryBound = true;
         holder.addEventListener("scroll", scheduleGeometry, {passive: true});
-        new ResizeObserver(() => {
-            table.redraw(true);
-            scheduleGeometry();
-        }).observe(root);
-        const handle = fillHandle();
-        handle?.addEventListener("pointerup", () => {
-            window.requestAnimationFrame(scheduleGeometry);
+        new ResizeObserver(scheduleGeometry).observe(root);
+        document.querySelector(".journal-fill-handle")?.addEventListener("pointerup", () => {
+            requestAnimationFrame(scheduleGeometry);
         });
     }
 
     table.on("tableBuilt", bindGeometry);
     table.on("renderComplete", bindGeometry);
     bindGeometry();
-
-    window.addEventListener("resize", () => {
-        preferences = loadJson(preferenceKey, defaults);
-        applyView({freeze: false});
-    });
-    window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
-        if (preferences.theme === "system") {
-            applyView({freeze: false});
-        }
+    window.addEventListener("resize", scheduleGeometry);
+    matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+        if (preferences.theme === "system") applyAppearance();
     });
 
-    applyView({freeze: true});
+    applyAppearance();
     syncSettings();
+    applyFrozenColumns();
     scheduleGeometry();
 })();
