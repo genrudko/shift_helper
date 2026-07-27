@@ -147,7 +147,8 @@
         || !table
         || !select
         || root.dataset.frozenColumnsController === "ready"
-        || typeof table.updateColumnDefinition !== "function"
+        || typeof table.getColumnDefinitions !== "function"
+        || typeof table.setColumns !== "function"
     ) {
         return;
     }
@@ -170,12 +171,6 @@
         const preferences = readPreferences();
         preferences.frozenThrough = boundary;
         window.localStorage.setItem(preferenceKey, JSON.stringify(preferences));
-    }
-
-    function orderedFields() {
-        return table.getColumns()
-            .map((column) => column.getField())
-            .filter(Boolean);
     }
 
     function expectedFields(boundary, fields) {
@@ -207,14 +202,6 @@
         });
     }
 
-    async function setFrozen(field, frozen) {
-        const column = table.getColumn(field);
-        if (!column || Boolean(column.getDefinition().frozen) === frozen) {
-            return;
-        }
-        await table.updateColumnDefinition(field, {frozen});
-    }
-
     async function applyBoundary(boundary) {
         if (applying) {
             queuedBoundary = boundary;
@@ -225,23 +212,21 @@
         delete root.dataset.frozenColumnsApplied;
         clearTransientState();
         try {
-            const fields = orderedFields();
+            const definitions = table.getColumnDefinitions();
+            const fields = definitions.map((definition) => definition.field).filter(Boolean);
             const expected = expectedFields(boundary, fields);
+            const nextDefinitions = definitions.map((definition) => ({
+                ...definition,
+                frozen: expected.has(definition.field),
+            }));
 
-            for (const field of [...fields].reverse()) {
-                if (!expected.has(field)) {
-                    await setFrozen(field, false);
-                }
-            }
-            for (const field of fields) {
-                if (expected.has(field)) {
-                    await setFrozen(field, true);
-                }
-            }
-
+            await Promise.resolve(table.setColumns(nextDefinitions));
             saveBoundary(boundary);
             table.redraw(true);
             root.dataset.frozenColumnsApplied = boundary;
+        } catch (error) {
+            root.dataset.frozenColumnsError = String(error);
+            throw error;
         } finally {
             delete root.dataset.frozenColumnsApplying;
             applying = false;
