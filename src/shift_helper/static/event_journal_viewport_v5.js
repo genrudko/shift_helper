@@ -20,6 +20,7 @@
 
     let preferences = loadPreferences();
     let frozenApplying = false;
+    let frozenInitialized = false;
     let geometryFrame = 0;
     let resizeTimer = 0;
     let viewportRedrawing = false;
@@ -219,6 +220,8 @@
 
     function applyFrozenColumns() {
         if (frozenApplying || typeof table.getColumnLayout !== "function") return;
+        const initialPass = !frozenInitialized;
+        frozenInitialized = true;
         const layout = table.getColumnLayout();
         const boundaryIndex = preferences.frozenThrough === "none"
             ? -1
@@ -239,6 +242,15 @@
             table.setColumnLayout(layout);
         } finally {
             frozenApplying = false;
+        }
+        if (initialPass) {
+            requestAnimationFrame(() => {
+                table.redraw(false);
+                lastViewportWidth = root.clientWidth;
+                lastViewportHeight = root.clientHeight;
+                scheduleGeometry();
+            });
+            return;
         }
         scheduleViewportRedraw(true);
     }
