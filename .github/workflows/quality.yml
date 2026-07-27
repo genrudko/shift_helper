@@ -49,6 +49,7 @@ jobs:
           node --check src/shift_helper/static/event_journal.js
           node --check src/shift_helper/static/event_journal_lifecycle_guard.js
           node --check src/shift_helper/static/event_journal_history_v6.js
+          node --check src/shift_helper/static/event_journal_safe_redraw.js
           node --check src/shift_helper/static/event_journal_workspace_v4.js
 
       - name: Ruff
