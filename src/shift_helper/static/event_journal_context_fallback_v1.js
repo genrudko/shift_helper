@@ -15,6 +15,50 @@
         root.dataset.lightRedrawGuard = "ready";
     }
 
+    function guardColumnMutations() {
+        const sample = table.getColumns()?.[0];
+        const prototype = sample ? Object.getPrototypeOf(sample) : null;
+        if (!prototype || prototype.__shiftHelperMutationGuard === true) return;
+
+        const originalShow = prototype.show;
+        const originalHide = prototype.hide;
+        const originalSetWidth = prototype.setWidth;
+        Object.defineProperty(prototype, "__shiftHelperMutationGuard", {
+            configurable: false,
+            enumerable: false,
+            value: true,
+            writable: false,
+        });
+
+        if (typeof originalShow === "function") {
+            prototype.show = function show() {
+                if (typeof this.isVisible === "function" && this.isVisible()) return this;
+                return originalShow.call(this);
+            };
+        }
+        if (typeof originalHide === "function") {
+            prototype.hide = function hide() {
+                if (typeof this.isVisible === "function" && !this.isVisible()) return this;
+                return originalHide.call(this);
+            };
+        }
+        if (typeof originalSetWidth === "function") {
+            prototype.setWidth = function setWidth(width) {
+                const requested = Number(width);
+                const current = Number(this.getWidth?.());
+                if (
+                    Number.isFinite(requested)
+                    && Number.isFinite(current)
+                    && Math.abs(requested - current) < 0.5
+                ) {
+                    return this;
+                }
+                return originalSetWidth.call(this, width);
+            };
+        }
+        root.dataset.columnMutationGuard = "ready";
+    }
+
     const ICONS = "/static/shift_helper_icons_v1.svg";
     let redispatching = false;
     let fallbackShell = null;
@@ -292,6 +336,10 @@
         }
     }, true);
     window.addEventListener("resize", pinRowHeaders);
-    table.on("renderComplete", pinRowHeaders);
+    table.on("renderComplete", () => {
+        guardColumnMutations();
+        pinRowHeaders();
+    });
+    guardColumnMutations();
     pinRowHeaders();
 })();
