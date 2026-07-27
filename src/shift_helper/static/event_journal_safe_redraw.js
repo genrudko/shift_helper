@@ -9,6 +9,7 @@
     }
 
     const originalRedraw = table.redraw.bind(table);
+    const originalGetRows = table.getRows.bind(table);
     let ready = Boolean(root.querySelector(".tabulator-tableholder"));
     let pending = false;
     let pendingForce = false;
@@ -37,6 +38,20 @@
             originalRedraw(force);
         });
     }
+
+    table.getRows = (range) => {
+        if (range === "visible" && (!ready || !internalElementReady())) {
+            return [];
+        }
+        try {
+            return originalGetRows(range);
+        } catch (error) {
+            if (range === "visible" && /visibleRows/.test(String(error))) {
+                return [];
+            }
+            throw error;
+        }
+    };
 
     table.redraw = (force = false) => {
         if (!ready || !internalElementReady()) {
