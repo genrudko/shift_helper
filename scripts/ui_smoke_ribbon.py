@@ -86,7 +86,7 @@ def test_ribbon_contract(page: Page) -> None:
         "The row context menu does not state how many rows it will affect.",
     )
     page.keyboard.press("Escape")
-    description.click()
+    cell(second, "description").click()
 
     require(
         page.locator(".journal-fill-handle").count() <= 1,
