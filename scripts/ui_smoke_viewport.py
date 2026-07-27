@@ -34,7 +34,7 @@ def test_excel_edit_modes(page: Page) -> None:
     box = description.bounding_box()
     require(box is not None, "Description cell geometry is unavailable.")
     page.mouse.dblclick(
-        box["x"] + 24,
+        box["x"] + 20,
         box["y"] + (box["height"] / 2),
         delay=90,
     )
@@ -50,7 +50,7 @@ def test_excel_edit_modes(page: Page) -> None:
     editor_box = editor.bounding_box()
     require(editor_box is not None, "Editor geometry is unavailable.")
     page.mouse.click(
-        editor_box["x"] + (editor_box["width"] * 0.52),
+        editor_box["x"] + min(58, editor_box["width"] - 6),
         editor_box["y"] + (editor_box["height"] / 2),
     )
     require(editor.is_visible(), "A click inside the editor unexpectedly closed editing.")
