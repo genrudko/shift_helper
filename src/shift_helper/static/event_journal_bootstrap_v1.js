@@ -2,21 +2,15 @@
 
 (() => {
     const migrationKey = "shift-helper-grid-persistence-migration-v4";
-    if (window.localStorage.getItem(migrationKey) !== "done") {
-        const legacyFragments = [
-            "shift-helper-event-grid-v3",
-            "tabulator-shift-helper-event-grid-v3",
-        ];
-        const keysToRemove = [];
-        for (let index = 0; index < window.localStorage.length; index += 1) {
-            const key = window.localStorage.key(index);
-            if (key && legacyFragments.some((fragment) => key.includes(fragment))) {
-                keysToRemove.push(key);
-            }
-        }
-        keysToRemove.forEach((key) => window.localStorage.removeItem(key));
-        window.localStorage.setItem(migrationKey, "done");
+    if (localStorage.getItem(migrationKey) === "done") return;
+    const fragments = ["shift-helper-event-grid-v3", "tabulator-shift-helper-event-grid-v3"];
+    const obsolete = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (key && fragments.some((fragment) => key.includes(fragment))) obsolete.push(key);
     }
+    obsolete.forEach((key) => localStorage.removeItem(key));
+    localStorage.setItem(migrationKey, "done");
 })();
 
 (() => {
@@ -32,7 +26,7 @@
         const match = /^(\d{1,2}):(\d{2})$/.exec(String(value || "").trim());
         return match ? (+match[1] * 60) + +match[2] : null;
     };
-    const compare = (field, leftValue, rightValue, direction) => {
+    const compareValues = (field, leftValue, rightValue, direction) => {
         const leftBlank = String(leftValue ?? "").trim() === "";
         const rightBlank = String(rightValue ?? "").trim() === "";
         if (leftBlank !== rightBlank) {
@@ -42,30 +36,23 @@
         if (dateFields.has(field)) {
             const left = parseDate(leftValue);
             const right = parseDate(rightValue);
-            if (left !== null && right !== null) {
-                return left - right;
-            }
+            if (left !== null && right !== null) return left - right;
         }
         if (timeFields.has(field)) {
             const left = parseTime(leftValue);
             const right = parseTime(rightValue);
-            if (left !== null && right !== null) {
-                return left - right;
-            }
+            if (left !== null && right !== null) return left - right;
         }
         const left = Number(String(leftValue ?? "").replace(/\s/g, "").replace(",", "."));
         const right = Number(String(rightValue ?? "").replace(/\s/g, "").replace(",", "."));
-        if (Number.isFinite(left) && Number.isFinite(right)) {
-            return left - right;
-        }
+        if (Number.isFinite(left) && Number.isFinite(right)) return left - right;
         return collator.compare(String(leftValue ?? ""), String(rightValue ?? ""));
     };
 
-    function installDraftAwareTabulator(TabulatorClass) {
+    function install(TabulatorClass) {
         if (!TabulatorClass || window.shiftHelperDraftSortBootstrap === "ready") {
             return TabulatorClass;
         }
-
         TabulatorClass.extendModule("sort", "sorters", {
             shiftHelperDraft(left, right, leftRow, rightRow, _column, direction, params) {
                 const leftData = leftRow.getData();
@@ -76,14 +63,11 @@
                     const result = leftDraft ? 1 : -1;
                     return direction === "desc" ? -result : result;
                 }
-                if (leftDraft) {
-                    return 0;
-                }
-                const result = compare(params.field, left, right, direction);
-                return result || (Number(leftData.id || 0) - Number(rightData.id || 0));
+                if (leftDraft) return 0;
+                return compareValues(params.field, left, right, direction)
+                    || (Number(leftData.id || 0) - Number(rightData.id || 0));
             },
         });
-
         function ShiftHelperTabulator(element, options = {}) {
             const target = typeof element === "string" ? document.querySelector(element) : element;
             if (target?.id === "event-journal") {
@@ -96,7 +80,6 @@
             }
             return new TabulatorClass(element, options);
         }
-
         Object.setPrototypeOf(ShiftHelperTabulator, TabulatorClass);
         ShiftHelperTabulator.prototype = TabulatorClass.prototype;
         window.shiftHelperDraftSortBootstrap = "ready";
@@ -104,22 +87,19 @@
     }
 
     if (window.Tabulator) {
-        window.Tabulator = installDraftAwareTabulator(window.Tabulator);
+        window.Tabulator = install(window.Tabulator);
         return;
     }
-
-    let pendingTabulator;
+    let pending;
     Object.defineProperty(window, "Tabulator", {
         configurable: true,
-        get() {
-            return pendingTabulator;
-        },
+        get: () => pending,
         set(value) {
-            pendingTabulator = installDraftAwareTabulator(value);
+            pending = install(value);
             Object.defineProperty(window, "Tabulator", {
                 configurable: true,
                 writable: true,
-                value: pendingTabulator,
+                value: pending,
             });
         },
     });
@@ -129,66 +109,47 @@
     const preferenceKey = "shift-helper-ui-preferences-v1";
     const widthKey = "shift-helper-column-base-widths-v1";
     const zoomKey = "shift-helper-operator-zoom-v1";
-    const stylesheetId = "event-journal-operator-repair-v1-css";
-
-    if (!document.getElementById(stylesheetId)) {
-        const stylesheet = document.createElement("link");
-        stylesheet.id = stylesheetId;
-        stylesheet.rel = "stylesheet";
-        stylesheet.href = "/static/event_journal_operator_repair_v1.css";
-        document.head.appendChild(stylesheet);
-    }
-
     const loadJson = (key, fallback) => {
         try {
-            const raw = window.localStorage.getItem(key);
+            const raw = localStorage.getItem(key);
             return raw === null ? structuredClone(fallback) : JSON.parse(raw);
         } catch (_error) {
             return structuredClone(fallback);
         }
     };
     const saveJson = (key, value) => {
-        try {
-            window.localStorage.setItem(key, JSON.stringify(value));
-        } catch (_error) {
-            // Local display preferences must never block journal input.
-        }
+        try { localStorage.setItem(key, JSON.stringify(value)); } catch (_error) { /* non-blocking */ }
     };
     const clampZoom = (value) => Math.min(400, Math.max(10, Number(value) || 100));
 
-    const bindColumnHeaders = (table) => {
+    if (!document.getElementById("event-journal-operator-repair-v1-css")) {
+        const stylesheet = document.createElement("link");
+        stylesheet.id = "event-journal-operator-repair-v1-css";
+        stylesheet.rel = "stylesheet";
+        stylesheet.href = "/static/event_journal_operator_repair_v1.css";
+        document.head.appendChild(stylesheet);
+    }
+
+    function bindColumnHeaders(table) {
         const root = document.getElementById("event-journal");
-        if (!root || !table || root.dataset.columnHeaderSelection === "ready") {
-            return;
-        }
+        if (!root || !table || root.dataset.columnHeaderSelection === "ready") return;
         root.dataset.columnHeaderSelection = "ready";
         let anchorField = null;
-
         root.addEventListener("pointerdown", (event) => {
-            if (!(event.target instanceof Element) || event.button !== 0) {
-                return;
-            }
+            if (!(event.target instanceof Element) || event.button !== 0) return;
             const header = event.target.closest(
                 ".tabulator-col[tabulator-field], .tabulator-col[data-field]",
             );
-            if (!header || !root.contains(header)) {
-                return;
-            }
+            if (!header || !root.contains(header)) return;
             if (event.target.closest(
                 ".tabulator-col-sorter, .tabulator-header-filter, "
                 + ".tabulator-col-resize-handle, input, select, textarea",
-            )) {
-                return;
-            }
-
+            )) return;
             const field = header.getAttribute("tabulator-field") || header.dataset.field;
             const fields = table.getColumns().map((column) => column.getField()).filter(Boolean);
             const targetIndex = fields.indexOf(field);
             const rows = table.getRows("active");
-            if (targetIndex < 0 || !rows.length) {
-                return;
-            }
-
+            if (targetIndex < 0 || !rows.length) return;
             event.preventDefault();
             event.stopImmediatePropagation();
             let startIndex = targetIndex;
@@ -199,14 +160,12 @@
             } else {
                 anchorField = field;
             }
-
             if (!event.ctrlKey && !event.metaKey) {
                 (table.getRanges?.() || []).forEach((range) => range.remove());
                 root.querySelectorAll(".operator-column-selected").forEach((node) => {
                     node.classList.remove("operator-column-selected");
                 });
             }
-
             const selectedFields = fields.slice(startIndex, endIndex + 1);
             table.addRange(
                 rows[0].getCell(selectedFields[0]),
@@ -219,11 +178,11 @@
             });
             root.dataset.selectionMode = "columns";
         }, true);
-    };
+    }
 
-    const suppressLegacyZoomBindings = () => {
-        const patched = [];
-        const suppress = new Map([
+    function suppressLegacyZoomBindings() {
+        const restorers = [];
+        const suppressed = new Map([
             ["journal-zoom", new Set(["input", "wheel"])],
             ["ribbon-zoom", new Set(["input", "wheel"])],
             ["ribbon-zoom-out", new Set(["click"])],
@@ -233,43 +192,28 @@
             ["journal-font-family", new Set(["input", "change"])],
             ["journal-frozen-through", new Set(["input", "change"])],
         ]);
-
-        suppress.forEach((types, id) => {
+        suppressed.forEach((types, id) => {
             const control = document.getElementById(id);
-            if (!control) {
-                return;
-            }
+            if (!control) return;
             const original = control.addEventListener;
             control.addEventListener = function addEventListener(type, listener, options) {
-                if (types.has(type)) {
-                    return;
-                }
+                if (types.has(type)) return;
                 return original.call(this, type, listener, options);
             };
-            patched.push(() => {
-                delete control.addEventListener;
-            });
+            restorers.push(() => { delete control.addEventListener; });
         });
-
         const originalWindowAdd = window.addEventListener;
         window.addEventListener = function addEventListener(type, listener, options) {
-            if (type === "resize") {
-                return;
-            }
+            if (type === "resize") return;
             return originalWindowAdd.call(this, type, listener, options);
         };
-        patched.push(() => {
-            delete window.addEventListener;
-        });
+        restorers.push(() => { delete window.addEventListener; });
+        return () => restorers.reverse().forEach((restore) => restore());
+    }
 
-        return () => patched.reverse().forEach((restore) => restore());
-    };
-
-    const bindStableZoom = (table) => {
+    function bindStableZoom(table) {
         const root = document.getElementById("event-journal");
-        if (!root || !table || root.dataset.stableZoom === "ready") {
-            return;
-        }
+        if (!root || !table || root.dataset.stableZoom === "ready") return;
         root.dataset.stableZoom = "ready";
         const baseWidths = new Map(Object.entries(loadJson(widthKey, {})));
         let currentScale = 1;
@@ -286,13 +230,16 @@
             });
             saveJson(widthKey, Object.fromEntries(baseWidths));
         };
-
+        const persistZoom = (value) => {
+            const preferences = loadJson(preferenceKey, {});
+            preferences.zoom = value;
+            saveJson(preferenceKey, preferences);
+            saveJson(zoomKey, value);
+        };
         const syncControls = (value) => {
             ["journal-zoom", "ribbon-zoom"].forEach((id) => {
                 const control = document.getElementById(id);
-                if (!control) {
-                    return;
-                }
+                if (!control) return;
                 control.min = "10";
                 control.max = "400";
                 control.step = "5";
@@ -301,8 +248,7 @@
             document.getElementById("journal-zoom-value")?.replaceChildren(`${value}%`);
             document.getElementById("ribbon-zoom-value")?.replaceChildren(`${value}%`);
         };
-
-        const applyZoom = (rawValue, persist = true) => {
+        const applyZoom = (rawValue) => {
             const value = clampZoom(rawValue);
             const previousScale = currentScale;
             currentScale = value / 100;
@@ -310,12 +256,11 @@
             root.style.removeProperty("width");
             root.style.removeProperty("height");
             document.documentElement.style.setProperty("--ui-scale-factor", "1");
-
             const preferences = loadJson(preferenceKey, {});
-            const baseFontSize = Number(preferences.fontSize) || 13;
+            const fontSize = Number(preferences.fontSize) || 13;
             document.documentElement.style.setProperty(
                 "--journal-font-size",
-                `${Math.max(6, baseFontSize * currentScale)}px`,
+                `${Math.max(6, fontSize * currentScale)}px`,
             );
             document.documentElement.style.setProperty(
                 "--journal-row-height",
@@ -329,7 +274,6 @@
                 "--journal-toolbar-gap",
                 `${Math.max(2, Math.round(8 * currentScale))}px`,
             );
-
             if (!baseWidths.size) {
                 currentScale = previousScale || 1;
                 initializeBaseWidths();
@@ -342,33 +286,22 @@
                 table.getColumns().forEach((column) => {
                     const field = column.getField();
                     const base = field ? Number(baseWidths.get(field)) : 0;
-                    if (base > 0) {
-                        column.setWidth(Math.max(12, Math.round(base * currentScale)));
-                    }
+                    if (base > 0) column.setWidth(Math.max(12, Math.round(base * currentScale)));
                 });
             } finally {
                 scalingColumns = false;
             }
             saveJson(widthKey, Object.fromEntries(baseWidths));
-
-            preferences.zoom = value;
-            if (persist) {
-                saveJson(preferenceKey, preferences);
-                saveJson(zoomKey, value);
-            }
             root.dataset.sheetZoom = String(value);
             syncControls(value);
-            window.requestAnimationFrame(() => table.redraw(false));
+            requestAnimationFrame(() => table.redraw(false));
         };
-
-        const requestZoom = (value, persist = true) => {
-            pendingZoom = clampZoom(value);
-            window.cancelAnimationFrame(zoomFrame);
-            zoomFrame = window.requestAnimationFrame(() => {
-                applyZoom(pendingZoom, persist);
-            });
+        const requestZoom = (rawValue, persist = true) => {
+            pendingZoom = clampZoom(rawValue);
+            if (persist) persistZoom(pendingZoom);
+            cancelAnimationFrame(zoomFrame);
+            zoomFrame = requestAnimationFrame(() => applyZoom(pendingZoom));
         };
-
         const inputZoom = (event) => {
             event.preventDefault();
             event.stopImmediatePropagation();
@@ -376,9 +309,7 @@
         };
         ["journal-zoom", "ribbon-zoom"].forEach((id) => {
             const control = document.getElementById(id);
-            if (!control) {
-                return;
-            }
+            if (!control) return;
             control.addEventListener("input", inputZoom, true);
             control.addEventListener("wheel", (event) => {
                 event.preventDefault();
@@ -386,115 +317,82 @@
                 requestZoom(Number(control.value) + (event.deltaY < 0 ? 5 : -5));
             }, {capture: true, passive: false});
         });
-
-        const adjustZoom = (step) => (event) => {
+        const adjust = (step) => (event) => {
             event.preventDefault();
             event.stopImmediatePropagation();
             const value = Number(document.getElementById("ribbon-zoom")?.value || 100);
             requestZoom(value + step);
         };
-        document.getElementById("ribbon-zoom-out")?.addEventListener(
-            "click",
-            adjustZoom(-5),
-            true,
-        );
-        document.getElementById("ribbon-zoom-in")?.addEventListener(
-            "click",
-            adjustZoom(5),
-            true,
-        );
-
+        document.getElementById("ribbon-zoom-out")?.addEventListener("click", adjust(-5), true);
+        document.getElementById("ribbon-zoom-in")?.addEventListener("click", adjust(5), true);
         ["journal-theme", "journal-font-size", "journal-font-family", "journal-frozen-through"]
             .forEach((id) => {
                 const control = document.getElementById(id);
-                control?.addEventListener("change", () => {
-                    window.setTimeout(() => requestZoom(pendingZoom, false), 0);
-                });
-                control?.addEventListener("input", () => {
-                    window.setTimeout(() => requestZoom(pendingZoom, false), 0);
-                });
+                const reapply = () => setTimeout(() => requestZoom(pendingZoom, false), 0);
+                control?.addEventListener("change", reapply);
+                control?.addEventListener("input", reapply);
             });
-
         document.getElementById("reset-view-settings")?.addEventListener("click", () => {
-            window.setTimeout(() => {
+            setTimeout(() => {
                 baseWidths.clear();
                 currentScale = 1;
                 requestZoom(100);
             }, 0);
         });
         document.getElementById("reset-grid-layout")?.addEventListener("click", () => {
-            window.setTimeout(() => {
+            setTimeout(() => {
                 baseWidths.clear();
                 initializeBaseWidths();
                 requestZoom(pendingZoom, false);
             }, 40);
         });
-
         table.on("columnResized", (column) => {
-            if (scalingColumns) {
-                return;
-            }
+            if (scalingColumns) return;
             const field = column?.getField?.();
-            if (field) {
-                baseWidths.set(field, column.getWidth() / Math.max(0.1, currentScale));
-                saveJson(widthKey, Object.fromEntries(baseWidths));
-            }
+            if (!field) return;
+            baseWidths.set(field, column.getWidth() / Math.max(0.1, currentScale));
+            saveJson(widthKey, Object.fromEntries(baseWidths));
         });
         window.addEventListener("resize", () => {
-            window.setTimeout(() => requestZoom(pendingZoom, false), 0);
+            setTimeout(() => requestZoom(pendingZoom, false), 0);
         });
-
-        const initial = loadJson(zoomKey, null)
-            ?? loadJson(preferenceKey, {}).zoom
-            ?? 100;
+        const initial = loadJson(zoomKey, null) ?? loadJson(preferenceKey, {}).zoom ?? 100;
         pendingZoom = clampZoom(initial);
-        applyZoom(pendingZoom, false);
-    };
+        applyZoom(pendingZoom);
+    }
 
-    const loadRepair = () => {
-        if (document.getElementById("event-journal-operator-repair-v1-js")) {
-            return;
-        }
-
+    function loadRepair() {
+        if (document.getElementById("event-journal-operator-repair-v1-js")) return;
         const table = window.shiftHelperEventGrid;
         bindColumnHeaders(table);
         const restoreLegacyBindings = suppressLegacyZoomBindings();
-        const originalUpdateColumnDefinition = table?.updateColumnDefinition?.bind(table);
-        if (table && originalUpdateColumnDefinition) {
+        const originalUpdate = table?.updateColumnDefinition?.bind(table);
+        if (table && originalUpdate) {
             table.updateColumnDefinition = (field, definition) => {
                 if (
                     window.shiftHelperDraftSortBootstrap === "ready"
                     && typeof definition?.sorter === "function"
-                ) {
-                    return Promise.resolve(table.getColumn(field));
-                }
-                return originalUpdateColumnDefinition(field, definition);
+                ) return Promise.resolve(table.getColumn(field));
+                return originalUpdate(field, definition);
             };
         }
-
-        const finalizeRepair = () => {
+        const finalize = () => {
             const root = document.getElementById("event-journal");
             if (root?.dataset.operatorRepairReady !== "true") {
-                window.requestAnimationFrame(finalizeRepair);
+                requestAnimationFrame(finalize);
                 return;
             }
             restoreLegacyBindings();
-            if (table && originalUpdateColumnDefinition) {
-                table.updateColumnDefinition = originalUpdateColumnDefinition;
-            }
+            if (table && originalUpdate) table.updateColumnDefinition = originalUpdate;
             bindStableZoom(table);
         };
-
         const script = document.createElement("script");
         script.id = "event-journal-operator-repair-v1-js";
         script.src = "/static/event_journal_operator_repair_v1.js";
-        script.addEventListener("load", finalizeRepair, {once: true});
+        script.addEventListener("load", finalize, {once: true});
         document.body.appendChild(script);
-    };
-
-    if (document.readyState === "complete") {
-        window.setTimeout(loadRepair, 0);
-    } else {
-        window.addEventListener("load", loadRepair, {once: true});
     }
+
+    if (document.readyState === "complete") setTimeout(loadRepair, 0);
+    else window.addEventListener("load", loadRepair, {once: true});
 })();
