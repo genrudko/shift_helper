@@ -34,6 +34,16 @@
         };
     }
 
+    function loadContextFallback() {
+        if (document.getElementById("event-journal-context-fallback-v1")) {
+            return;
+        }
+        const script = document.createElement("script");
+        script.id = "event-journal-context-fallback-v1";
+        script.src = "/static/event_journal_context_fallback_v1.js";
+        document.body.appendChild(script);
+    }
+
     function rowNumberUnderPointer(event) {
         const pathMatch = event.composedPath?.().find(
             (item) => item instanceof Element && item.classList.contains("journal-row-number"),
@@ -131,5 +141,11 @@
             pending = true;
             flushPending();
         });
+    }
+
+    if (document.readyState === "complete") {
+        window.setTimeout(loadContextFallback, 0);
+    } else {
+        window.addEventListener("load", () => window.setTimeout(loadContextFallback, 0), {once: true});
     }
 })();
