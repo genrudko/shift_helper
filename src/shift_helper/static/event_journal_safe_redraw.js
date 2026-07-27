@@ -8,6 +8,32 @@
         return;
     }
 
+    const detachedCellElement = document.createElement("span");
+
+    function protectDestroyedCellComponents() {
+        const sample = table.getRows()?.[0]?.getCells?.()?.[0];
+        const prototype = sample ? Object.getPrototypeOf(sample) : null;
+        if (!prototype || prototype.__shiftHelperSafeElement === true) {
+            return;
+        }
+        const originalGetElement = prototype.getElement;
+        if (typeof originalGetElement !== "function") {
+            return;
+        }
+        Object.defineProperty(prototype, "__shiftHelperSafeElement", {
+            configurable: false,
+            enumerable: false,
+            value: true,
+            writable: false,
+        });
+        prototype.getElement = function getElement() {
+            const element = originalGetElement.call(this);
+            return element && typeof element.getBoundingClientRect === "function"
+                ? element
+                : detachedCellElement;
+        };
+    }
+
     function rowNumberUnderPointer(event) {
         const pathMatch = event.composedPath?.().find(
             (item) => item instanceof Element && item.classList.contains("journal-row-number"),
@@ -58,6 +84,7 @@
                 return;
             }
             originalRedraw(force);
+            protectDestroyedCellComponents();
         });
     }
 
@@ -81,19 +108,24 @@
             pendingForce ||= Boolean(force);
             return undefined;
         }
-        return originalRedraw(force);
+        const result = originalRedraw(force);
+        protectDestroyedCellComponents();
+        return result;
     };
 
     table.on("tableBuilt", () => {
         ready = true;
+        protectDestroyedCellComponents();
         pending = true;
         flushPending();
     });
     table.on("renderComplete", () => {
         ready = true;
+        protectDestroyedCellComponents();
         flushPending();
     });
 
+    protectDestroyedCellComponents();
     if (ready) {
         window.requestAnimationFrame(() => {
             pending = true;
