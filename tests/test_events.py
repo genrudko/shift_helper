@@ -115,7 +115,7 @@ def test_invalid_rotor_limit_is_rejected(tmp_path: Path) -> None:
         assert session.scalar(select(Event)) is None
 
 
-def test_spreadsheet_workspace_loads_excel_features(tmp_path: Path) -> None:
+def test_spreadsheet_workspace_loads_unified_controller(tmp_path: Path) -> None:
     app = create_app(testing=True, data_root=tmp_path)
     client = app.test_client()
 
@@ -130,11 +130,20 @@ def test_spreadsheet_workspace_loads_excel_features(tmp_path: Path) -> None:
     assert "vendor/tabulator/tabulator.min.css" in page
     assert "vendor/tabulator/tabulator.min.js" in page
     assert "event_journal_excel_patch.css" in page
-    assert "event_journal_excel_features.css" in page
-    assert "event_journal_excel_features.js" in page
-    assert "event_journal_excel_patch.js" not in page
-    assert "event_journal_menu_guard.js" not in page
-    assert "event_journal_row_context.js" not in page
+    assert "event_journal_workspace_v4.css" in page
+    assert "event_journal_workspace_v4.js" in page
+    assert "event_journal_excel_features.js" not in page
+    assert "event_journal_row_clipboard.js" not in page
+    assert "event_journal_tsv_bridge.js" not in page
+    assert "event_journal_delete_guard.js" not in page
+    assert 'id="journal-undo"' in page
+    assert 'id="journal-redo"' in page
+    assert 'id="open-view-settings"' in page
+    assert 'id="journal-view-settings"' in page
+    assert 'id="journal-theme"' in page
+    assert 'id="journal-zoom"' in page
+    assert 'id="journal-font-size"' in page
+    assert 'id="journal-font-family"' in page
     assert 'data-status-filter="all"' in page
     assert 'id="journal-search"' in page
     assert 'id="cell-fill-color"' in page
@@ -143,16 +152,20 @@ def test_spreadsheet_workspace_loads_excel_features(tmp_path: Path) -> None:
     assert ">Создать событие<" not in page
 
     grid_script = client.get("/static/event_journal.js")
-    feature_script = client.get("/static/event_journal_excel_features.js")
+    workspace_script = client.get("/static/event_journal_workspace_v4.js")
     grid_styles = client.get("/static/event_journal_excel_patch.css")
-    feature_styles = client.get("/static/event_journal_excel_features.css")
+    workspace_styles = client.get("/static/event_journal_workspace_v4.css")
+    preferences_styles = client.get("/static/ui_preferences.css")
     assert grid_script.status_code == 200
-    assert feature_script.status_code == 200
+    assert workspace_script.status_code == 200
     assert grid_styles.status_code == 200
-    assert feature_styles.status_code == 200
+    assert workspace_styles.status_code == 200
+    assert preferences_styles.status_code == 200
+
     script_text = grid_script.get_data(as_text=True)
-    feature_text = feature_script.get_data(as_text=True)
+    workspace_text = workspace_script.get_data(as_text=True)
     style_text = grid_styles.get_data(as_text=True)
+    workspace_style_text = workspace_styles.get_data(as_text=True)
     assert "new window.Tabulator" in script_text
     assert 'title: "Дата останова"' in script_text
     assert 'title: "№ ВЭУ / оборудование"' in script_text
@@ -160,20 +173,17 @@ def test_spreadsheet_workspace_loads_excel_features(tmp_path: Path) -> None:
     assert "function journalEditor" in script_text
     assert 'event.key === "Enter"' in script_text
     assert "multiline && event.shiftKey" in script_text
-    assert 'document.addEventListener("keydown"' in script_text
-    assert 'document.addEventListener("copy"' in script_text
-    assert 'document.addEventListener("paste"' in script_text
-    assert "rowHeaderMenu" in script_text
-    assert "contextMenu: rowHeaderMenu" in script_text
-    assert "contextMenu: cellMenu" in script_text
-    assert "downtime_losses_rub" in script_text
-    assert "function applyMatrixToSelection" in feature_text
-    assert "function seriesValue" in feature_text
-    assert "journal-fill-handle" in feature_text
-    assert "Удалить строку" in feature_text
-    assert "Вырезать строку" in feature_text
+    assert "function clearSelectedCells" in workspace_text
+    assert "async function deleteSelectedRows" in workspace_text
+    assert "async function undo" in workspace_text
+    assert "async function redo" in workspace_text
+    assert "function applyPreferences" in workspace_text
+    assert "journal-fill-handle" in workspace_text
+    assert "journal-row--multi-selected" in workspace_text
+    assert "window.confirm" not in workspace_text
     assert ".journal-stable-editor" in style_text
     assert "position: fixed" not in style_text
+    assert 'html[data-theme="light"]' in workspace_style_text
 
     vendor_script = client.get("/static/vendor/tabulator/tabulator.min.js")
     vendor_styles = client.get("/static/vendor/tabulator/tabulator.min.css")
