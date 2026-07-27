@@ -97,8 +97,28 @@ def test_excel_edit_modes(page: Page) -> None:
     page.keyboard.press("Escape")
 
 
+def frozen_fields(page: Page) -> list[str]:
+    page.wait_for_function(
+        """() => {
+            const root = document.getElementById('event-journal');
+            const select = document.getElementById('journal-frozen-through');
+            return root?.dataset.frozenColumnsController === 'ready'
+                && root.dataset.frozenColumnsApplied === select?.value;
+        }""",
+        timeout=10_000,
+    )
+    return page.evaluate(
+        """() => window.shiftHelperEventGrid.getColumns()
+            .filter(column => Boolean(column.getDefinition().frozen))
+            .map(column => column.getField())
+            .filter(Boolean)"""
+    )
+
+
 BASE["test_excel_edit_modes"] = test_excel_edit_modes
+BASE["frozen_fields"] = frozen_fields
 base_function("run_smoke").__globals__["test_excel_edit_modes"] = test_excel_edit_modes
+base_function("test_viewport_and_frozen_columns").__globals__["frozen_fields"] = frozen_fields
 
 
 def main() -> None:
