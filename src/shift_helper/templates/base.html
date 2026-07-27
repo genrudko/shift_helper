@@ -4,7 +4,39 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Shift-Helper{% endblock %}</title>
+    <script>
+        (() => {
+            const defaults = {
+                theme: "dark",
+                zoom: 100,
+                fontSize: 13,
+                fontFamily: "Segoe UI",
+            };
+            let preferences = defaults;
+            try {
+                preferences = {
+                    ...defaults,
+                    ...JSON.parse(localStorage.getItem("shift-helper-ui-preferences-v1") || "{}"),
+                };
+            } catch (_error) {
+                preferences = defaults;
+            }
+            const theme = preferences.theme === "system"
+                ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+                : preferences.theme;
+            document.documentElement.dataset.theme = theme;
+            document.documentElement.style.setProperty(
+                "--ui-font-family",
+                `"${preferences.fontFamily}", "Segoe UI", system-ui, sans-serif`,
+            );
+            document.documentElement.style.setProperty(
+                "--journal-font-size",
+                `${preferences.fontSize}px`,
+            );
+        })();
+    </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='ui_preferences.css') }}">
     {% block styles %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
