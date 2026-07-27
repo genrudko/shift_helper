@@ -83,7 +83,10 @@ def test_operator_repairs(page: Page) -> None:
         "Draft-aware sorters were not installed.",
     )
 
-    header = page.locator('.tabulator-col[data-field="description"]')
+    header = page.locator(
+        '.tabulator-col[tabulator-field="description"], '
+        '.tabulator-col[data-field="description"]'
+    )
     header.click(position={"x": 48, "y": 14})
     require(
         root.get_attribute("data-selection-mode") == "columns",
