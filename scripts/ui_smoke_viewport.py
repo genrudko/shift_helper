@@ -87,6 +87,7 @@ def test_excel_edit_modes(page: Page) -> None:
 
 
 BASE["test_excel_edit_modes"] = test_excel_edit_modes
+base_function("run_smoke").__globals__["test_excel_edit_modes"] = test_excel_edit_modes
 
 
 def main() -> None:
