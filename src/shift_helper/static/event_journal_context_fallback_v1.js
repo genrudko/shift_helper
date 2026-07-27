@@ -11,6 +11,27 @@
 
     let redispatching = false;
 
+    function containsPoint(element, x, y) {
+        const rect = element.getBoundingClientRect();
+        return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+    }
+
+    function liveRowHeaderAtPoint(x, y) {
+        for (const row of table.getRows("visible")) {
+            let rowElement = null;
+            try {
+                rowElement = row.getElement();
+            } catch (_error) {
+                continue;
+            }
+            const header = rowElement?.querySelector?.(".journal-row-number");
+            if (header instanceof Element && header.isConnected && containsPoint(header, x, y)) {
+                return header;
+            }
+        }
+        return null;
+    }
+
     function liveCellAtPoint(x, y) {
         for (const row of table.getRows("visible")) {
             for (const cell of row.getCells()) {
@@ -20,19 +41,40 @@
                 } catch (_error) {
                     continue;
                 }
-                if (!(element instanceof Element) || !element.isConnected) {
-                    continue;
-                }
-                const rect = element.getBoundingClientRect();
-                if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
-                    return {cell, element};
+                if (
+                    element instanceof Element
+                    && element.isConnected
+                    && containsPoint(element, x, y)
+                ) {
+                    return element;
                 }
             }
         }
         return null;
     }
 
-    window.addEventListener("contextmenu", (event) => {
+    function pointerInit(event) {
+        return {
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            pointerId: event.pointerId,
+            pointerType: event.pointerType || "mouse",
+            isPrimary: event.isPrimary,
+            button: event.button,
+            buttons: event.buttons,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            screenX: event.screenX,
+            screenY: event.screenY,
+            ctrlKey: event.ctrlKey,
+            shiftKey: event.shiftKey,
+            altKey: event.altKey,
+            metaKey: event.metaKey,
+        };
+    }
+
+    window.addEventListener("pointerdown", (event) => {
         if (
             redispatching
             || !(event.target instanceof Element)
@@ -41,9 +83,35 @@
         ) {
             return;
         }
+        const header = liveRowHeaderAtPoint(event.clientX, event.clientY);
+        if (!header) {
+            return;
+        }
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        redispatching = true;
+        try {
+            header.dispatchEvent(new PointerEvent("pointerdown", pointerInit(event)));
+        } finally {
+            redispatching = false;
+        }
+    }, true);
 
-        const live = liveCellAtPoint(event.clientX, event.clientY);
-        if (!live) {
+    window.addEventListener("contextmenu", (event) => {
+        if (
+            redispatching
+            || !(event.target instanceof Element)
+            || !root.contains(event.target)
+        ) {
+            return;
+        }
+        if (event.target.closest(".journal-row-number")) {
+            return;
+        }
+
+        const target = liveRowHeaderAtPoint(event.clientX, event.clientY)
+            || liveCellAtPoint(event.clientX, event.clientY);
+        if (!target) {
             return;
         }
 
@@ -61,12 +129,16 @@
             }
             redispatching = true;
             try {
-                live.element.dispatchEvent(new MouseEvent("contextmenu", {
+                target.dispatchEvent(new MouseEvent("contextmenu", {
                     bubbles: true,
                     cancelable: true,
                     composed: true,
                     button: 2,
                     buttons: 2,
+                    ctrlKey: event.ctrlKey,
+                    shiftKey: event.shiftKey,
+                    altKey: event.altKey,
+                    metaKey: event.metaKey,
                     ...coordinates,
                 }));
             } finally {
