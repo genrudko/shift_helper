@@ -139,10 +139,37 @@ def frozen_fields(page: Page) -> list[str]:
     )
 
 
+ORIGINAL_VIEWPORT_TEST = base_function("test_viewport_and_frozen_columns")
+
+
+def test_viewport_and_frozen_columns(page: Page) -> None:
+    page.evaluate(
+        """() => {
+            for (const range of window.shiftHelperEventGrid.getRanges?.() || []) {
+                try {
+                    range.remove();
+                } catch (_error) {
+                    // The palette check must ignore stale selection visuals.
+                }
+            }
+            document.querySelectorAll('.journal-row--multi-selected').forEach(element => {
+                element.classList.remove('journal-row--multi-selected');
+            });
+        }"""
+    )
+    page.locator("#journal-title").click()
+    page.wait_for_timeout(120)
+    ORIGINAL_VIEWPORT_TEST(page)
+
+
 BASE["test_excel_edit_modes"] = test_excel_edit_modes
 BASE["frozen_fields"] = frozen_fields
+BASE["test_viewport_and_frozen_columns"] = test_viewport_and_frozen_columns
 base_function("run_smoke").__globals__["test_excel_edit_modes"] = test_excel_edit_modes
-base_function("test_viewport_and_frozen_columns").__globals__["frozen_fields"] = frozen_fields
+base_function("run_smoke").__globals__["test_viewport_and_frozen_columns"] = (
+    test_viewport_and_frozen_columns
+)
+ORIGINAL_VIEWPORT_TEST.__globals__["frozen_fields"] = frozen_fields
 
 
 def main() -> None:
