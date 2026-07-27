@@ -33,6 +33,8 @@
     const originalRedraw = table.redraw.bind(table);
     const originalGetRows = table.getRows.bind(table);
     let ready = Boolean(root.querySelector(".tabulator-tableholder"));
+    let bootstrapSettled = false;
+    let bootstrapFrame = 0;
     let pending = false;
     let pendingForce = false;
 
@@ -44,11 +46,21 @@
         );
     }
 
+    function settleBootstrap() {
+        window.cancelAnimationFrame(bootstrapFrame);
+        bootstrapFrame = window.requestAnimationFrame(() => {
+            bootstrapFrame = window.requestAnimationFrame(() => {
+                bootstrapSettled = true;
+                flushPending();
+            });
+        });
+    }
+
     function flushPending() {
         if (!pending || !ready || !internalElementReady()) {
             return;
         }
-        const force = pendingForce;
+        const force = bootstrapSettled && pendingForce;
         pending = false;
         pendingForce = false;
         window.requestAnimationFrame(() => {
@@ -81,12 +93,18 @@
             pendingForce ||= Boolean(force);
             return undefined;
         }
-        return originalRedraw(force);
+        if (!bootstrapSettled) {
+            pendingForce = false;
+            return originalRedraw(false);
+        }
+        return originalRedraw(Boolean(force));
     };
 
     table.on("tableBuilt", () => {
         ready = true;
         pending = true;
+        pendingForce = false;
+        settleBootstrap();
         flushPending();
     });
     table.on("renderComplete", () => {
@@ -95,8 +113,10 @@
     });
 
     if (ready) {
+        settleBootstrap();
         window.requestAnimationFrame(() => {
             pending = true;
+            pendingForce = false;
             flushPending();
         });
     }
