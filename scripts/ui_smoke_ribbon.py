@@ -208,8 +208,18 @@ def test_viewport_and_frozen_columns(page: Page) -> None:
         "Application chrome is still being scaled with the sheet.",
     )
     require(
-        page.locator("#event-journal").evaluate("element => element.style.zoom") == "4",
+        page.locator("#event-journal").evaluate("element => element.style.zoom") == "",
+        "CSS zoom reached the table container.",
+    )
+    require(
+        page.locator("#event-journal").get_attribute("data-sheet-zoom") == "400",
         "The table sheet did not reach 400% zoom.",
+    )
+    require(
+        page.locator("html").evaluate(
+            "element => getComputedStyle(element).getPropertyValue('--journal-font-size').trim()"
+        ) == "60px",
+        "The 400% sheet font metric was not applied.",
     )
     require(not frozen_fields(page), "Frozen columns were not fully disabled.")
 
@@ -278,7 +288,11 @@ def test_viewport_and_frozen_columns(page: Page) -> None:
         "CSS zoom returned on body.",
     )
     require(
-        page.locator("#event-journal").evaluate("element => element.style.zoom") == "1.1",
+        page.locator("#event-journal").evaluate("element => element.style.zoom") == "",
+        "CSS zoom returned on the table container.",
+    )
+    require(
+        page.locator("#event-journal").get_attribute("data-sheet-zoom") == "110",
         "Table zoom was not restored after reload.",
     )
     require(
