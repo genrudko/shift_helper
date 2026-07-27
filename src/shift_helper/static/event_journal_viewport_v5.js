@@ -21,6 +21,7 @@
     let preferences = loadPreferences();
     let frozenApplying = false;
     let geometryFrame = 0;
+    let resizeFrame = 0;
     let rowDrag = null;
     let syntheticRowPointer = false;
     let geometryBound = false;
@@ -118,6 +119,14 @@
         geometryFrame = requestAnimationFrame(placeFillHandle);
     }
 
+    function scheduleViewportRedraw() {
+        cancelAnimationFrame(resizeFrame);
+        resizeFrame = requestAnimationFrame(() => {
+            table.redraw(true);
+            scheduleGeometry();
+        });
+    }
+
     function applyFrozenColumns() {
         if (frozenApplying || typeof table.getColumnLayout !== "function") return;
         const layout = table.getColumnLayout();
@@ -142,10 +151,7 @@
         } finally {
             frozenApplying = false;
         }
-        requestAnimationFrame(() => {
-            table.redraw(true);
-            scheduleGeometry();
-        });
+        scheduleViewportRedraw();
     }
 
     function syncSettings() {
@@ -277,10 +283,7 @@
         } catch (_error) {
             // Ignore unavailable local storage.
         }
-        requestAnimationFrame(() => {
-            table.redraw(false);
-            scheduleGeometry();
-        });
+        scheduleViewportRedraw();
     });
 
     ["rangeChanged", "cellClick", "renderComplete", "columnMoved", "columnVisibilityChanged"]
@@ -292,7 +295,7 @@
         if (!holder) return;
         geometryBound = true;
         holder.addEventListener("scroll", scheduleGeometry, {passive: true});
-        new ResizeObserver(scheduleGeometry).observe(root);
+        new ResizeObserver(scheduleViewportRedraw).observe(root);
         document.querySelector(".journal-fill-handle")?.addEventListener("pointerup", () => {
             requestAnimationFrame(scheduleGeometry);
         });
@@ -301,7 +304,7 @@
     table.on("tableBuilt", bindGeometry);
     table.on("renderComplete", bindGeometry);
     bindGeometry();
-    window.addEventListener("resize", scheduleGeometry);
+    window.addEventListener("resize", scheduleViewportRedraw);
     matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
         if (preferences.theme === "system") applyAppearance();
     });
