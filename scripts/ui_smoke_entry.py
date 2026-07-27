@@ -1,6 +1,6 @@
 """Final browser-smoke entry point with virtualization-safe row checks."""
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: I001
 
 import runpy
 from pathlib import Path
