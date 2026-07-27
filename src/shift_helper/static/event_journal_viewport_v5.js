@@ -119,11 +119,70 @@
         geometryFrame = requestAnimationFrame(placeFillHandle);
     }
 
+    function describeRange(range) {
+        try {
+            const raw = range?.getCells?.() || [];
+            const cells = (raw.length && Array.isArray(raw[0]) ? raw.flat() : raw)
+                .filter((cell) => cell?.getRow && cell?.getField);
+            const first = cells[0];
+            const last = cells.at(-1);
+            if (!first || !last) return null;
+            return {
+                firstRowKey: first.getRow().getData()._rowKey,
+                firstField: first.getField(),
+                lastRowKey: last.getRow().getData()._rowKey,
+                lastField: last.getField(),
+            };
+        } catch (_error) {
+            return null;
+        }
+    }
+
+    function snapshotRanges() {
+        return (table.getRanges?.() || [])
+            .map(describeRange)
+            .filter(Boolean);
+    }
+
+    function clearRanges() {
+        for (const range of table.getRanges?.() || []) {
+            try {
+                range.remove();
+            } catch (_error) {
+                // A stale range must not block a viewport redraw.
+            }
+        }
+    }
+
+    function restoreRanges(snapshots) {
+        if (!snapshots.length) return;
+        const rows = new Map(
+            table.getRows("active").map((row) => [row.getData()._rowKey, row]),
+        );
+        for (const snapshot of snapshots) {
+            const firstRow = rows.get(snapshot.firstRowKey);
+            const lastRow = rows.get(snapshot.lastRowKey);
+            const firstCell = firstRow?.getCell(snapshot.firstField);
+            const lastCell = lastRow?.getCell(snapshot.lastField);
+            if (!firstCell || !lastCell) continue;
+            try {
+                table.addRange(firstCell, lastCell);
+            } catch (_error) {
+                // Data or filtering may have removed one of the former endpoints.
+            }
+        }
+    }
+
     function scheduleViewportRedraw() {
         cancelAnimationFrame(resizeFrame);
         resizeFrame = requestAnimationFrame(() => {
+            const ranges = snapshotRanges();
+            clearRanges();
             table.redraw(true);
-            scheduleGeometry();
+            requestAnimationFrame(() => {
+                restoreRanges(ranges);
+                scheduleGeometry();
+            });
         });
     }
 
@@ -146,7 +205,6 @@
         frozenApplying = true;
         hideFillHandle();
         try {
-            (table.getRanges?.() || []).forEach((range) => range.remove());
             table.setColumnLayout(layout);
         } finally {
             frozenApplying = false;
