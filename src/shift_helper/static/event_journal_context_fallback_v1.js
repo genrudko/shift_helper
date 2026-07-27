@@ -11,6 +11,14 @@
 
     let redispatching = false;
 
+    if (navigator.webdriver) {
+        window.addEventListener("error", (event) => {
+            if (event.error?.stack) {
+                console.error(`SHIFT_HELPER_PAGEERROR_STACK\n${event.error.stack}`);
+            }
+        }, true);
+    }
+
     function containsPoint(element, x, y) {
         const rect = element.getBoundingClientRect();
         return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
