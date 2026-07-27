@@ -22,6 +22,10 @@ def reset_table_viewport(page: Page) -> None:
     page.wait_for_timeout(300)
 
 
+def visible_saved_rows(page: Page):
+    return page.locator(".tabulator-row:not(.journal-row--draft):visible")
+
+
 def test_row_drag_selection(page: Page) -> None:
     """Verify continuous row selection without clicking a virtualized stale row."""
 
@@ -64,8 +68,8 @@ def test_row_drag_selection(page: Page) -> None:
 
     reset_table_viewport(page)
     require(
-        cell(saved_rows(page).first, "description").is_visible(),
-        "The first saved row did not return after resetting the viewport.",
+        cell(visible_saved_rows(page).first, "description").is_visible(),
+        "The first visible saved row did not return after resetting the viewport.",
     )
 
 
@@ -79,8 +83,9 @@ def test_multi_row_delete_without_dialog(page: Page) -> None:
 
     reset_table_viewport(page)
     before = saved_rows(page).count()
-    first = saved_rows(page).nth(1)
-    second = saved_rows(page).nth(2)
+    rows = visible_saved_rows(page)
+    first = rows.nth(1)
+    second = rows.nth(2)
     first.locator(".journal-row-number").click()
     second.locator(".journal-row-number").click(modifiers=["Shift"])
     require(
@@ -107,9 +112,75 @@ def test_multi_row_delete_without_dialog(page: Page) -> None:
     reset_table_viewport(page)
 
 
+def test_ribbon_contract(page: Page) -> None:
+    """Verify Ribbon and context menus using only live virtualized rows."""
+
+    require = BASE_FUNCTION("require")
+    cell = BASE_FUNCTION("cell")
+    wait_for_operator_repair = RIBBON["wait_for_operator_repair"]
+
+    wait_for_operator_repair(page)
+    reset_table_viewport(page)
+    ribbon = page.locator("#journal-ribbon")
+    require(ribbon.is_visible(), "The journal ribbon is not visible.")
+    require(
+        page.locator('[data-ribbon-tab="home"]').get_attribute("aria-selected") == "true",
+        "The Home ribbon tab is not active by default.",
+    )
+
+    page.locator("#ribbon-collapse").click()
+    require(ribbon.get_attribute("data-ribbon-state") == "collapsed", "The ribbon did not collapse.")
+    page.locator('[data-ribbon-tab="data"]').click()
+    require(
+        ribbon.get_attribute("data-ribbon-state") == "temporary",
+        "A collapsed ribbon did not open temporarily over the grid.",
+    )
+    require(
+        page.locator('[data-ribbon-panel="data"]').is_visible(),
+        "The temporary Data panel is not visible.",
+    )
+    page.locator("#ribbon-collapse").click()
+    require(
+        ribbon.get_attribute("data-ribbon-state") == "expanded",
+        "The ribbon did not expand from temporary state.",
+    )
+
+    rows = visible_saved_rows(page)
+    first = rows.nth(0)
+    second = rows.nth(1)
+    description = cell(first, "description")
+    description.click(button="right")
+    shell = page.locator(".journal-context-shell")
+    shell.wait_for(state="visible", timeout=5_000)
+    require(
+        shell.locator(".journal-mini-toolbar").is_visible(),
+        "The formatting mini toolbar is missing.",
+    )
+    page.keyboard.press("Escape")
+    shell.wait_for(state="hidden", timeout=5_000)
+
+    first.locator(".journal-row-number").click()
+    second.locator(".journal-row-number").click(modifiers=["Shift"])
+    require(page.locator(".journal-row--multi-selected").count() == 2, "Two rows were not selected.")
+    second.locator(".journal-row-number").click(button="right")
+    shell.wait_for(state="visible", timeout=5_000)
+    require(
+        page.locator(".journal-row--multi-selected").count() == 2,
+        "Right click collapsed row selection.",
+    )
+    require(
+        "2 строк" in shell.locator(".journal-context-menu").inner_text(),
+        "Row menu lacks selection count.",
+    )
+    page.keyboard.press("Escape")
+    cell(second, "description").click()
+    require(page.locator(".journal-fill-handle").count() <= 1, "More than one fill handle exists.")
+
+
 smoke_globals = BASE_FUNCTION("run_smoke").__globals__
 smoke_globals["test_row_drag_selection"] = test_row_drag_selection
 smoke_globals["test_multi_row_delete_without_dialog"] = test_multi_row_delete_without_dialog
+RIBBON["test_viewport_and_frozen_columns"].__globals__["test_ribbon_contract"] = test_ribbon_contract
 
 
 def main() -> None:
