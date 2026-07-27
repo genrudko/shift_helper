@@ -239,10 +239,15 @@
         }
     }
 
-    select.addEventListener("change", (event) => {
+    const captureBoundaryChange = (event) => {
+        if (event.target !== select) {
+            return;
+        }
         event.stopImmediatePropagation();
-        void applyBoundary(event.target.value);
-    }, true);
+        void applyBoundary(select.value);
+    };
+    window.addEventListener("input", captureBoundaryChange, true);
+    window.addEventListener("change", captureBoundaryChange, true);
 
     document.getElementById("reset-view-settings")?.addEventListener("click", () => {
         window.setTimeout(() => {
