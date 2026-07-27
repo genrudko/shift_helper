@@ -147,8 +147,8 @@
         || !table
         || !select
         || root.dataset.frozenColumnsController === "ready"
-        || typeof table.getColumnDefinitions !== "function"
-        || typeof table.setColumns !== "function"
+        || typeof table.getColumnLayout !== "function"
+        || typeof table.setColumnLayout !== "function"
     ) {
         return;
     }
@@ -212,18 +212,19 @@
         delete root.dataset.frozenColumnsApplied;
         clearTransientState();
         try {
-            const definitions = table.getColumnDefinitions()
-                .filter((definition) => Boolean(definition.field));
-            const fields = definitions.map((definition) => definition.field);
+            const layout = table.getColumnLayout();
+            const fields = layout
+                .map((definition) => definition.field)
+                .filter(Boolean);
             const expected = expectedFields(boundary, fields);
-            const nextDefinitions = definitions.map((definition) => ({
+            const nextLayout = layout.map((definition) => definition.field ? {
                 ...definition,
                 frozen: expected.has(definition.field),
-            }));
+            } : {...definition});
 
-            await Promise.resolve(table.setColumns(nextDefinitions));
+            await Promise.resolve(table.setColumnLayout(nextLayout));
             saveBoundary(boundary);
-            table.redraw(true);
+            table.redraw(false);
             root.dataset.frozenColumnsApplied = boundary;
         } catch (error) {
             root.dataset.frozenColumnsError = String(error);
