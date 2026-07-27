@@ -84,7 +84,7 @@ def test_operator_repairs(page: Page) -> None:
     )
 
     header = page.locator('.tabulator-col[data-field="description"]')
-    header.locator(".tabulator-col-title").click()
+    header.click(position={"x": 48, "y": 14})
     require(
         root.get_attribute("data-selection-mode") == "columns",
         "Column header did not select the column.",
