@@ -8,6 +8,9 @@
   <symbol id="italic" viewBox="0 0 24 24"><path d="M10 4h8M6 20h8M14 4 10 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
   <symbol id="underline" viewBox="0 0 24 24"><path d="M7 4v7a5 5 0 0 0 10 0V4M5 21h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   <symbol id="font-color" viewBox="0 0 24 24"><path d="m6 17 6-14 6 14M8.5 12h7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4 20h16" stroke="currentColor" stroke-width="3"/></symbol>
+  <symbol id="font-increase" viewBox="0 0 24 24"><path d="m4 18 5-12 5 12M6 14h6M18 5v8M14 9h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="font-decrease" viewBox="0 0 24 24"><path d="m4 18 5-12 5 12M6 14h6M15 9h7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="text-direction" viewBox="0 0 24 24"><path d="M5 5h10a4 4 0 0 1 0 8H8m0 0 3-3m-3 3 3 3M5 19h14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="fill" viewBox="0 0 24 24"><path d="m4 14 8-8 7 7-8 8H4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m8 3 9 9M15 19h6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="align-left" viewBox="0 0 24 24"><path d="M4 6h15M4 10h10M4 14h15M4 18h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   <symbol id="align-center" viewBox="0 0 24 24"><path d="M4 6h16M7 10h10M4 14h16M8 18h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
