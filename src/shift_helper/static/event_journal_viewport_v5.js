@@ -154,6 +154,12 @@
         }
     }
 
+    function clearColumnSelection() {
+        root.querySelectorAll(".operator-column-selected").forEach((element) => {
+            element.classList.remove("operator-column-selected");
+        });
+    }
+
     function restoreRanges(snapshots) {
         if (!snapshots.length) return;
         const rows = new Map(
@@ -265,6 +271,10 @@
             ? event.target.closest(".journal-row-number")
             : null;
         if (!target || !root.contains(target)) return;
+        clearRanges();
+        clearColumnSelection();
+        hideFillHandle();
+        root.dataset.selectionMode = "rows";
         rowDrag = {last: target, ctrlKey: event.ctrlKey || event.metaKey};
         root.classList.add("journal-row-dragging");
     }, true);
