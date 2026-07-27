@@ -126,7 +126,11 @@
 })();
 
 (() => {
+    const preferenceKey = "shift-helper-ui-preferences-v1";
+    const widthKey = "shift-helper-column-base-widths-v1";
+    const zoomKey = "shift-helper-operator-zoom-v1";
     const stylesheetId = "event-journal-operator-repair-v1-css";
+
     if (!document.getElementById(stylesheetId)) {
         const stylesheet = document.createElement("link");
         stylesheet.id = stylesheetId;
@@ -134,6 +138,23 @@
         stylesheet.href = "/static/event_journal_operator_repair_v1.css";
         document.head.appendChild(stylesheet);
     }
+
+    const loadJson = (key, fallback) => {
+        try {
+            const raw = window.localStorage.getItem(key);
+            return raw === null ? structuredClone(fallback) : JSON.parse(raw);
+        } catch (_error) {
+            return structuredClone(fallback);
+        }
+    };
+    const saveJson = (key, value) => {
+        try {
+            window.localStorage.setItem(key, JSON.stringify(value));
+        } catch (_error) {
+            // Local display preferences must never block journal input.
+        }
+    };
+    const clampZoom = (value) => Math.min(400, Math.max(10, Number(value) || 100));
 
     const bindColumnHeaders = (table) => {
         const root = document.getElementById("event-journal");
@@ -200,6 +221,236 @@
         }, true);
     };
 
+    const suppressLegacyZoomBindings = () => {
+        const patched = [];
+        const suppress = new Map([
+            ["journal-zoom", new Set(["input", "wheel"])],
+            ["ribbon-zoom", new Set(["input", "wheel"])],
+            ["ribbon-zoom-out", new Set(["click"])],
+            ["ribbon-zoom-in", new Set(["click"])],
+            ["journal-theme", new Set(["input", "change"])],
+            ["journal-font-size", new Set(["input", "change"])],
+            ["journal-font-family", new Set(["input", "change"])],
+            ["journal-frozen-through", new Set(["input", "change"])],
+        ]);
+
+        suppress.forEach((types, id) => {
+            const control = document.getElementById(id);
+            if (!control) {
+                return;
+            }
+            const original = control.addEventListener;
+            control.addEventListener = function addEventListener(type, listener, options) {
+                if (types.has(type)) {
+                    return;
+                }
+                return original.call(this, type, listener, options);
+            };
+            patched.push(() => {
+                delete control.addEventListener;
+            });
+        });
+
+        const originalWindowAdd = window.addEventListener;
+        window.addEventListener = function addEventListener(type, listener, options) {
+            if (type === "resize") {
+                return;
+            }
+            return originalWindowAdd.call(this, type, listener, options);
+        };
+        patched.push(() => {
+            delete window.addEventListener;
+        });
+
+        return () => patched.reverse().forEach((restore) => restore());
+    };
+
+    const bindStableZoom = (table) => {
+        const root = document.getElementById("event-journal");
+        if (!root || !table || root.dataset.stableZoom === "ready") {
+            return;
+        }
+        root.dataset.stableZoom = "ready";
+        const baseWidths = new Map(Object.entries(loadJson(widthKey, {})));
+        let currentScale = 1;
+        let scalingColumns = false;
+        let zoomFrame = 0;
+        let pendingZoom = 100;
+
+        const initializeBaseWidths = () => {
+            table.getColumns().forEach((column) => {
+                const field = column.getField();
+                if (field && !baseWidths.has(field)) {
+                    baseWidths.set(field, column.getWidth() / Math.max(0.1, currentScale));
+                }
+            });
+            saveJson(widthKey, Object.fromEntries(baseWidths));
+        };
+
+        const syncControls = (value) => {
+            ["journal-zoom", "ribbon-zoom"].forEach((id) => {
+                const control = document.getElementById(id);
+                if (!control) {
+                    return;
+                }
+                control.min = "10";
+                control.max = "400";
+                control.step = "5";
+                control.value = String(value);
+            });
+            document.getElementById("journal-zoom-value")?.replaceChildren(`${value}%`);
+            document.getElementById("ribbon-zoom-value")?.replaceChildren(`${value}%`);
+        };
+
+        const applyZoom = (rawValue, persist = true) => {
+            const value = clampZoom(rawValue);
+            const previousScale = currentScale;
+            currentScale = value / 100;
+            root.style.removeProperty("zoom");
+            root.style.removeProperty("width");
+            root.style.removeProperty("height");
+            document.documentElement.style.setProperty("--ui-scale-factor", "1");
+
+            const preferences = loadJson(preferenceKey, {});
+            const baseFontSize = Number(preferences.fontSize) || 13;
+            document.documentElement.style.setProperty(
+                "--journal-font-size",
+                `${Math.max(6, baseFontSize * currentScale)}px`,
+            );
+            document.documentElement.style.setProperty(
+                "--journal-row-height",
+                `${Math.max(12, Math.round(34 * currentScale))}px`,
+            );
+            document.documentElement.style.setProperty(
+                "--journal-control-height",
+                `${Math.max(12, Math.round(30 * currentScale))}px`,
+            );
+            document.documentElement.style.setProperty(
+                "--journal-toolbar-gap",
+                `${Math.max(2, Math.round(8 * currentScale))}px`,
+            );
+
+            if (!baseWidths.size) {
+                currentScale = previousScale || 1;
+                initializeBaseWidths();
+                currentScale = value / 100;
+            } else {
+                initializeBaseWidths();
+            }
+            scalingColumns = true;
+            try {
+                table.getColumns().forEach((column) => {
+                    const field = column.getField();
+                    const base = field ? Number(baseWidths.get(field)) : 0;
+                    if (base > 0) {
+                        column.setWidth(Math.max(12, Math.round(base * currentScale)));
+                    }
+                });
+            } finally {
+                scalingColumns = false;
+            }
+            saveJson(widthKey, Object.fromEntries(baseWidths));
+
+            preferences.zoom = value;
+            if (persist) {
+                saveJson(preferenceKey, preferences);
+                saveJson(zoomKey, value);
+            }
+            root.dataset.sheetZoom = String(value);
+            syncControls(value);
+            window.requestAnimationFrame(() => table.redraw(false));
+        };
+
+        const requestZoom = (value, persist = true) => {
+            pendingZoom = clampZoom(value);
+            window.cancelAnimationFrame(zoomFrame);
+            zoomFrame = window.requestAnimationFrame(() => {
+                applyZoom(pendingZoom, persist);
+            });
+        };
+
+        const inputZoom = (event) => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            requestZoom(event.currentTarget.value);
+        };
+        ["journal-zoom", "ribbon-zoom"].forEach((id) => {
+            const control = document.getElementById(id);
+            if (!control) {
+                return;
+            }
+            control.addEventListener("input", inputZoom, true);
+            control.addEventListener("wheel", (event) => {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                requestZoom(Number(control.value) + (event.deltaY < 0 ? 5 : -5));
+            }, {capture: true, passive: false});
+        });
+
+        const adjustZoom = (step) => (event) => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            const value = Number(document.getElementById("ribbon-zoom")?.value || 100);
+            requestZoom(value + step);
+        };
+        document.getElementById("ribbon-zoom-out")?.addEventListener(
+            "click",
+            adjustZoom(-5),
+            true,
+        );
+        document.getElementById("ribbon-zoom-in")?.addEventListener(
+            "click",
+            adjustZoom(5),
+            true,
+        );
+
+        ["journal-theme", "journal-font-size", "journal-font-family", "journal-frozen-through"]
+            .forEach((id) => {
+                const control = document.getElementById(id);
+                control?.addEventListener("change", () => {
+                    window.setTimeout(() => requestZoom(pendingZoom, false), 0);
+                });
+                control?.addEventListener("input", () => {
+                    window.setTimeout(() => requestZoom(pendingZoom, false), 0);
+                });
+            });
+
+        document.getElementById("reset-view-settings")?.addEventListener("click", () => {
+            window.setTimeout(() => {
+                baseWidths.clear();
+                currentScale = 1;
+                requestZoom(100);
+            }, 0);
+        });
+        document.getElementById("reset-grid-layout")?.addEventListener("click", () => {
+            window.setTimeout(() => {
+                baseWidths.clear();
+                initializeBaseWidths();
+                requestZoom(pendingZoom, false);
+            }, 40);
+        });
+
+        table.on("columnResized", (column) => {
+            if (scalingColumns) {
+                return;
+            }
+            const field = column?.getField?.();
+            if (field) {
+                baseWidths.set(field, column.getWidth() / Math.max(0.1, currentScale));
+                saveJson(widthKey, Object.fromEntries(baseWidths));
+            }
+        });
+        window.addEventListener("resize", () => {
+            window.setTimeout(() => requestZoom(pendingZoom, false), 0);
+        });
+
+        const initial = loadJson(zoomKey, null)
+            ?? loadJson(preferenceKey, {}).zoom
+            ?? 100;
+        pendingZoom = clampZoom(initial);
+        applyZoom(pendingZoom, false);
+    };
+
     const loadRepair = () => {
         if (document.getElementById("event-journal-operator-repair-v1-js")) {
             return;
@@ -207,6 +458,7 @@
 
         const table = window.shiftHelperEventGrid;
         bindColumnHeaders(table);
+        const restoreLegacyBindings = suppressLegacyZoomBindings();
         const originalUpdateColumnDefinition = table?.updateColumnDefinition?.bind(table);
         if (table && originalUpdateColumnDefinition) {
             table.updateColumnDefinition = (field, definition) => {
@@ -220,22 +472,23 @@
             };
         }
 
-        const restoreColumnApi = () => {
+        const finalizeRepair = () => {
             const root = document.getElementById("event-journal");
-            if (!table || !originalUpdateColumnDefinition) {
+            if (root?.dataset.operatorRepairReady !== "true") {
+                window.requestAnimationFrame(finalizeRepair);
                 return;
             }
-            if (root?.dataset.operatorRepairReady === "true") {
+            restoreLegacyBindings();
+            if (table && originalUpdateColumnDefinition) {
                 table.updateColumnDefinition = originalUpdateColumnDefinition;
-                return;
             }
-            window.requestAnimationFrame(restoreColumnApi);
+            bindStableZoom(table);
         };
 
         const script = document.createElement("script");
         script.id = "event-journal-operator-repair-v1-js";
         script.src = "/static/event_journal_operator_repair_v1.js";
-        script.addEventListener("load", restoreColumnApi, {once: true});
+        script.addEventListener("load", finalizeRepair, {once: true});
         document.body.appendChild(script);
     };
 
