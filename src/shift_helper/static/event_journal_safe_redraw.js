@@ -68,9 +68,21 @@
         return boundary;
     }
 
+    function syncFrozenDefinitions() {
+        table.getColumns().forEach((column) => {
+            const field = column.getField();
+            if (!field) return;
+            const definition = column.getDefinition?.();
+            if (definition) {
+                definition.frozen = virtualFrozenFields.has(field);
+            }
+        });
+    }
+
     function initializeVirtualFrozenFields() {
         const preferences = readPreferences();
         virtualFrozenFields = fieldsThrough(preferences.frozenThrough || defaultBoundary);
+        syncFrozenDefinitions();
     }
 
     function persistFrozenBoundary() {
@@ -82,6 +94,8 @@
         const ribbonSelect = document.getElementById("ribbon-frozen-through");
         if (settingsSelect) settingsSelect.value = boundary;
         if (ribbonSelect) ribbonSelect.value = boundary;
+        root.dataset.frozenColumnsController = "ready";
+        root.dataset.frozenColumnsApplied = boundary;
         root.dataset.stableFrozenThrough = boundary;
     }
 
@@ -139,7 +153,7 @@
                 cells.forEach((cell) => setStickyStyle(cell, left, 22));
                 lastFrozenHeader = header;
                 lastFrozenCells.splice(0, lastFrozenCells.length, ...cells);
-                left += Number(column.getWidth()) || 0;
+                left += header?.getBoundingClientRect().width || Number(column.getWidth()) || 0;
             } else {
                 clearStickyStyle(header);
                 cells.forEach(clearStickyStyle);
@@ -169,22 +183,7 @@
                 .filter((column) => column?.field && column.frozen)
                 .map((column) => column.field),
         );
-
-        for (const definition of layout) {
-            if (!definition?.field) continue;
-            const column = table.getColumn(definition.field);
-            if (!column) continue;
-            const width = Number(definition.width);
-            if (Number.isFinite(width) && width > 0 && column.getWidth() !== width) {
-                column.setWidth(width);
-            }
-            if (definition.visible === false) {
-                column.hide();
-            } else if (definition.visible === true) {
-                column.show();
-            }
-        }
-
+        syncFrozenDefinitions();
         suppressNextForcedRedraw = true;
         persistFrozenBoundary();
         scheduleStableFrozenColumns();
@@ -275,6 +274,7 @@
     }
 
     initializeVirtualFrozenFields();
+    persistFrozenBoundary();
 
     if (originalGetColumnLayout) {
         table.getColumnLayout = () => originalGetColumnLayout().map((column) => (
@@ -329,12 +329,15 @@
         ready = true;
         protectDestroyedCellComponents();
         pending = true;
+        syncFrozenDefinitions();
+        persistFrozenBoundary();
         scheduleStableFrozenColumns();
         flushPending();
     });
     table.on("renderComplete", () => {
         ready = true;
         protectDestroyedCellComponents();
+        syncFrozenDefinitions();
         scheduleStableFrozenColumns();
         flushPending();
     });
