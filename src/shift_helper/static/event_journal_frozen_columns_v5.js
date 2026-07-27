@@ -13,6 +13,7 @@
     const defaultBoundary = "asset_label";
     let applying = false;
     let queuedBoundary = null;
+    root.dataset.frozenColumnsController = "ready";
 
     function readPreferences() {
         try {
@@ -77,6 +78,8 @@
             return;
         }
         applying = true;
+        root.dataset.frozenColumnsApplying = boundary;
+        delete root.dataset.frozenColumnsApplied;
         clearTransientState();
         try {
             const fields = orderedFields();
@@ -95,7 +98,9 @@
 
             saveBoundary(boundary);
             table.redraw(true);
+            root.dataset.frozenColumnsApplied = boundary;
         } finally {
+            delete root.dataset.frozenColumnsApplying;
             applying = false;
             if (queuedBoundary !== null) {
                 const next = queuedBoundary;
