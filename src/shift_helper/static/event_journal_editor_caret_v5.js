@@ -212,8 +212,9 @@
         delete root.dataset.frozenColumnsApplied;
         clearTransientState();
         try {
-            const definitions = table.getColumnDefinitions();
-            const fields = definitions.map((definition) => definition.field).filter(Boolean);
+            const definitions = table.getColumnDefinitions()
+                .filter((definition) => Boolean(definition.field));
+            const fields = definitions.map((definition) => definition.field);
             const expected = expectedFields(boundary, fields);
             const nextDefinitions = definitions.map((definition) => ({
                 ...definition,
