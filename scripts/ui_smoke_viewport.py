@@ -2,11 +2,12 @@
 
 from __future__ import annotations  # noqa: I001
 
+import json
 import runpy
 import sys
 from pathlib import Path
 
-from playwright.sync_api import Page
+from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 
 
 BASE_SCRIPT = Path(__file__).with_name("ui_smoke.py")
@@ -98,15 +99,38 @@ def test_excel_edit_modes(page: Page) -> None:
 
 
 def frozen_fields(page: Page) -> list[str]:
-    page.wait_for_function(
-        """() => {
-            const root = document.getElementById('event-journal');
-            const select = document.getElementById('journal-frozen-through');
-            return root?.dataset.frozenColumnsController === 'ready'
-                && root.dataset.frozenColumnsApplied === select?.value;
-        }""",
-        timeout=10_000,
-    )
+    try:
+        page.wait_for_function(
+            """() => {
+                const root = document.getElementById('event-journal');
+                const select = document.getElementById('journal-frozen-through');
+                return root?.dataset.frozenColumnsController === 'ready'
+                    && root.dataset.frozenColumnsApplied === select?.value;
+            }""",
+            timeout=10_000,
+        )
+    except PlaywrightTimeoutError as exc:
+        diagnostic = page.evaluate(
+            """() => {
+                const root = document.getElementById('event-journal');
+                const select = document.getElementById('journal-frozen-through');
+                const table = window.shiftHelperEventGrid;
+                return {
+                    dataset: root ? {...root.dataset} : null,
+                    selected: select?.value ?? null,
+                    updateColumnDefinition: typeof table?.updateColumnDefinition,
+                    columns: table?.getColumns?.().map(column => ({
+                        field: column.getField(),
+                        frozen: column.getDefinition().frozen ?? null,
+                    })) ?? null,
+                };
+            }"""
+        )
+        raise AssertionError(
+            "Frozen-column controller did not settle: "
+            + json.dumps(diagnostic, ensure_ascii=False, sort_keys=True)
+        ) from exc
+
     return page.evaluate(
         """() => window.shiftHelperEventGrid.getColumns()
             .filter(column => Boolean(column.getDefinition().frozen))
