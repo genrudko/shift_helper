@@ -60,6 +60,8 @@ def test_operator_repairs(page: Page) -> None:
         == "rgb(255, 217, 102)",
         "Manual fill is not visible on the selected cell.",
     )
+    page.evaluate("document.getElementById('clear-cell-fill').click()")
+    page.wait_for_timeout(150)
 
     require(
         page.locator("#ribbon-font-family option").count() >= 20,
