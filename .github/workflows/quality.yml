@@ -47,10 +47,7 @@ jobs:
         shell: bash
         run: |
           node --check src/shift_helper/static/event_journal.js
-          node --check src/shift_helper/static/event_journal_row_clipboard.js
-          node --check src/shift_helper/static/event_journal_tsv_bridge.js
-          node --check src/shift_helper/static/event_journal_excel_features.js
-          node --check src/shift_helper/static/event_journal_delete_guard.js
+          node --check src/shift_helper/static/event_journal_workspace_v4.js
 
       - name: Ruff
         id: ruff
