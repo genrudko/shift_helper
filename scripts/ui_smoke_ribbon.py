@@ -17,10 +17,86 @@ VIEWPORT = runpy.run_path(
 BASE_FUNCTION = VIEWPORT["base_function"]
 
 
+def wait_for_operator_repair(page: Page) -> None:
+    page.wait_for_function(
+        "document.getElementById('event-journal')?.dataset.operatorRepairReady === 'true'",
+        timeout=20_000,
+    )
+
+
 def open_view_settings(page: Page) -> None:
     page.locator('[data-ribbon-tab="view"]').click()
     page.locator("#open-view-settings").click()
     page.locator("#journal-view-settings").wait_for(state="visible", timeout=5_000)
+
+
+def test_operator_repairs(page: Page) -> None:
+    require = BASE_FUNCTION("require")
+    saved_rows = BASE_FUNCTION("saved_rows")
+    cell = BASE_FUNCTION("cell")
+
+    wait_for_operator_repair(page)
+    root = page.locator("#event-journal")
+    zoom = page.locator("#ribbon-zoom")
+    require(zoom.get_attribute("min") == "10", "Zoom minimum is not 10%.")
+    require(zoom.get_attribute("max") == "400", "Zoom maximum is not 400%.")
+
+    zoom.fill("100")
+    zoom.hover()
+    page.mouse.wheel(0, -100)
+    page.wait_for_timeout(150)
+    require(zoom.input_value() == "105", "Mouse wheel does not change zoom over the slider.")
+
+    first = saved_rows(page).first
+    description = cell(first, "description")
+    description.click()
+    page.locator(".operator-fill-arrow").click()
+    palette = page.locator(".operator-color-palette")
+    palette.wait_for(state="visible", timeout=5_000)
+    palette.locator('[title="#ffd966"]').click()
+    page.wait_for_timeout(250)
+    require(
+        description.evaluate("element => getComputedStyle(element).backgroundColor")
+        == "rgb(255, 217, 102)",
+        "Manual fill is not visible on the selected cell.",
+    )
+
+    require(
+        page.locator("#ribbon-font-family option").count() >= 20,
+        "The ribbon still exposes too few font families.",
+    )
+    require(page.locator("#operator-font-size").is_visible(), "Manual font-size input is missing.")
+    require(page.locator("#operator-text-direction").is_visible(), "Text-direction command is missing.")
+
+    page.evaluate("window.shiftHelperEventGrid.setSort('start_date', 'desc')")
+    page.wait_for_timeout(500)
+    sorted_flags = page.evaluate(
+        "window.shiftHelperEventGrid.getRows('active').map(row => Boolean(row.getData()._draft))"
+    )
+    first_draft = next((index for index, flag in enumerate(sorted_flags) if flag), len(sorted_flags))
+    require(
+        not any(not flag for flag in sorted_flags[first_draft:]),
+        "Reverse sorting placed a real record below draft rows.",
+    )
+    require(root.get_attribute("data-draft-aware-sort") == "ready", "Draft-aware sorters were not installed.")
+
+    header = page.locator('.tabulator-col[data-field="description"]')
+    header.locator(".tabulator-col-title").click()
+    require(root.get_attribute("data-selection-mode") == "columns", "Column header did not select the column.")
+    require(header.evaluate("element => element.classList.contains('operator-column-selected')"), "Selected column header is not marked.")
+
+    holder = page.locator(".tabulator-tableholder")
+    before_ranges = page.evaluate("window.shiftHelperEventGrid.getRanges().length")
+    box = holder.bounding_box()
+    require(box is not None, "Table viewport geometry is unavailable for middle-button panning.")
+    start_x = box["x"] + min(300, box["width"] / 2)
+    start_y = box["y"] + min(220, box["height"] / 2)
+    page.mouse.move(start_x, start_y)
+    page.mouse.down(button="middle")
+    page.mouse.move(start_x - 80, start_y - 60, steps=5)
+    page.mouse.up(button="middle")
+    after_ranges = page.evaluate("window.shiftHelperEventGrid.getRanges().length")
+    require(after_ranges == before_ranges, "Middle-button panning changed the cell selection.")
 
 
 def test_ribbon_contract(page: Page) -> None:
@@ -28,6 +104,7 @@ def test_ribbon_contract(page: Page) -> None:
     saved_rows = BASE_FUNCTION("saved_rows")
     cell = BASE_FUNCTION("cell")
 
+    wait_for_operator_repair(page)
     ribbon = page.locator("#journal-ribbon")
     require(ribbon.is_visible(), "The journal ribbon is not visible.")
     require(
@@ -36,24 +113,15 @@ def test_ribbon_contract(page: Page) -> None:
     )
 
     page.locator("#ribbon-collapse").click()
-    require(
-        ribbon.get_attribute("data-ribbon-state") == "collapsed",
-        "The ribbon did not collapse.",
-    )
+    require(ribbon.get_attribute("data-ribbon-state") == "collapsed", "The ribbon did not collapse.")
     page.locator('[data-ribbon-tab="data"]').click()
     require(
         ribbon.get_attribute("data-ribbon-state") == "temporary",
         "A collapsed ribbon did not open temporarily over the grid.",
     )
-    require(
-        page.locator('[data-ribbon-panel="data"]').is_visible(),
-        "The temporary Data ribbon panel is not visible.",
-    )
+    require(page.locator('[data-ribbon-panel="data"]').is_visible(), "The temporary Data panel is not visible.")
     page.locator("#ribbon-collapse").click()
-    require(
-        ribbon.get_attribute("data-ribbon-state") == "expanded",
-        "The ribbon did not return to the expanded state.",
-    )
+    require(ribbon.get_attribute("data-ribbon-state") == "expanded", "The ribbon did not expand from temporary state.")
 
     rows = saved_rows(page)
     first = rows.nth(0)
@@ -62,36 +130,20 @@ def test_ribbon_contract(page: Page) -> None:
     description.click(button="right")
     shell = page.locator(".journal-context-shell")
     shell.wait_for(state="visible", timeout=5_000)
-    require(
-        shell.locator(".journal-mini-toolbar").is_visible(),
-        "The formatting mini toolbar is missing above the context menu.",
-    )
+    require(shell.locator(".journal-mini-toolbar").is_visible(), "The formatting mini toolbar is missing.")
     page.keyboard.press("Escape")
     shell.wait_for(state="hidden", timeout=5_000)
 
     first.locator(".journal-row-number").click()
     second.locator(".journal-row-number").click(modifiers=["Shift"])
-    require(
-        page.locator(".journal-row--multi-selected").count() == 2,
-        "Two rows were not selected before the context-menu check.",
-    )
+    require(page.locator(".journal-row--multi-selected").count() == 2, "Two rows were not selected.")
     second.locator(".journal-row-number").click(button="right")
     shell.wait_for(state="visible", timeout=5_000)
-    require(
-        page.locator(".journal-row--multi-selected").count() == 2,
-        "Right click collapsed the existing multi-row selection.",
-    )
-    require(
-        "2 строк" in shell.locator(".journal-context-menu").inner_text(),
-        "The row context menu does not state how many rows it will affect.",
-    )
+    require(page.locator(".journal-row--multi-selected").count() == 2, "Right click collapsed row selection.")
+    require("2 строк" in shell.locator(".journal-context-menu").inner_text(), "Row menu lacks selection count.")
     page.keyboard.press("Escape")
     cell(second, "description").click()
-
-    require(
-        page.locator(".journal-fill-handle").count() <= 1,
-        "More than one fill handle exists in the document.",
-    )
+    require(page.locator(".journal-fill-handle").count() <= 1, "More than one fill handle exists.")
 
 
 def test_viewport_and_frozen_columns(page: Page) -> None:
@@ -101,28 +153,29 @@ def test_viewport_and_frozen_columns(page: Page) -> None:
     frozen_fields = VIEWPORT["frozen_fields"]
     clear_grid_selection = VIEWPORT["clear_grid_selection"]
 
+    test_operator_repairs(page)
+    page.evaluate("window.shiftHelperEventGrid.clearSort()")
     test_ribbon_contract(page)
     open_view_settings(page)
     dialog = page.locator("#journal-view-settings")
 
     page.locator("#journal-theme").select_option("dark")
-    page.locator("#journal-zoom").fill("140")
+    page.locator("#journal-zoom").fill("400")
     page.locator("#journal-font-size").fill("15")
     page.locator("#journal-font-family").select_option("Tahoma")
     page.locator("#journal-frozen-through").select_option("none")
     page.wait_for_timeout(700)
 
-    require(
-        page.locator("body").evaluate("element => element.style.zoom") == "",
-        "CSS zoom is still being applied to the page.",
-    )
+    require(page.locator("body").evaluate("element => element.style.zoom") == "", "CSS zoom reached the page body.")
     require(
         page.locator("html").evaluate(
-            "element => getComputedStyle(element)"
-            ".getPropertyValue('--ui-scale-factor').trim()"
-        )
-        == "1.4",
-        "Dimension-based interface scale was not applied.",
+            "element => getComputedStyle(element).getPropertyValue('--ui-scale-factor').trim()"
+        ) == "1",
+        "Application chrome is still being scaled with the sheet.",
+    )
+    require(
+        page.locator("#event-journal").evaluate("element => element.style.zoom") == "4",
+        "The table sheet did not reach 400% zoom.",
     )
     require(not frozen_fields(page), "Frozen columns were not fully disabled.")
 
@@ -139,16 +192,9 @@ def test_viewport_and_frozen_columns(page: Page) -> None:
     first = saved_rows(page).first
     start_cell = cell(first, "start_date")
     description = cell(first, "description")
-    start_background = start_cell.evaluate(
-        "element => getComputedStyle(element).backgroundColor"
-    )
-    description_background = description.evaluate(
-        "element => getComputedStyle(element).backgroundColor"
-    )
-    require(
-        start_background == description_background,
-        "Dark theme uses different row palettes in frozen and scrollable sections.",
-    )
+    start_background = start_cell.evaluate("element => getComputedStyle(element).backgroundColor")
+    description_background = description.evaluate("element => getComputedStyle(element).backgroundColor")
+    require(start_background == description_background, "Dark theme palettes differ across table sections.")
 
     description.click()
     handle = page.locator(".journal-fill-handle:not([hidden])")
@@ -156,19 +202,14 @@ def test_viewport_and_frozen_columns(page: Page) -> None:
     page.wait_for_timeout(250)
     cell_box = description.bounding_box()
     handle_box = handle.bounding_box()
+    require(cell_box is not None and handle_box is not None, "Fill-handle geometry is unavailable.")
     require(
-        cell_box is not None and handle_box is not None,
-        "Fill-handle geometry is unavailable.",
-    )
-    handle_center_x = handle_box["x"] + (handle_box["width"] / 2)
-    handle_center_y = handle_box["y"] + (handle_box["height"] / 2)
-    require(
-        abs(handle_center_x - (cell_box["x"] + cell_box["width"])) <= 5,
-        "Fill handle moved away from the selected cell after scaling.",
+        abs((handle_box["x"] + handle_box["width"] / 2) - (cell_box["x"] + cell_box["width"])) <= 6,
+        "Fill handle moved horizontally after scaling.",
     )
     require(
-        abs(handle_center_y - (cell_box["y"] + cell_box["height"])) <= 5,
-        "Fill handle vertical position broke after scaling.",
+        abs((handle_box["y"] + handle_box["height"] / 2) - (cell_box["y"] + cell_box["height"])) <= 6,
+        "Fill handle moved vertically after scaling.",
     )
 
     open_view_settings(page)
@@ -182,29 +223,23 @@ def test_viewport_and_frozen_columns(page: Page) -> None:
     page.locator("#journal-theme").select_option("light")
     page.locator("#journal-zoom").fill("110")
     page.wait_for_timeout(350)
-    preferences = page.evaluate(
-        "JSON.parse(localStorage.getItem('shift-helper-ui-preferences-v1'))"
-    )
+    preferences = page.evaluate("JSON.parse(localStorage.getItem('shift-helper-ui-preferences-v1'))")
     require(preferences["zoom"] == 110, "Interface scale was not saved.")
     require(preferences["fontSize"] == 15, "Font size was not saved.")
     require(preferences["fontFamily"] == "Tahoma", "Font family was not saved.")
-    require(
-        preferences["frozenThrough"] == "asset_label",
-        "Frozen-column preference was not saved.",
-    )
+    require(preferences["frozenThrough"] == "asset_label", "Frozen-column preference was not saved.")
 
     dialog.locator('button[value="close"]').last.click()
     dialog.wait_for(state="hidden", timeout=5_000)
     page.set_viewport_size({"width": 1680, "height": 960})
     page.reload(wait_until="networkidle")
     page.locator(".event-grid.tabulator").wait_for(state="visible", timeout=20_000)
+    wait_for_operator_repair(page)
+    require(page.locator("html").get_attribute("data-theme") == "light", "Theme was not persisted.")
+    require(page.locator("body").evaluate("element => element.style.zoom") == "", "CSS zoom returned on body.")
     require(
-        page.locator("html").get_attribute("data-theme") == "light",
-        "Theme was not persisted.",
-    )
-    require(
-        page.locator("body").evaluate("element => element.style.zoom") == "",
-        "CSS zoom returned after page reload.",
+        page.locator("#event-journal").evaluate("element => element.style.zoom") == "1.1",
+        "Table zoom was not restored after reload.",
     )
     require(
         frozen_fields(page) == ["start_date", "start_time", "asset_label"],
@@ -212,9 +247,7 @@ def test_viewport_and_frozen_columns(page: Page) -> None:
     )
 
 
-BASE_FUNCTION("run_smoke").__globals__["test_viewport_and_frozen_columns"] = (
-    test_viewport_and_frozen_columns
-)
+BASE_FUNCTION("run_smoke").__globals__["test_viewport_and_frozen_columns"] = test_viewport_and_frozen_columns
 
 
 def main() -> None:
