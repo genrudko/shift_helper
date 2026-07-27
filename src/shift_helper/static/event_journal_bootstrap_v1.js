@@ -325,13 +325,24 @@
         };
         document.getElementById("ribbon-zoom-out")?.addEventListener("click", adjust(-5), true);
         document.getElementById("ribbon-zoom-in")?.addEventListener("click", adjust(5), true);
-        ["journal-theme", "journal-font-size", "journal-font-family", "journal-frozen-through"]
-            .forEach((id) => {
-                const control = document.getElementById(id);
-                const reapply = () => setTimeout(() => requestZoom(pendingZoom, false), 0);
-                control?.addEventListener("change", reapply);
-                control?.addEventListener("input", reapply);
-            });
+        const viewPreferenceFields = {
+            "journal-theme": ["theme", (value) => value],
+            "journal-font-size": ["fontSize", (value) => Number(value)],
+            "journal-font-family": ["fontFamily", (value) => value],
+            "journal-frozen-through": ["frozenThrough", (value) => value],
+        };
+        Object.entries(viewPreferenceFields).forEach(([id, [field, normalize]]) => {
+            const control = document.getElementById(id);
+            const persistAndReapply = () => {
+                const preferences = loadJson(preferenceKey, {});
+                preferences[field] = normalize(control.value);
+                preferences.zoom = pendingZoom;
+                saveJson(preferenceKey, preferences);
+                setTimeout(() => requestZoom(pendingZoom, false), 0);
+            };
+            control?.addEventListener("change", persistAndReapply);
+            control?.addEventListener("input", persistAndReapply);
+        });
         document.getElementById("reset-view-settings")?.addEventListener("click", () => {
             setTimeout(() => {
                 baseWidths.clear();
