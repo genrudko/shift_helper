@@ -85,8 +85,21 @@ def test_excel_edit_modes(page: Page) -> None:
     )
     editor = description.locator(".journal-stable-editor")
     editor.wait_for(state="visible", timeout=5_000)
-    caret = editor.evaluate("element => element.selectionStart")
-    require(caret < len(editor.input_value()), "Double click placed the caret only at the end.")
+    first_caret = editor.evaluate("element => element.selectionStart")
+    require(
+        first_caret < len(editor.input_value()),
+        "Double click placed the caret only at the end.",
+    )
+
+    editor_box = editor.bounding_box()
+    require(editor_box is not None, "Editor geometry is unavailable.")
+    page.mouse.click(
+        editor_box["x"] + (editor_box["width"] * 0.78),
+        editor_box["y"] + (editor_box["height"] / 2),
+    )
+    require(editor.is_visible(), "A click inside the editor unexpectedly closed editing.")
+    second_caret = editor.evaluate("element => element.selectionStart")
+    require(second_caret != first_caret, "A click inside the editor did not move the caret.")
 
     page.keyboard.press("ArrowRight")
     page.keyboard.insert_text("X")
@@ -108,6 +121,31 @@ def test_excel_edit_modes(page: Page) -> None:
         "F2 did not place the caret at the end.",
     )
     page.keyboard.press("Escape")
+
+
+def test_row_drag_selection(page: Page) -> None:
+    first_number = saved_rows(page).nth(0).locator(".journal-row-number")
+    third_number = saved_rows(page).nth(2).locator(".journal-row-number")
+    first_box = first_number.bounding_box()
+    third_box = third_number.bounding_box()
+    require(first_box is not None and third_box is not None, "Row-number geometry is unavailable.")
+
+    page.mouse.move(
+        first_box["x"] + (first_box["width"] / 2),
+        first_box["y"] + (first_box["height"] / 2),
+    )
+    page.mouse.down()
+    page.mouse.move(
+        third_box["x"] + (third_box["width"] / 2),
+        third_box["y"] + (third_box["height"] / 2),
+        steps=12,
+    )
+    page.mouse.up()
+    require(
+        page.locator(".journal-row--multi-selected").count() >= 3,
+        "Dragging over row numbers did not select a continuous row range.",
+    )
+    cell(saved_rows(page).first, "description").click()
 
 
 def test_range_delete_and_history(page: Page) -> None:
@@ -168,38 +206,114 @@ def test_multi_row_delete_without_dialog(page: Page) -> None:
     require(saved_rows(page).count() == before, "Final undo did not restore rows.")
 
 
-def test_view_preferences(page: Page) -> None:
+def frozen_fields(page: Page) -> list[str]:
+    return page.evaluate(
+        """() => window.shiftHelperEventGrid.getColumnLayout()
+            .filter(column => column.frozen)
+            .map(column => column.field)"""
+    )
+
+
+def test_viewport_and_frozen_columns(page: Page) -> None:
     page.locator("#open-view-settings").click()
     dialog = page.locator("#journal-view-settings")
     dialog.wait_for(state="visible", timeout=5_000)
 
-    page.locator("#journal-theme").select_option("light")
-    require(
-        page.locator("html").get_attribute("data-theme") == "light",
-        "Light theme was not applied.",
-    )
-
-    page.locator("#journal-zoom").fill("110")
+    page.locator("#journal-theme").select_option("dark")
+    page.locator("#journal-zoom").fill("140")
     page.locator("#journal-font-size").fill("15")
     page.locator("#journal-font-family").select_option("Tahoma")
-    page.wait_for_timeout(350)
+    page.locator("#journal-frozen-through").select_option("none")
+    page.wait_for_timeout(700)
 
-    preferences = page.evaluate(
-        "JSON.parse(localStorage.getItem('shift-helper-ui-preferences-v1'))"
+    require(
+        page.locator("body").evaluate("element => element.style.zoom") == "",
+        "CSS zoom is still being applied to the page.",
     )
-    require(preferences["zoom"] == 110, "Interface zoom was not saved.")
-    require(preferences["fontSize"] == 15, "Font size was not saved.")
-    require(preferences["fontFamily"] == "Tahoma", "Font family was not saved.")
-    applied_zoom = page.locator("body").evaluate("element => element.style.zoom")
-    require(applied_zoom == "1.1", "Zoom was not applied.")
+    require(
+        page.locator("html").evaluate(
+            "element => getComputedStyle(element).getPropertyValue('--ui-scale-factor').trim()"
+        ) == "1.4",
+        "Dimension-based interface scale was not applied.",
+    )
+    require(not frozen_fields(page), "Frozen columns were not fully disabled.")
 
     dialog.locator('button[value="close"]').last.click()
     dialog.wait_for(state="hidden", timeout=5_000)
+    page.set_viewport_size({"width": 1180, "height": 760})
+    page.wait_for_timeout(600)
+    toolbar_fits = page.locator(".journal-toolbar").evaluate(
+        "element => element.scrollWidth <= element.clientWidth + 2"
+    )
+    require(toolbar_fits, "The toolbar overflows the window after scaling.")
+
+    first = saved_rows(page).first
+    start_cell = cell(first, "start_date")
+    description = cell(first, "description")
+    start_background = start_cell.evaluate("element => getComputedStyle(element).backgroundColor")
+    description_background = description.evaluate(
+        "element => getComputedStyle(element).backgroundColor"
+    )
+    require(
+        start_background == description_background,
+        "Dark theme uses different row palettes in frozen and scrollable sections.",
+    )
+
+    description.click()
+    handle = page.locator(".journal-fill-handle:not([hidden])")
+    handle.wait_for(state="visible", timeout=5_000)
+    page.wait_for_timeout(250)
+    cell_box = description.bounding_box()
+    handle_box = handle.bounding_box()
+    require(cell_box is not None and handle_box is not None, "Fill-handle geometry is unavailable.")
+    handle_center_x = handle_box["x"] + (handle_box["width"] / 2)
+    handle_center_y = handle_box["y"] + (handle_box["height"] / 2)
+    require(
+        abs(handle_center_x - (cell_box["x"] + cell_box["width"])) <= 5,
+        "Fill handle moved away from the selected cell after scaling.",
+    )
+    require(
+        abs(handle_center_y - (cell_box["y"] + cell_box["height"])) <= 5,
+        "Fill handle vertical position broke after scaling.",
+    )
+
+    page.locator("#open-view-settings").click()
+    dialog.wait_for(state="visible", timeout=5_000)
+    page.locator("#journal-frozen-through").select_option("asset_label")
+    page.wait_for_timeout(700)
+    require(
+        frozen_fields(page) == ["start_date", "start_time", "asset_label"],
+        "The configurable frozen-column boundary was not applied.",
+    )
+
+    page.locator("#journal-theme").select_option("light")
+    page.locator("#journal-zoom").fill("110")
+    page.wait_for_timeout(350)
+    preferences = page.evaluate(
+        "JSON.parse(localStorage.getItem('shift-helper-ui-preferences-v1'))"
+    )
+    require(preferences["zoom"] == 110, "Interface scale was not saved.")
+    require(preferences["fontSize"] == 15, "Font size was not saved.")
+    require(preferences["fontFamily"] == "Tahoma", "Font family was not saved.")
+    require(
+        preferences["frozenThrough"] == "asset_label",
+        "Frozen-column preference was not saved.",
+    )
+
+    dialog.locator('button[value="close"]').last.click()
+    dialog.wait_for(state="hidden", timeout=5_000)
+    page.set_viewport_size({"width": 1680, "height": 960})
     page.reload(wait_until="networkidle")
     page.locator(".event-grid.tabulator").wait_for(state="visible", timeout=20_000)
     require(page.locator("html").get_attribute("data-theme") == "light", "Theme was not persisted.")
-    persisted_zoom = page.locator("body").evaluate("element => element.style.zoom")
-    require(persisted_zoom == "1.1", "Zoom was not persisted.")
+    require(
+        page.locator("body").evaluate("element => element.style.zoom") == "",
+        "CSS zoom returned after page reload.",
+    )
+    require(
+        frozen_fields(page) == ["start_date", "start_time", "asset_label"],
+        "Frozen-column preference was not restored after reload.",
+    )
 
 
 def run_smoke(url: str, screenshot_path: Path) -> None:
@@ -223,20 +337,21 @@ def run_smoke(url: str, screenshot_path: Path) -> None:
         )
 
         try:
-            for index in range(3):
+            for index in range(4):
                 create_event(page, url, index)
 
             page.goto(f"{url.rstrip('/')}/events", wait_until="networkidle")
             page.locator(".event-grid.tabulator").wait_for(state="visible", timeout=20_000)
-            require(saved_rows(page).count() == 3, "Seeded rows are missing.")
+            require(saved_rows(page).count() == 4, "Seeded rows are missing.")
             require(page.locator("#journal-undo").is_disabled(), "Undo should start disabled.")
             require(page.locator("#journal-redo").is_disabled(), "Redo should start disabled.")
 
             test_excel_edit_modes(page)
             wait_saved(page)
+            test_row_drag_selection(page)
             test_range_delete_and_history(page)
             test_multi_row_delete_without_dialog(page)
-            test_view_preferences(page)
+            test_viewport_and_frozen_columns(page)
 
             require(not browser_errors, "Browser errors: " + " | ".join(browser_errors))
         except Exception:
@@ -253,7 +368,7 @@ def main() -> None:
         raise SystemExit("Usage: ui_smoke.py <base-url> [screenshot-path]")
     screenshot_path = Path(sys.argv[2] if len(sys.argv) == 3 else "ui-smoke-failure.png")
     run_smoke(sys.argv[1], screenshot_path)
-    print("Shift-Helper UX-GRID-002 workspace smoke test passed.")
+    print("Shift-Helper UX-GRID-002 viewport smoke test passed.")
 
 
 if __name__ == "__main__":
