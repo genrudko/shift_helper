@@ -1,6 +1,6 @@
 """Viewport-focused entry point for the Shift-Helper browser smoke suite."""
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: I001
 
 import runpy
 import sys
