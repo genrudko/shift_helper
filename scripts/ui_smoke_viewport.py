@@ -139,27 +139,133 @@ def frozen_fields(page: Page) -> list[str]:
     )
 
 
-ORIGINAL_VIEWPORT_TEST = base_function("test_viewport_and_frozen_columns")
-
-
-def test_viewport_and_frozen_columns(page: Page) -> None:
+def clear_grid_selection(page: Page) -> None:
     page.evaluate(
         """() => {
             for (const range of window.shiftHelperEventGrid.getRanges?.() || []) {
                 try {
                     range.remove();
                 } catch (_error) {
-                    // The palette check must ignore stale selection visuals.
+                    // Ignore an already stale range during a visual assertion.
                 }
             }
             document.querySelectorAll('.journal-row--multi-selected').forEach(element => {
                 element.classList.remove('journal-row--multi-selected');
             });
+            document.querySelectorAll('.tabulator-range-selected').forEach(element => {
+                element.classList.remove('tabulator-range-selected');
+            });
         }"""
     )
     page.locator("#journal-title").click()
     page.wait_for_timeout(120)
-    ORIGINAL_VIEWPORT_TEST(page)
+
+
+def test_viewport_and_frozen_columns(page: Page) -> None:
+    require = base_function("require")
+    saved_rows = base_function("saved_rows")
+    cell = base_function("cell")
+
+    page.locator("#open-view-settings").click()
+    dialog = page.locator("#journal-view-settings")
+    dialog.wait_for(state="visible", timeout=5_000)
+
+    page.locator("#journal-theme").select_option("dark")
+    page.locator("#journal-zoom").fill("140")
+    page.locator("#journal-font-size").fill("15")
+    page.locator("#journal-font-family").select_option("Tahoma")
+    page.locator("#journal-frozen-through").select_option("none")
+    page.wait_for_timeout(700)
+
+    require(
+        page.locator("body").evaluate("element => element.style.zoom") == "",
+        "CSS zoom is still being applied to the page.",
+    )
+    require(
+        page.locator("html").evaluate(
+            "element => getComputedStyle(element).getPropertyValue('--ui-scale-factor').trim()"
+        ) == "1.4",
+        "Dimension-based interface scale was not applied.",
+    )
+    require(not frozen_fields(page), "Frozen columns were not fully disabled.")
+
+    dialog.locator('button[value="close"]').last.click()
+    dialog.wait_for(state="hidden", timeout=5_000)
+    page.set_viewport_size({"width": 1180, "height": 760})
+    page.wait_for_timeout(600)
+    toolbar_fits = page.locator(".journal-toolbar").evaluate(
+        "element => element.scrollWidth <= element.clientWidth + 2"
+    )
+    require(toolbar_fits, "The toolbar overflows the window after scaling.")
+
+    clear_grid_selection(page)
+    first = saved_rows(page).first
+    start_cell = cell(first, "start_date")
+    description = cell(first, "description")
+    start_background = start_cell.evaluate("element => getComputedStyle(element).backgroundColor")
+    description_background = description.evaluate(
+        "element => getComputedStyle(element).backgroundColor"
+    )
+    require(
+        start_background == description_background,
+        "Dark theme uses different row palettes in frozen and scrollable sections.",
+    )
+
+    description.click()
+    handle = page.locator(".journal-fill-handle:not([hidden])")
+    handle.wait_for(state="visible", timeout=5_000)
+    page.wait_for_timeout(250)
+    cell_box = description.bounding_box()
+    handle_box = handle.bounding_box()
+    require(cell_box is not None and handle_box is not None, "Fill-handle geometry is unavailable.")
+    handle_center_x = handle_box["x"] + (handle_box["width"] / 2)
+    handle_center_y = handle_box["y"] + (handle_box["height"] / 2)
+    require(
+        abs(handle_center_x - (cell_box["x"] + cell_box["width"])) <= 5,
+        "Fill handle moved away from the selected cell after scaling.",
+    )
+    require(
+        abs(handle_center_y - (cell_box["y"] + cell_box["height"])) <= 5,
+        "Fill handle vertical position broke after scaling.",
+    )
+
+    page.locator("#open-view-settings").click()
+    dialog.wait_for(state="visible", timeout=5_000)
+    page.locator("#journal-frozen-through").select_option("asset_label")
+    page.wait_for_timeout(700)
+    require(
+        frozen_fields(page) == ["start_date", "start_time", "asset_label"],
+        "The configurable frozen-column boundary was not applied.",
+    )
+
+    page.locator("#journal-theme").select_option("light")
+    page.locator("#journal-zoom").fill("110")
+    page.wait_for_timeout(350)
+    preferences = page.evaluate(
+        "JSON.parse(localStorage.getItem('shift-helper-ui-preferences-v1'))"
+    )
+    require(preferences["zoom"] == 110, "Interface scale was not saved.")
+    require(preferences["fontSize"] == 15, "Font size was not saved.")
+    require(preferences["fontFamily"] == "Tahoma", "Font family was not saved.")
+    require(
+        preferences["frozenThrough"] == "asset_label",
+        "Frozen-column preference was not saved.",
+    )
+
+    dialog.locator('button[value="close"]').last.click()
+    dialog.wait_for(state="hidden", timeout=5_000)
+    page.set_viewport_size({"width": 1680, "height": 960})
+    page.reload(wait_until="networkidle")
+    page.locator(".event-grid.tabulator").wait_for(state="visible", timeout=20_000)
+    require(page.locator("html").get_attribute("data-theme") == "light", "Theme was not persisted.")
+    require(
+        page.locator("body").evaluate("element => element.style.zoom") == "",
+        "CSS zoom returned after page reload.",
+    )
+    require(
+        frozen_fields(page) == ["start_date", "start_time", "asset_label"],
+        "Frozen-column preference was not restored after reload.",
+    )
 
 
 BASE["test_excel_edit_modes"] = test_excel_edit_modes
@@ -169,7 +275,6 @@ base_function("run_smoke").__globals__["test_excel_edit_modes"] = test_excel_edi
 base_function("run_smoke").__globals__["test_viewport_and_frozen_columns"] = (
     test_viewport_and_frozen_columns
 )
-ORIGINAL_VIEWPORT_TEST.__globals__["frozen_fields"] = frozen_fields
 
 
 def main() -> None:
