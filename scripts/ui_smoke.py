@@ -190,14 +190,16 @@ def test_view_preferences(page: Page) -> None:
     require(preferences["zoom"] == 110, "Interface zoom was not saved.")
     require(preferences["fontSize"] == 15, "Font size was not saved.")
     require(preferences["fontFamily"] == "Tahoma", "Font family was not saved.")
-    require(page.locator("body").evaluate("element => element.style.zoom") == "1.1", "Zoom was not applied.")
+    applied_zoom = page.locator("body").evaluate("element => element.style.zoom")
+    require(applied_zoom == "1.1", "Zoom was not applied.")
 
     dialog.locator('button[value="close"]').last.click()
     dialog.wait_for(state="hidden", timeout=5_000)
     page.reload(wait_until="networkidle")
     page.locator(".event-grid.tabulator").wait_for(state="visible", timeout=20_000)
     require(page.locator("html").get_attribute("data-theme") == "light", "Theme was not persisted.")
-    require(page.locator("body").evaluate("element => element.style.zoom") == "1.1", "Zoom was not persisted.")
+    persisted_zoom = page.locator("body").evaluate("element => element.style.zoom")
+    require(persisted_zoom == "1.1", "Zoom was not persisted.")
 
 
 def run_smoke(url: str, screenshot_path: Path) -> None:
