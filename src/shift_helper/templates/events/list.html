@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabulator/tabulator.min.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='event_journal.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='event_journal_excel_patch.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='event_journal_excel_features.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='event_journal_workspace_v4.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -38,6 +38,11 @@
         </div>
 
         <div class="journal-toolbar__secondary">
+            <div class="toolbar-group" role="group" aria-label="История действий">
+                <button class="icon-button history-button" id="journal-undo" type="button" disabled title="Нечего отменять">↶</button>
+                <button class="icon-button history-button" id="journal-redo" type="button" disabled title="Нечего повторять">↷</button>
+            </div>
+
             <div class="toolbar-group" role="group" aria-label="Горизонтальное выравнивание">
                 <button class="icon-button" type="button" data-align-horizontal="left" title="По левому краю">≡</button>
                 <button class="icon-button" type="button" data-align-horizontal="center" title="По центру">≣</button>
@@ -61,6 +66,10 @@
 
             <button class="toolbar-button" id="open-format-rules" type="button" title="Настроить автоматическое выделение">
                 Условия
+            </button>
+
+            <button class="toolbar-button" id="open-view-settings" type="button" title="Тема, масштаб и шрифт">
+                Вид
             </button>
 
             <button class="toolbar-button" id="reset-grid-layout" type="button" title="Вернуть исходные ширины, порядок и фильтры колонок">
@@ -87,15 +96,13 @@
     ></div>
 
     <footer class="journal-help">
-        <span><kbd>Печать</kbd> начать ввод</span>
-        <span><kbd>Enter</kbd> завершить ввод и перейти вниз</span>
-        <span><kbd>Shift</kbd> + <kbd>Enter</kbd> новая строка текста</span>
-        <span><kbd>Ctrl</kbd> + <kbd>C/X/V</kbd> копировать / вырезать / вставить</span>
-        <span><kbd>ПКМ</kbd> меню ячейки или строки</span>
-        <span><kbd>Маркер</kbd> автозаполнение</span>
-        <span><kbd>!</kbd> текущая дата или время</span>
-        <span><kbd>.</kbd> значение сверху</span>
-        <span class="journal-help__message" id="journal-help-message">Для операций со строкой нажмите её номер слева.</span>
+        <span><kbd>Печать</kbd> заменить значение и начать ввод</span>
+        <span><kbd>F2</kbd> редактировать с конца</span>
+        <span><kbd>Двойной щелчок</kbd> каретка в месте щелчка</span>
+        <span><kbd>Enter</kbd> сохранить и вниз</span>
+        <span><kbd>Shift</kbd> + <kbd>Enter</kbd> перенос строки</span>
+        <span><kbd>Ctrl</kbd> + <kbd>Z/Y</kbd> отмена / повтор</span>
+        <span class="journal-help__message" id="journal-help-message">Shift и Ctrl по номерам строк — множественное выделение.</span>
     </footer>
 </section>
 
@@ -158,6 +165,59 @@
     </form>
 </dialog>
 
+<dialog class="journal-settings-dialog" id="journal-view-settings">
+    <form method="dialog" class="journal-settings-dialog__panel">
+        <header class="journal-settings-dialog__header">
+            <div>
+                <h2>Вид рабочего места</h2>
+                <p>Настройки сохраняются локально только на этом компьютере.</p>
+            </div>
+            <button class="dialog-close" value="close" aria-label="Закрыть">×</button>
+        </header>
+
+        <div class="journal-settings-grid">
+            <label>
+                Тема
+                <select id="journal-theme">
+                    <option value="dark">Тёмная</option>
+                    <option value="light">Светлая</option>
+                    <option value="system">Как в системе</option>
+                </select>
+                <span></span>
+            </label>
+
+            <label>
+                Масштаб интерфейса
+                <input id="journal-zoom" type="range" min="75" max="140" step="5" value="100">
+                <span class="journal-settings-value" id="journal-zoom-value">100%</span>
+            </label>
+
+            <label>
+                Размер шрифта таблицы
+                <input id="journal-font-size" type="range" min="10" max="18" step="1" value="13">
+                <span class="journal-settings-value" id="journal-font-size-value">13px</span>
+            </label>
+
+            <label>
+                Шрифт
+                <select id="journal-font-family">
+                    <option value="Segoe UI">Segoe UI</option>
+                    <option value="Arial">Arial</option>
+                    <option value="Tahoma">Tahoma</option>
+                    <option value="Verdana">Verdana</option>
+                    <option value="Georgia">Georgia</option>
+                </select>
+                <span></span>
+            </label>
+        </div>
+
+        <footer class="journal-settings-dialog__footer">
+            <button class="toolbar-button" id="reset-view-settings" type="button">Сбросить настройки</button>
+            <button class="toolbar-button" value="close">Готово</button>
+        </footer>
+    </form>
+</dialog>
+
 <script id="event-journal-data" type="application/json">{{ rows|tojson }}</script>
 <script id="event-journal-suggestions" type="application/json">{{ suggestions|tojson }}</script>
 {% endblock %}
@@ -165,8 +225,5 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='vendor/tabulator/tabulator.min.js') }}" defer></script>
 <script src="{{ url_for('static', filename='event_journal.js') }}" defer></script>
-<script src="{{ url_for('static', filename='event_journal_row_clipboard.js') }}" defer></script>
-<script src="{{ url_for('static', filename='event_journal_tsv_bridge.js') }}" defer></script>
-<script src="{{ url_for('static', filename='event_journal_excel_features.js') }}" defer></script>
-<script src="{{ url_for('static', filename='event_journal_delete_guard.js') }}" defer></script>
+<script src="{{ url_for('static', filename='event_journal_workspace_v4.js') }}" defer></script>
 {% endblock %}
