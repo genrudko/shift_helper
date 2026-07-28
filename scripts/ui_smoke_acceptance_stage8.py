@@ -181,9 +181,12 @@ def test_font_size_dropdown_and_ribbon_geometry(page: Page) -> None:
             });
         }"""
     )
-    require(all(item["width"] > 0 and item["height"] > 0 for item in geometry), f"Hidden Ribbon control: {geometry}")
+    require(
+        all(item["width"] > 0 and item["height"] > 0 for item in geometry),
+        f"Hidden Ribbon control: {geometry}",
+    )
     ordered = sorted(geometry, key=lambda item: item["left"])
-    for left, right in zip(ordered, ordered[1:]):
+    for left, right in zip(ordered, ordered[1:], strict=True):
         require(
             right["left"] >= left["right"] - 1,
             f"Ribbon font controls overlap: {left} / {right}",
