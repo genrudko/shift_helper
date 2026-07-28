@@ -75,6 +75,13 @@
                 "event-journal-acceptance-stage1-state-js",
                 "/static/event_journal_acceptance_stage1_state.js",
             );
+            await appendScript(
+                "event-journal-selection-mode-contract-v1-js",
+                "/static/event_journal_selection_mode_contract_v1.js",
+            );
+            if (root.dataset.selectionModeContract !== "ready") {
+                throw new Error("Selection mode contract did not initialize");
+            }
             root.dataset.acceptanceStage1Loaded = "true";
             await appendScript(
                 "event-journal-acceptance-stage2-js",
