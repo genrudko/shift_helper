@@ -31,7 +31,7 @@ def set_zoom(page: Page, value: int) -> None:
     page.wait_for_function(
         """value => document.getElementById('event-journal')
             ?.dataset.sheetZoom === String(value)""",
-        value,
+        arg=value,
         timeout=10_000,
     )
     page.wait_for_timeout(120)
