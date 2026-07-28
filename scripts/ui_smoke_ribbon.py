@@ -218,8 +218,8 @@ def test_viewport_and_frozen_columns(page: Page) -> None:
     require(
         page.locator("html").evaluate(
             "element => getComputedStyle(element).getPropertyValue('--journal-font-size').trim()"
-        ) == "60px",
-        "The 400% sheet font metric was not applied.",
+        ) == "15px",
+        "Sheet zoom changed the stored base font metric and would double-scale text.",
     )
     require(not frozen_fields(page), "Frozen columns were not fully disabled.")
 
