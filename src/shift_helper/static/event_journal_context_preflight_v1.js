@@ -174,6 +174,13 @@
         }
     }, true);
 
+    ["pointerup", "mouseup", "auxclick"].forEach((type) => {
+        window.addEventListener(type, (event) => {
+            if (event.button !== 2) return;
+            scheduleFallback(event);
+        }, true);
+    });
+
     window.addEventListener("contextmenu", (event) => {
         if (!scheduleFallback(event)) return;
         event.preventDefault();
