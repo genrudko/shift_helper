@@ -1,4 +1,4 @@
-"""Focused acceptance checks for linear zoom and deterministic row selection."""
+"""Focused acceptance checks for linear sheet zoom and deterministic row selection."""
 
 from __future__ import annotations
 
@@ -20,7 +20,9 @@ def wait_ready(page: Page) -> None:
             const root = document.getElementById('event-journal');
             return root?.dataset.acceptanceStage1 === 'ready'
                 && root.dataset.videoAcceptanceRepair === 'ready'
-                && Boolean(window.shiftHelperAcceptanceStage1);
+                && root.dataset.sheetViewport === 'ready'
+                && Boolean(window.shiftHelperAcceptanceStage1)
+                && Boolean(window.shiftHelperZoom?.layer?.());
         }""",
         timeout=20_000,
     )
@@ -29,18 +31,43 @@ def wait_ready(page: Page) -> None:
 def set_zoom(page: Page, value: int) -> None:
     page.evaluate("value => window.shiftHelperAcceptanceStage1.setZoom(value)", value)
     page.wait_for_function(
-        """value => document.getElementById('event-journal')
-            ?.dataset.sheetZoom === String(value)""",
+        """value => {
+            const root = document.getElementById('event-journal');
+            const layer = document.getElementById('journal-sheet-layer');
+            return root?.dataset.sheetZoom === String(value)
+                && layer?.dataset.sheetZoom === String(value);
+        }""",
         arg=value,
         timeout=10_000,
     )
-    page.wait_for_timeout(120)
+    page.wait_for_timeout(140)
 
 
-def measured_width(page: Page) -> float:
-    result = page.locator("#journal-undo").bounding_box()
-    require(result is not None, "Zoom reference control is not visible.")
-    return result["width"]
+def measured_geometry(page: Page) -> dict[str, float]:
+    result = page.evaluate(
+        """() => {
+            const table = window.shiftHelperEventGrid;
+            const holder = document.querySelector('.tabulator-tableholder');
+            const holderRect = holder?.getBoundingClientRect();
+            const row = table.getRows('active').find(candidate => {
+                const rect = candidate.getElement()?.getBoundingClientRect();
+                return rect && holderRect
+                    && rect.bottom > holderRect.top
+                    && rect.top < holderRect.bottom;
+            }) || table.getRows('active')[0];
+            const cellRect = row?.getCell('description')?.getElement()
+                ?.getBoundingClientRect();
+            const undoRect = document.getElementById('journal-undo')
+                ?.getBoundingClientRect();
+            return {
+                cellWidth: cellRect?.width || 0,
+                ribbonWidth: undoRect?.width || 0,
+            };
+        }"""
+    )
+    require(result["cellWidth"] > 0, "Zoom reference cell is not visible.")
+    require(result["ribbonWidth"] > 0, "Ribbon reference control is not visible.")
+    return result
 
 
 def selected_keys(page: Page) -> list[str]:
@@ -74,20 +101,44 @@ def test_zoom_path(page: Page) -> None:
         abs(position - expected) <= 0.5,
         f"100% has a nonlinear slider position: {position}% != {expected}%",
     )
-    width_100 = measured_width(page)
+    geometry_100 = measured_geometry(page)
 
     set_zoom(page, 50)
-    width_50 = measured_width(page)
+    geometry_50 = measured_geometry(page)
     require(
-        math.isclose(width_50 / width_100, 0.5, rel_tol=0.08),
-        f"50% geometry is nonlinear: {width_50=} {width_100=}",
+        math.isclose(
+            geometry_50["cellWidth"] / geometry_100["cellWidth"],
+            0.5,
+            rel_tol=0.08,
+        ),
+        f"50% sheet geometry is nonlinear: {geometry_50=} {geometry_100=}",
+    )
+    require(
+        math.isclose(
+            geometry_50["ribbonWidth"],
+            geometry_100["ribbonWidth"],
+            rel_tol=0.03,
+        ),
+        f"50% sheet zoom changed Ribbon geometry: {geometry_50=} {geometry_100=}",
     )
 
     set_zoom(page, 200)
-    width_200 = measured_width(page)
+    geometry_200 = measured_geometry(page)
     require(
-        math.isclose(width_200 / width_100, 2.0, rel_tol=0.08),
-        f"200% geometry is nonlinear: {width_200=} {width_100=}",
+        math.isclose(
+            geometry_200["cellWidth"] / geometry_100["cellWidth"],
+            2.0,
+            rel_tol=0.08,
+        ),
+        f"200% sheet geometry is nonlinear: {geometry_200=} {geometry_100=}",
+    )
+    require(
+        math.isclose(
+            geometry_200["ribbonWidth"],
+            geometry_100["ribbonWidth"],
+            rel_tol=0.03,
+        ),
+        f"200% sheet zoom changed Ribbon geometry: {geometry_200=} {geometry_100=}",
     )
 
     set_zoom(page, 10)
@@ -99,6 +150,10 @@ def test_zoom_path(page: Page) -> None:
     require(
         abs(float(slider.get_attribute("data-position") or "-1") - 100) <= 0.5,
         "400% is not at the right end of the zoom track.",
+    )
+    require(
+        page.locator(".journal-workspace").evaluate("element => element.style.zoom") == "",
+        "400% sheet zoom reached the Ribbon workspace.",
     )
     set_zoom(page, 100)
 
@@ -179,7 +234,10 @@ def run(url: str, screenshot: Path) -> None:
             require(not browser_errors, "Browser errors: " + " | ".join(browser_errors))
         except Exception:
             screenshot.parent.mkdir(parents=True, exist_ok=True)
-            page.screenshot(path=str(screenshot), full_page=True)
+            try:
+                page.screenshot(path=str(screenshot), full_page=False, timeout=5_000)
+            except Exception as screenshot_error:  # pragma: no cover - best-effort diagnostics
+                print(f"Stage 1 diagnostic screenshot failed: {screenshot_error}", file=sys.stderr)
             raise
         finally:
             context.close()
