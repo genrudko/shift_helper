@@ -1,6 +1,6 @@
 "use strict";
 
-/* Load Stage 1 only after the underlying journal repair and zoom engine are stable. */
+/* Load staged acceptance repairs only after the underlying grid is stable. */
 (() => {
     const root = document.getElementById("event-journal");
     if (!root) return;
@@ -64,9 +64,14 @@
                 "/static/event_journal_acceptance_stage1_state.js",
             );
             root.dataset.acceptanceStage1Loaded = "true";
+            await appendScript(
+                "event-journal-acceptance-stage2-js",
+                "/static/event_journal_acceptance_stage2.js",
+            );
+            root.dataset.acceptanceStage2Loaded = "true";
         } catch (error) {
-            root.dataset.acceptanceStage1Error = String(error);
-            console.error("Stage 1 failed to load", error);
+            root.dataset.acceptanceStageError = String(error);
+            console.error("Acceptance repair failed to load", error);
         } finally {
             delete root.dataset.acceptanceStage1Loading;
         }
