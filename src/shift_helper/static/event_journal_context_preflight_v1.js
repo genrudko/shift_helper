@@ -158,6 +158,11 @@
         return true;
     }
 
+    window.shiftHelperContextPreflightOpen = (mode, x, y) => {
+        showFallback(mode, {x: Number(x) || 8, y: Number(y) || 8});
+    };
+    window.shiftHelperContextPreflightClose = closeFallback;
+
     window.addEventListener("pointerdown", (event) => {
         if (event.button === 2 && scheduleFallback(event)) {
             event.preventDefault();
