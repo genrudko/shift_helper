@@ -117,6 +117,15 @@
                 "/static/event_journal_acceptance_stage6.js",
             );
             root.dataset.acceptanceStage6Loaded = "true";
+            appendStylesheet(
+                "event-journal-acceptance-stage7-css",
+                "/static/event_journal_acceptance_stage7.css",
+            );
+            await appendScript(
+                "event-journal-acceptance-stage7-js",
+                "/static/event_journal_acceptance_stage7.js",
+            );
+            root.dataset.acceptanceStage7Loaded = "true";
         } catch (error) {
             root.dataset.acceptanceStageError = String(error);
             console.error("Acceptance repair failed to load", error);
