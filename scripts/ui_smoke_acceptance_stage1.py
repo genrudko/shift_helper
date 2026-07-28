@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
-from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import Page, TimeoutError, sync_playwright
 
 
 def require(condition: bool, message: str) -> None:
@@ -27,15 +28,46 @@ def wait_ready(page: Page) -> None:
 
 def set_zoom(page: Page, value: int) -> None:
     page.evaluate("value => window.shiftHelperAcceptanceStage1.setZoom(value)", value)
-    page.wait_for_function(
-        """value => {
-            const root = document.getElementById('event-journal');
-            return root?.dataset.sheetZoom === String(value)
-                && root.dataset.zoomApplying !== 'true';
-        }""",
-        arg=value,
-        timeout=10_000,
-    )
+    try:
+        page.wait_for_function(
+            """value => {
+                const root = document.getElementById('event-journal');
+                return root?.dataset.sheetZoom === String(value)
+                    && root.dataset.zoomApplying !== 'true';
+            }""",
+            arg=value,
+            timeout=10_000,
+        )
+    except TimeoutError as exc:
+        diagnostic = page.evaluate(
+            """expected => {
+                const root = document.getElementById('event-journal');
+                const fields = ['start_date', 'start_time', 'asset_label', 'description'];
+                return {
+                    expected,
+                    dataset: root ? {...root.dataset} : null,
+                    nativeJournal: document.getElementById('journal-zoom')?.value ?? null,
+                    nativeRibbon: document.getElementById('ribbon-zoom')?.value ?? null,
+                    customZoom: document.getElementById('acceptance-ribbon-zoom')?.dataset.zoom ?? null,
+                    customPosition: document.getElementById('acceptance-ribbon-zoom')?.dataset.position ?? null,
+                    widths: Object.fromEntries(fields.map(field => [
+                        field,
+                        Number(window.shiftHelperEventGrid.getColumn(field)?.getWidth?.() || 0),
+                    ])),
+                    fontSize: getComputedStyle(document.documentElement)
+                        .getPropertyValue('--journal-font-size').trim(),
+                    rowHeight: getComputedStyle(document.documentElement)
+                        .getPropertyValue('--journal-row-height').trim(),
+                    preferences: localStorage.getItem('shift-helper-ui-preferences-v1'),
+                    legacyZoom: localStorage.getItem('shift-helper-operator-zoom-v1'),
+                };
+            }""",
+            value,
+        )
+        raise AssertionError(
+            "Zoom application timed out: "
+            + json.dumps(diagnostic, ensure_ascii=False, sort_keys=True)
+        ) from exc
 
 
 def zoom_metrics(page: Page) -> dict[str, float]:
