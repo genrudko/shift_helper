@@ -50,13 +50,17 @@ def set_zoom(page: Page, value: int) -> dict[str, float]:
             const holderRect = holder?.getBoundingClientRect();
             const row = table.getRows('active').find(candidate => {
                 const rect = candidate.getElement()?.getBoundingClientRect();
-                return rect && holderRect && rect.bottom > holderRect.top && rect.top < holderRect.bottom;
+                return rect && holderRect
+                    && rect.bottom > holderRect.top
+                    && rect.top < holderRect.bottom;
             }) || table.getRows('active')[0];
             const cell = row?.getCell('description')?.getElement?.();
             const cellRect = cell?.getBoundingClientRect();
             const ribbonRect = document.getElementById('journal-ribbon')?.getBoundingClientRect();
             const undoRect = document.getElementById('journal-undo')?.getBoundingClientRect();
-            const viewportRect = document.getElementById('journal-sheet-viewport')?.getBoundingClientRect();
+            const viewportRect = document.getElementById(
+                'journal-sheet-viewport',
+            )?.getBoundingClientRect();
             const layerRect = document.getElementById('journal-sheet-layer')?.getBoundingClientRect();
             return {
                 cellWidth: cellRect?.width || 0,
