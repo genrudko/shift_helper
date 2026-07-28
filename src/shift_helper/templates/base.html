@@ -110,8 +110,6 @@
         {% block content %}{% endblock %}
     </main>
     {% block scripts %}{% endblock %}
-    <script src="{{ url_for('static', filename='event_journal_acceptance_stage1.js') }}" defer></script>
-    <script src="{{ url_for('static', filename='event_journal_acceptance_stage1_compat.js') }}" defer></script>
-    <script src="{{ url_for('static', filename='event_journal_acceptance_stage1_state.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='event_journal_acceptance_stage1_loader.js') }}" defer></script>
 </body>
 </html>
