@@ -6,7 +6,8 @@
  */
 (() => {
     const root = document.getElementById("event-journal");
-    if (!root || root.dataset.acceptanceStage1 === "ready") return;
+    const table = window.shiftHelperEventGrid;
+    if (!root || !table || root.dataset.acceptanceStage1 === "ready") return;
 
     const controls = ["journal-zoom", "ribbon-zoom"];
     const sliders = new Map();
@@ -17,7 +18,9 @@
     const clampZoom = (raw) => Math.min(400, Math.max(10, Number(raw) || 100));
     const roundZoom = (raw) => clampZoom(Math.round(clampZoom(raw) / 5) * 5);
     const zoomToPosition = (raw) => ((clampZoom(raw) - 10) / 390) * 100;
-    const positionToZoom = (raw) => roundZoom(10 + ((Math.min(100, Math.max(0, Number(raw) || 0)) / 100) * 390));
+    const positionToZoom = (raw) => roundZoom(
+        10 + ((Math.min(100, Math.max(0, Number(raw) || 0)) / 100) * 390),
+    );
 
     function addStyles() {
         if (document.getElementById("acceptance-stage1-style")) return;
@@ -164,6 +167,30 @@
             applyZoom(next);
         });
     }
+
+    function activateRowMode() {
+        root.dataset.selectionMode = "rows";
+        root.querySelectorAll(".journal-active-cell").forEach((element) => {
+            element.classList.remove("journal-active-cell");
+        });
+        root.querySelectorAll(".operator-column-selected").forEach((element) => {
+            element.classList.remove("operator-column-selected");
+        });
+        document.querySelectorAll(".journal-fill-handle").forEach((handle) => {
+            handle.hidden = true;
+        });
+    }
+
+    window.addEventListener("pointerdown", (event) => {
+        if (!(event.target instanceof Element) || event.button !== 0) return;
+        const rowNumber = event.target.closest(".journal-row-number");
+        if (!rowNumber || !root.contains(rowNumber)) return;
+        activateRowMode();
+        queueMicrotask(activateRowMode);
+    }, true);
+    table.on("cellClick", () => {
+        root.dataset.selectionMode = "cells";
+    });
 
     addStyles();
     controls.forEach((id) => buildSlider(document.getElementById(id)));
