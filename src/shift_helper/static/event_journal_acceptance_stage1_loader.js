@@ -73,6 +73,10 @@
                 "event-journal-acceptance-stage3-css",
                 "/static/event_journal_acceptance_stage3.css",
             );
+            appendStylesheet(
+                "event-journal-acceptance-stage3-sticky-css",
+                "/static/event_journal_acceptance_stage3_sticky.css",
+            );
             await appendScript(
                 "event-journal-acceptance-stage3-js",
                 "/static/event_journal_acceptance_stage3.js",
