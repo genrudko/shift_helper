@@ -62,6 +62,40 @@ def wait_for_stage1_geometry(page: Page) -> None:
         raise AssertionError(f"Stage 1 readiness timed out: {diagnostic}") from exc
 
 
+def viewport_saved_rows(page: Page) -> Locator:
+    """Return saved rows that physically intersect the current sheet viewport."""
+
+    count = page.evaluate(
+        """() => {
+            const table = window.shiftHelperEventGrid;
+            const holder = document.querySelector('.tabulator-tableholder');
+            const holderRect = holder?.getBoundingClientRect();
+            document.querySelectorAll('[data-full-smoke-visible-row]').forEach(element => {
+                delete element.dataset.fullSmokeVisibleRow;
+            });
+            if (!table || !holderRect) return 0;
+            const rows = table.getRows('active').filter(row => !row.getData()._draft);
+            let visible = 0;
+            rows.forEach(row => {
+                const element = row.getElement();
+                const rect = element?.getBoundingClientRect();
+                if (
+                    rect
+                    && rect.bottom > holderRect.top + 1
+                    && rect.top < holderRect.bottom - 1
+                ) {
+                    element.dataset.fullSmokeVisibleRow = 'true';
+                    visible += 1;
+                }
+            });
+            return visible;
+        }"""
+    )
+    if count < 1:
+        raise AssertionError("No saved row intersects the current sheet viewport.")
+    return page.locator('.tabulator-row[data-full-smoke-visible-row="true"]')
+
+
 def traced(name, function):
     """Expose the exact legacy smoke phase without changing its assertions."""
 
@@ -132,6 +166,14 @@ def install_tracepoints() -> None:
             RUN_SMOKE.__globals__[name] = traced(name, function)
 
     viewport_globals = ORIGINAL_VIEWPORT_TEST.__globals__
+    original_base_function = viewport_globals.get("BASE_FUNCTION")
+
+    def viewport_base_function(name):
+        if name == "saved_rows":
+            return viewport_saved_rows
+        return original_base_function(name)
+
+    viewport_globals["BASE_FUNCTION"] = viewport_base_function
     for name in ("test_operator_repairs", "open_view_settings", "clear_grid_selection"):
         function = viewport_globals.get(name)
         if callable(function):
