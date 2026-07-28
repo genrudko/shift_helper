@@ -6,13 +6,14 @@ import json
 import runpy
 from pathlib import Path
 
-from playwright.sync_api import Page
+from playwright.sync_api import Page, TimeoutError
 
 ENTRY_SCRIPT = Path(__file__).with_name("ui_smoke_entry.py")
 ENTRY = runpy.run_path(str(ENTRY_SCRIPT), run_name="shift_helper_ui_smoke_entry_base")
 RIBBON = ENTRY["RIBBON"]
 BASE_FUNCTION = RIBBON["BASE_FUNCTION"]
 ORIGINAL_VIEWPORT_TEST = RIBBON["test_viewport_and_frozen_columns"]
+ORIGINAL_RIBBON_CONTRACT = ENTRY["test_ribbon_contract"]
 
 
 def wait_for_complete_view(page: Page) -> None:
@@ -138,6 +139,42 @@ def test_operator_repairs(page: Page) -> None:
     require(after_ranges == before_ranges, "Middle-button panning changed the cell selection.")
 
 
+def diagnostic_ribbon_contract(page: Page) -> None:
+    """Attach the exact context-menu event lifecycle to any Ribbon failure."""
+
+    try:
+        ORIGINAL_RIBBON_CONTRACT(page)
+    except (AssertionError, TimeoutError) as exc:
+        diagnostic = page.evaluate(
+            """() => ({
+                context: window.shiftHelperContextDiagnostics || null,
+                shells: [...document.querySelectorAll('.journal-context-shell')].map(shell => {
+                    const rect = shell.getBoundingClientRect();
+                    const style = getComputedStyle(shell);
+                    return {
+                        connected: shell.isConnected,
+                        rect: {x: rect.x, y: rect.y, width: rect.width, height: rect.height},
+                        display: style.display,
+                        visibility: style.visibility,
+                        opacity: style.opacity,
+                        owner: shell.dataset.contextPreflightMenu || null,
+                    };
+                }),
+                active: document.activeElement ? {
+                    tag: document.activeElement.tagName,
+                    id: document.activeElement.id || null,
+                    className: typeof document.activeElement.className === 'string'
+                        ? document.activeElement.className
+                        : null,
+                } : null,
+            })"""
+        )
+        raise AssertionError(
+            f"{exc}; context diagnostic="
+            + json.dumps(diagnostic, ensure_ascii=False, sort_keys=True)
+        ) from exc
+
+
 def diagnostic_viewport_test(page: Page) -> None:
     """Preserve the full test and attach exact persisted-zoom state on failure."""
 
@@ -200,6 +237,8 @@ RIBBON["wait_for_operator_repair"] = wait_for_complete_view
 ORIGINAL_VIEWPORT_TEST.__globals__["wait_for_operator_repair"] = wait_for_complete_view
 RIBBON["test_operator_repairs"] = test_operator_repairs
 ORIGINAL_VIEWPORT_TEST.__globals__["test_operator_repairs"] = test_operator_repairs
+RIBBON["test_ribbon_contract"] = diagnostic_ribbon_contract
+ORIGINAL_VIEWPORT_TEST.__globals__["test_ribbon_contract"] = diagnostic_ribbon_contract
 BASE_FUNCTION("run_smoke").__globals__["test_viewport_and_frozen_columns"] = diagnostic_viewport_test
 
 
