@@ -1,168 +1,9 @@
-/* Stage 3: coherent Ribbon geometry and Excel-like controls. */
-:root {
-    --stage3-control-height: 28px;
-}
-
-.journal-ribbon__panels {
-    height: 108px;
-}
-
-.ribbon-panel {
-    padding: 5px 6px 4px;
-    gap: 0;
-}
-
-.ribbon-group {
-    min-height: 98px;
-    padding: 4px 10px 18px;
-    gap: 4px;
-}
-
-.ribbon-group--font {
-    min-width: 292px;
-    grid-template-rows: var(--stage3-control-height) var(--stage3-control-height);
-    align-content: center;
-    row-gap: 4px;
-}
-
-.ribbon-group--alignment {
-    min-width: 126px;
-    grid-template-rows: var(--stage3-control-height) var(--stage3-control-height);
-    align-content: center;
-    row-gap: 4px;
-}
-
-.ribbon-font-row {
-    display: grid;
-    grid-template-columns: 142px minmax(132px, auto);
-    align-items: center;
-    gap: 5px;
-}
-
-#ribbon-font-family {
-    width: 142px;
-    height: var(--stage3-control-height);
-}
-
-.ribbon-size-label.stage3-size-host {
-    display: block;
-    min-width: 0;
-}
-
-.stage3-font-size-cluster {
-    display: inline-flex;
-    align-items: stretch;
-    height: var(--stage3-control-height);
-    gap: 2px;
-}
-
-.stage3-font-size-combo {
-    position: relative;
-    display: inline-flex;
-    align-items: stretch;
-    height: var(--stage3-control-height);
-    border: 1px solid var(--ribbon-border);
-    border-radius: 4px;
-    overflow: hidden;
-    background: var(--ribbon-input);
-}
-
-#operator-font-size.stage3-font-size-input {
-    width: 48px;
-    height: 26px;
-    border: 0;
-    border-radius: 0;
-    padding: 0 4px;
-    background: transparent;
-    box-shadow: none;
-}
-
-.stage3-font-size-arrow {
-    display: inline-grid;
-    place-items: center;
-    width: 21px;
-    height: 26px;
-    border: 0;
-    border-left: 1px solid var(--ribbon-border-soft);
-    background: transparent;
-    color: var(--ribbon-text);
-    font-size: 10px;
-    cursor: pointer;
-}
-
-.stage3-font-size-arrow:hover,
-.stage3-font-size-arrow[aria-expanded="true"] {
-    background: var(--ribbon-surface-hover);
-}
-
-.stage3-font-size-cluster > .ribbon-icon-button {
-    width: var(--stage3-control-height);
-    height: var(--stage3-control-height);
-}
-
-.stage3-font-size-menu,
-.stage3-border-menu {
-    position: fixed;
-    z-index: 1300;
-    box-sizing: border-box;
-    border: 1px solid var(--ribbon-border);
-    border-radius: 7px;
-    padding: 5px;
-    background: var(--ribbon-surface);
-    color: var(--ribbon-text);
-    box-shadow: var(--ribbon-shadow);
-}
-
-.stage3-font-size-menu {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(42px, 1fr));
-    gap: 2px;
-    width: 164px;
-    max-height: 260px;
-    overflow-y: auto;
-}
-
-.stage3-font-size-menu button,
-.stage3-border-menu button {
-    min-height: 27px;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    font-size: 11px;
-    cursor: pointer;
-}
-
-.stage3-font-size-menu button:hover,
-.stage3-font-size-menu button[aria-current="true"],
-.stage3-border-menu button:hover {
-    border-color: var(--ribbon-border);
-    background: var(--ribbon-surface-hover);
-}
-
-.ribbon-group--font .ribbon-button-row {
-    min-height: var(--stage3-control-height);
-    gap: 2px;
-}
-
-.ribbon-group--alignment .ribbon-button-row {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: var(--stage3-control-height);
-    gap: 2px;
-}
-
-.ribbon-group--font .ribbon-icon-button,
-.ribbon-group--alignment .ribbon-icon-button,
-.ribbon-group--font .operator-split-control {
-    height: var(--stage3-control-height);
-}
+/* Acceptance stage 3: Excel-like borders only. Ribbon geometry is authoritative elsewhere. */
 
 .stage3-border-control {
     display: inline-flex;
     align-items: stretch;
-    height: var(--stage3-control-height);
+    height: 28px;
     border: 1px solid transparent;
     border-radius: 5px;
     overflow: hidden;
@@ -192,6 +33,12 @@
     width: 17px;
     border-left: 1px solid var(--ribbon-border-soft);
     font-size: 10px;
+}
+
+.stage3-border-main:hover,
+.stage3-border-arrow:hover,
+.stage3-border-arrow[aria-expanded="true"] {
+    background: var(--ribbon-surface-hover);
 }
 
 .stage3-border-icon {
@@ -226,16 +73,39 @@
 }
 
 .stage3-border-menu {
+    position: fixed;
+    z-index: 2100;
     display: grid;
     width: 190px;
     gap: 2px;
+    box-sizing: border-box;
+    border: 1px solid var(--ribbon-border);
+    border-radius: 7px;
+    padding: 5px;
+    background: var(--ribbon-surface);
+    color: var(--ribbon-text);
+    box-shadow: var(--ribbon-shadow);
 }
 
 .stage3-border-menu button {
     display: flex;
     align-items: center;
+    min-height: 27px;
+    border: 1px solid transparent;
+    border-radius: 4px;
     padding: 4px 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
     text-align: left;
+    cursor: pointer;
+}
+
+.stage3-border-menu button:hover,
+.stage3-border-menu button:focus-visible {
+    border-color: var(--ribbon-border);
+    background: var(--ribbon-surface-hover);
 }
 
 .stage3-cell-border-layer {
@@ -244,18 +114,4 @@
     inset: 0;
     box-sizing: border-box;
     pointer-events: none;
-}
-
-@media (max-width: 900px) {
-    .ribbon-group--font {
-        min-width: 270px;
-    }
-
-    .ribbon-font-row {
-        grid-template-columns: 128px minmax(132px, auto);
-    }
-
-    #ribbon-font-family {
-        width: 128px;
-    }
 }
