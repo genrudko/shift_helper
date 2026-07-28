@@ -1,0 +1,234 @@
+/* Stage 7: configurable per-column dropdown lists. */
+.stage7-list-group {
+    min-width: 225px;
+}
+
+.stage7-list-command {
+    min-width: 124px;
+}
+
+.stage7-list-cell {
+    padding-right: 20px !important;
+}
+
+.stage7-list-cell::after {
+    content: "▾";
+    position: absolute;
+    top: 50%;
+    right: 5px;
+    z-index: 2;
+    color: color-mix(in srgb, var(--ribbon-text-muted) 80%, transparent);
+    font-size: 9px;
+    line-height: 1;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.stage7-list-cell:hover::after,
+.stage7-list-cell.journal-active-cell::after {
+    color: var(--accent, #2f74d0);
+}
+
+.stage7-list-dialog {
+    width: min(720px, calc(100vw - 28px));
+    padding: 0;
+    border: 1px solid var(--ribbon-border);
+    border-radius: 10px;
+    background: var(--ribbon-surface);
+    color: var(--ribbon-text);
+    box-shadow: 0 18px 54px rgb(0 0 0 / 35%);
+}
+
+.stage7-list-dialog::backdrop {
+    background: rgb(0 0 0 / 42%);
+}
+
+.stage7-list-panel {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+}
+
+.stage7-list-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--ribbon-border-soft);
+}
+
+.stage7-list-header h2 {
+    margin: 0;
+    font-size: 17px;
+}
+
+.stage7-list-header p {
+    margin: 3px 0 0;
+    color: var(--ribbon-text-muted);
+    font-size: 11px;
+}
+
+.stage7-list-close {
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: inherit;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.stage7-list-close:hover {
+    background: var(--ribbon-surface-hover);
+}
+
+.stage7-list-grid {
+    display: grid;
+    grid-template-columns: minmax(190px, 0.42fr) minmax(280px, 1fr);
+    gap: 10px 14px;
+    align-items: start;
+}
+
+.stage7-list-settings {
+    display: grid;
+    gap: 9px;
+}
+
+.stage7-list-settings label,
+.stage7-list-values-label {
+    display: grid;
+    gap: 4px;
+    color: var(--ribbon-text-muted);
+    font-size: 11px;
+}
+
+.stage7-list-settings select,
+.stage7-list-values-label textarea {
+    box-sizing: border-box;
+    width: 100%;
+    border: 1px solid var(--ribbon-border);
+    border-radius: 5px;
+    background: var(--ribbon-input);
+    color: var(--ribbon-text);
+    font: inherit;
+}
+
+.stage7-list-settings select {
+    min-height: 32px;
+    padding: 5px 8px;
+}
+
+.stage7-list-values-label textarea {
+    min-height: 250px;
+    resize: vertical;
+    padding: 8px;
+    line-height: 1.45;
+}
+
+.stage7-list-checks {
+    display: grid;
+    gap: 7px;
+    padding: 5px 0;
+}
+
+.stage7-list-checks label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--ribbon-text);
+    font-size: 11px;
+}
+
+.stage7-list-info {
+    min-height: 35px;
+    padding: 7px;
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--ribbon-surface-hover) 72%, transparent);
+    color: var(--ribbon-text-muted);
+    font-size: 10px;
+}
+
+.stage7-list-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 7px;
+}
+
+.stage7-list-actions-left,
+.stage7-list-actions-right {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.stage7-list-actions button {
+    min-height: 31px;
+    padding: 5px 10px;
+    border: 1px solid var(--ribbon-border);
+    border-radius: 5px;
+    background: var(--ribbon-surface-raised, var(--ribbon-input));
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.stage7-list-actions button:hover:not(:disabled) {
+    background: var(--ribbon-surface-hover);
+}
+
+.stage7-list-popup {
+    position: fixed;
+    z-index: 1600;
+    display: grid;
+    max-height: 240px;
+    overflow: auto;
+    padding: 4px;
+    border: 1px solid var(--ribbon-border);
+    border-radius: 6px;
+    background: var(--ribbon-surface);
+    color: var(--ribbon-text);
+    box-shadow: var(--ribbon-shadow);
+}
+
+.stage7-list-popup button {
+    min-height: 28px;
+    padding: 5px 8px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.stage7-list-popup button:hover,
+.stage7-list-popup button[aria-selected="true"] {
+    border-color: var(--ribbon-border);
+    background: var(--ribbon-surface-hover);
+}
+
+.stage7-list-popup-empty {
+    padding: 9px;
+    color: var(--ribbon-text-muted);
+    font-size: 11px;
+}
+
+.stage7-list-invalid {
+    box-shadow: inset 0 0 0 2px #d84b4b !important;
+}
+
+@media (max-width: 700px) {
+    .stage7-list-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .stage7-list-values-label textarea {
+        min-height: 190px;
+    }
+}
