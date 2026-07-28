@@ -49,7 +49,7 @@ def set_zoom(page: Page, value: int) -> None:
             return root?.dataset.sheetZoom === String(value)
                 && root.dataset.zoomApplying !== 'true';
         }""",
-        value,
+        arg=value,
         timeout=10_000,
     )
 
