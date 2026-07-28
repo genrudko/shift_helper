@@ -44,6 +44,9 @@ jobs:
           set -o pipefail
           python scripts/ui_smoke_entry.py http://127.0.0.1:17944 ui-smoke-failure.png \
             2>&1 | tee ui-smoke.log
+          python scripts/ui_smoke_video_regression.py \
+            http://127.0.0.1:17944 ui-video-regression-failure.png \
+            2>&1 | tee -a ui-smoke.log
 
       - name: Stop isolated instance
         if: always()
@@ -62,4 +65,5 @@ jobs:
             ui-server.*.log
             ui-smoke.log
             ui-smoke-failure.png
+            ui-video-regression-failure.png
           if-no-files-found: ignore
