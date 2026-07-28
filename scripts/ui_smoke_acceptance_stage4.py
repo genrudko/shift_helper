@@ -188,7 +188,9 @@ def test_find_replace(page: Page) -> None:
     page.keyboard.press("Control+f")
     dialog.wait_for(state="visible", timeout=5_000)
     require(
-        page.locator("#stage4-find-text").is_focused(),
+        page.locator("#stage4-find-text").evaluate(
+            "element => document.activeElement === element"
+        ),
         "Ctrl+F did not focus the Find field.",
     )
     dialog.locator(".stage4-find-close").click()
