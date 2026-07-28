@@ -7,7 +7,7 @@ import runpy
 from functools import wraps
 from pathlib import Path
 
-from playwright.sync_api import Page, TimeoutError
+from playwright.sync_api import Keyboard, Locator, Page, TimeoutError
 
 BASE_SCRIPT = Path(__file__).with_name("ui_smoke_entry_video.py")
 BASE = runpy.run_path(str(BASE_SCRIPT), run_name="shift_helper_ui_smoke_stage1_base")
@@ -75,6 +75,49 @@ def traced(name, function):
     return wrapper
 
 
+def traced_browser_call(name, function):
+    """Print the browser operation that stops returning to the sync client."""
+
+    @wraps(function)
+    def wrapper(self, *args, **kwargs):
+        target = str(self).replace("\n", " ")
+        print(
+            f"[full-ui-smoke] BEGIN browser.{name} target={target} kwargs={kwargs}",
+            flush=True,
+        )
+        result = function(self, *args, **kwargs)
+        print(f"[full-ui-smoke] END browser.{name} target={target}", flush=True)
+        return result
+
+    return wrapper
+
+
+def traced_ribbon_contract(function):
+    """Trace every potentially blocking Playwright call inside the Ribbon contract."""
+
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        methods = (
+            (Locator, "click"),
+            (Locator, "wait_for"),
+            (Locator, "inner_text"),
+            (Keyboard, "press"),
+        )
+        originals = {(owner, name): getattr(owner, name) for owner, name in methods}
+        try:
+            for owner, name in methods:
+                setattr(owner, name, traced_browser_call(name, originals[(owner, name)]))
+            print("[full-ui-smoke] BEGIN viewport.test_ribbon_contract", flush=True)
+            result = function(*args, **kwargs)
+            print("[full-ui-smoke] END viewport.test_ribbon_contract", flush=True)
+            return result
+        finally:
+            for (owner, name), original in originals.items():
+                setattr(owner, name, original)
+
+    return wrapper
+
+
 def install_tracepoints() -> None:
     for name in (
         "test_excel_edit_modes",
@@ -89,15 +132,14 @@ def install_tracepoints() -> None:
             RUN_SMOKE.__globals__[name] = traced(name, function)
 
     viewport_globals = ORIGINAL_VIEWPORT_TEST.__globals__
-    for name in (
-        "test_operator_repairs",
-        "test_ribbon_contract",
-        "open_view_settings",
-        "clear_grid_selection",
-    ):
+    for name in ("test_operator_repairs", "open_view_settings", "clear_grid_selection"):
         function = viewport_globals.get(name)
         if callable(function):
             viewport_globals[name] = traced(f"viewport.{name}", function)
+
+    ribbon_contract = viewport_globals.get("test_ribbon_contract")
+    if callable(ribbon_contract):
+        viewport_globals["test_ribbon_contract"] = traced_ribbon_contract(ribbon_contract)
 
 
 Page.screenshot = bounded_diagnostic_screenshot
