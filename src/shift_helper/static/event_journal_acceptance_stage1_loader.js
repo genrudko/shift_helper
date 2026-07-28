@@ -94,6 +94,10 @@
                 "event-journal-acceptance-stage4-js",
                 "/static/event_journal_acceptance_stage4.js",
             );
+            await appendScript(
+                "event-journal-acceptance-stage4-alignment-js",
+                "/static/event_journal_acceptance_stage4_alignment_contract.js",
+            );
             root.dataset.acceptanceStage4Loaded = "true";
         } catch (error) {
             root.dataset.acceptanceStageError = String(error);
