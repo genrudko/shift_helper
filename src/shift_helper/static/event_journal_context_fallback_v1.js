@@ -2,13 +2,18 @@
 
 /* Keep all live view controls in one atomic local preference object. */
 (() => {
+    const root = document.getElementById("event-journal");
     const preferenceKey = "shift-helper-ui-preferences-v1";
-    const controls = {
-        theme: document.getElementById("journal-theme"),
-        fontSize: document.getElementById("journal-font-size"),
-        fontFamily: document.getElementById("journal-font-family"),
-        frozenThrough: document.getElementById("journal-frozen-through"),
-    };
+    let bound = false;
+
+    function controls() {
+        return {
+            theme: document.getElementById("journal-theme"),
+            fontSize: document.getElementById("journal-font-size"),
+            fontFamily: document.getElementById("journal-font-family"),
+            frozenThrough: document.getElementById("journal-frozen-through"),
+        };
+    }
 
     function readPreferences() {
         try {
@@ -19,11 +24,12 @@
     }
 
     function writeLivePreferences() {
+        const live = controls();
         const preferences = readPreferences();
-        if (controls.theme) preferences.theme = controls.theme.value;
-        if (controls.fontSize) preferences.fontSize = Number(controls.fontSize.value) || 13;
-        if (controls.fontFamily) preferences.fontFamily = controls.fontFamily.value;
-        if (controls.frozenThrough) preferences.frozenThrough = controls.frozenThrough.value;
+        if (live.theme) preferences.theme = live.theme.value;
+        if (live.fontSize) preferences.fontSize = Number(live.fontSize.value) || 13;
+        if (live.fontFamily) preferences.fontFamily = live.fontFamily.value;
+        if (live.frozenThrough) preferences.frozenThrough = live.frozenThrough.value;
         const zoom = Number(document.getElementById("ribbon-zoom")?.value);
         if (Number.isFinite(zoom)) preferences.zoom = zoom;
         try {
@@ -33,11 +39,22 @@
         }
     }
 
-    Object.values(controls).forEach((control) => {
-        control?.addEventListener("input", writeLivePreferences, true);
-        control?.addEventListener("change", writeLivePreferences, true);
-    });
-    writeLivePreferences();
+    function bindLivePreferences() {
+        if (bound) return;
+        if (root?.dataset.videoAcceptanceRepair !== "ready") {
+            requestAnimationFrame(bindLivePreferences);
+            return;
+        }
+        bound = true;
+        Object.values(controls()).forEach((control) => {
+            control?.addEventListener("input", writeLivePreferences, true);
+            control?.addEventListener("change", writeLivePreferences, true);
+        });
+        writeLivePreferences();
+        root.dataset.liveViewPreferences = "ready";
+    }
+
+    bindLivePreferences();
 
     if (!document.getElementById("event-journal-context-fallback-legacy-v1")) {
         const legacy = document.createElement("script");
