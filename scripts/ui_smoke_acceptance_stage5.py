@@ -136,9 +136,11 @@ def run(url: str, screenshot: Path) -> None:
             page.reload(wait_until="networkidle")
             page.locator(".event-grid.tabulator").wait_for(state="visible", timeout=20_000)
             wait_ready(page)
+            recent = page.evaluate(
+                "JSON.parse(localStorage.getItem('shift-helper-recent-symbols-v1') || '[]')"
+            )
             require(
-                page.evaluate("JSON.parse(localStorage.getItem('shift-helper-recent-symbols-v1') || '[]')")[:2]
-                == ["Ⅳ", "Ω"],
+                recent[:2] == ["Ⅳ", "Ω"],
                 "Recent symbols were not restored after reload.",
             )
             test_quick_symbol(page)
