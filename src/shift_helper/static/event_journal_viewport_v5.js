@@ -20,7 +20,6 @@
 
     let preferences = loadPreferences();
     let frozenApplying = false;
-    let frozenInitialized = false;
     let geometryFrame = 0;
     let resizeTimer = 0;
     let viewportRedrawing = false;
@@ -219,40 +218,17 @@
     }
 
     function applyFrozenColumns() {
-        if (frozenApplying || typeof table.getColumnLayout !== "function") return;
-        const initialPass = !frozenInitialized;
-        frozenInitialized = true;
-        const layout = table.getColumnLayout();
-        const boundaryIndex = preferences.frozenThrough === "none"
-            ? -1
-            : layout.findIndex((column) => column.field === preferences.frozenThrough);
-        let changed = false;
-        layout.forEach((column, index) => {
-            const frozen = boundaryIndex >= 0 && index <= boundaryIndex;
-            if (Boolean(column.frozen) !== frozen) {
-                column.frozen = frozen;
-                changed = true;
-            }
-        });
-        if (!changed) return;
-
+        const controller = window.shiftHelperFrozenColumns;
+        if (!controller || frozenApplying) return;
         frozenApplying = true;
         hideFillHandle();
         try {
-            table.setColumnLayout(layout);
+            preferences.frozenThrough = controller.applyBoundary(preferences.frozenThrough);
+            savePreferences();
         } finally {
             frozenApplying = false;
         }
-        if (initialPass) {
-            requestAnimationFrame(() => {
-                table.redraw(false);
-                lastViewportWidth = root.clientWidth;
-                lastViewportHeight = root.clientHeight;
-                scheduleGeometry();
-            });
-            return;
-        }
-        scheduleViewportRedraw(true);
+        scheduleGeometry();
     }
 
     function syncSettings() {
