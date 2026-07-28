@@ -32,7 +32,7 @@ def set_zoom(page: Page, value: int) -> float:
     page.evaluate("(value) => window.shiftHelperZoom.apply(value)", value)
     page.wait_for_function(
         "(value) => document.getElementById('event-journal')?.dataset.sheetZoom === String(value)",
-        value,
+        arg=value,
     )
     page.wait_for_timeout(120)
     return page.locator("#journal-undo").bounding_box()["width"]
@@ -186,7 +186,7 @@ def test_font_size_dropdown_and_ribbon_geometry(page: Page) -> None:
         f"Hidden Ribbon control: {geometry}",
     )
     ordered = sorted(geometry, key=lambda item: item["left"])
-    for left, right in zip(ordered, ordered[1:], strict=True):
+    for left, right in zip(ordered, ordered[1:], strict=False):
         require(
             right["left"] >= left["right"] - 1,
             f"Ribbon font controls overlap: {left} / {right}",
