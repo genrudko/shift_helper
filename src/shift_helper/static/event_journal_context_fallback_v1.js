@@ -122,6 +122,7 @@
         writeLivePreferences();
         root.dataset.liveViewPreferences = "ready";
         root.dataset.contextController = "ribbon-with-preflight";
+        root.dataset.contextFallback = "ready";
     }
 
     bindLivePreferences();
