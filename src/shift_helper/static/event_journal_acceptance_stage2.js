@@ -86,10 +86,10 @@
     new MutationObserver((records) => {
         const added = records.flatMap((record) => [...record.addedNodes])
             .filter((node) => node instanceof Element)
-            .flatMap((node) => [
-                ...(node.matches?.(".operator-color-palette") ? [node] : []),
-                ...node.querySelectorAll?.(".operator-color-palette") || [],
-            ]);
+            .flatMap((node) => {
+                const nested = [...node.querySelectorAll(".operator-color-palette")];
+                return node.matches(".operator-color-palette") ? [node, ...nested] : nested;
+            });
         if (!added.length) return;
         const newest = added.at(-1);
         palettes().forEach((palette) => {
