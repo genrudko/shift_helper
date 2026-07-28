@@ -11,6 +11,7 @@ permissions:
 jobs:
   chromium:
     runs-on: ubuntu-22.04
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -41,37 +42,29 @@ jobs:
       - name: Exercise spreadsheet in Chromium
         shell: bash
         run: |
-          set -o pipefail
-          python scripts/ui_smoke_acceptance_stage1.py \
-            http://127.0.0.1:17944 ui-stage1-failure.png \
-            2>&1 | tee ui-smoke.log
-          python scripts/ui_smoke_acceptance_stage2.py \
-            http://127.0.0.1:17944 ui-stage2-failure.png \
-            2>&1 | tee -a ui-smoke.log
-          python scripts/ui_smoke_acceptance_stage3.py \
-            http://127.0.0.1:17944 ui-stage3-failure.png \
-            2>&1 | tee -a ui-smoke.log
-          python scripts/ui_smoke_acceptance_stage4.py \
-            http://127.0.0.1:17944 ui-stage4-failure.png \
-            2>&1 | tee -a ui-smoke.log
-          python scripts/ui_smoke_acceptance_stage5.py \
-            http://127.0.0.1:17944 ui-stage5-failure.png \
-            2>&1 | tee -a ui-smoke.log
-          python scripts/ui_smoke_acceptance_stage6.py \
-            http://127.0.0.1:17944 ui-stage6-failure.png \
-            2>&1 | tee -a ui-smoke.log
-          python scripts/ui_smoke_acceptance_stage7.py \
-            http://127.0.0.1:17944 ui-stage7-failure.png \
-            2>&1 | tee -a ui-smoke.log
-          python scripts/ui_smoke_acceptance_stage8.py \
-            http://127.0.0.1:17944 ui-stage8-failure.png \
-            2>&1 | tee -a ui-smoke.log
-          python scripts/ui_smoke_entry_stage1.py \
-            http://127.0.0.1:17944 ui-smoke-failure.png \
-            2>&1 | tee -a ui-smoke.log
-          python scripts/ui_smoke_video_regression.py \
-            http://127.0.0.1:17944 ui-video-regression-failure.png \
-            2>&1 | tee -a ui-smoke.log
+          set -Eeuo pipefail
+          : > ui-smoke.log
+
+          run_stage() {
+            local label="$1"
+            local script="$2"
+            local screenshot="$3"
+            echo "===== ${label} =====" | tee -a ui-smoke.log
+            timeout --signal=TERM --kill-after=10s 180s \
+              python "$script" http://127.0.0.1:17944 "$screenshot" \
+              2>&1 | tee -a ui-smoke.log
+          }
+
+          run_stage "acceptance-stage-1" scripts/ui_smoke_acceptance_stage1.py ui-stage1-failure.png
+          run_stage "acceptance-stage-2" scripts/ui_smoke_acceptance_stage2.py ui-stage2-failure.png
+          run_stage "acceptance-stage-3" scripts/ui_smoke_acceptance_stage3.py ui-stage3-failure.png
+          run_stage "acceptance-stage-4" scripts/ui_smoke_acceptance_stage4.py ui-stage4-failure.png
+          run_stage "acceptance-stage-5" scripts/ui_smoke_acceptance_stage5.py ui-stage5-failure.png
+          run_stage "acceptance-stage-6" scripts/ui_smoke_acceptance_stage6.py ui-stage6-failure.png
+          run_stage "acceptance-stage-7" scripts/ui_smoke_acceptance_stage7.py ui-stage7-failure.png
+          run_stage "acceptance-stage-8" scripts/ui_smoke_acceptance_stage8.py ui-stage8-failure.png
+          run_stage "full-ui-smoke" scripts/ui_smoke_entry_stage1.py ui-smoke-failure.png
+          run_stage "operator-video-regression" scripts/ui_smoke_video_regression.py ui-video-regression-failure.png
 
       - name: Stop isolated instance
         if: always()
