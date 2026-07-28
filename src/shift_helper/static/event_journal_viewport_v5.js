@@ -102,8 +102,7 @@
         ["pointerdown", "mousedown", "pointerup", "click", "dblclick"].forEach((type) => {
             editor.addEventListener(type, keepEditing);
         });
-        const openContextMenu = (event) => {
-            if (event.button !== 2 && event.type !== "contextmenu") return;
+        editor.addEventListener("contextmenu", (event) => {
             event.preventDefault();
             event.stopImmediatePropagation();
             window.shiftHelperContextPreflightOpen?.(
@@ -111,9 +110,7 @@
                 event.clientX,
                 event.clientY,
             );
-        };
-        editor.addEventListener("pointerdown", openContextMenu, true);
-        editor.addEventListener("contextmenu", openContextMenu, true);
+        }, true);
     }
     const editorObserver = new MutationObserver(() => {
         root.querySelectorAll(".journal-stable-editor").forEach(protectEditor);
