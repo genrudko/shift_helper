@@ -6,6 +6,7 @@
     const preferenceKey = "shift-helper-ui-preferences-v1";
     let bound = false;
     let reapplyFrame = 0;
+    let requestedZoom = 100;
 
     function controls() {
         return {
@@ -38,14 +39,29 @@
         if (live.fontSize) preferences.fontSize = Number(live.fontSize.value) || 13;
         if (live.fontFamily) preferences.fontFamily = live.fontFamily.value;
         if (live.frozenThrough) preferences.frozenThrough = live.frozenThrough.value;
-        const zoom = Number(document.getElementById("ribbon-zoom")?.value);
-        if (Number.isFinite(zoom)) preferences.zoom = zoom;
+        preferences.zoom = requestedZoom;
         try {
             localStorage.setItem(preferenceKey, JSON.stringify(preferences));
         } catch (_error) {
             // Workstation presentation settings must not block journal input.
         }
-        reapplyCurrentZoom(Number(preferences.zoom) || 100);
+        reapplyCurrentZoom(requestedZoom);
+    }
+
+    function rememberZoomRequest(event) {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement)) return;
+        if (!new Set(["journal-zoom", "ribbon-zoom"]).has(target.id)) return;
+        const value = Number(target.value);
+        if (Number.isFinite(value)) requestedZoom = value;
+    }
+
+    function rememberZoomWheel(event) {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement)) return;
+        if (!new Set(["journal-zoom", "ribbon-zoom"]).has(target.id)) return;
+        const value = Number(target.value) + (event.deltaY < 0 ? 5 : -5);
+        requestedZoom = Math.min(400, Math.max(10, value));
     }
 
     function loadLegacyContextController() {
@@ -63,6 +79,13 @@
             return;
         }
         bound = true;
+        const stored = readPreferences();
+        requestedZoom = Number(stored.zoom)
+            || Number(document.getElementById("ribbon-zoom")?.value)
+            || 100;
+        window.addEventListener("input", rememberZoomRequest, true);
+        window.addEventListener("change", rememberZoomRequest, true);
+        window.addEventListener("wheel", rememberZoomWheel, {capture: true, passive: true});
         Object.values(controls()).forEach((control) => {
             control?.addEventListener("input", writeLivePreferences, true);
             control?.addEventListener("change", writeLivePreferences, true);
