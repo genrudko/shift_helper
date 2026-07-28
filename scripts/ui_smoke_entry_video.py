@@ -106,7 +106,7 @@ def test_operator_repairs(page: Page) -> None:
         "Reverse sorting placed a real record below draft rows.",
     )
     require(
-        root.get_attribute("data-draft-aware-sort") == "ready",
+        page.evaluate("window.shiftHelperDraftSortBootstrap === 'ready'"),
         "Draft-aware sorters were not installed.",
     )
 
