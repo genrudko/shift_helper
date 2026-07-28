@@ -129,6 +129,26 @@ def test_operator_repairs(page: Page) -> None:
 def diagnostic_viewport_test(page: Page) -> None:
     """Preserve the full test and attach exact persisted-zoom state on failure."""
 
+    page.add_init_script(
+        """() => {
+            const tracked = new Set([
+                'shift-helper-ui-preferences-v1',
+                'shift-helper-operator-zoom-v1',
+            ]);
+            const original = Storage.prototype.setItem;
+            window.__shiftHelperZoomWrites = [];
+            Storage.prototype.setItem = function setItem(key, value) {
+                if (tracked.has(String(key))) {
+                    window.__shiftHelperZoomWrites.push({
+                        key: String(key),
+                        value: String(value),
+                        stack: new Error('zoom storage write').stack,
+                    });
+                }
+                return original.call(this, key, value);
+            };
+        }"""
+    )
     try:
         ORIGINAL_VIEWPORT_TEST(page)
     except AssertionError as exc:
@@ -154,6 +174,7 @@ def diagnostic_viewport_test(page: Page) -> None:
                         .getPropertyValue('--journal-font-size').trim(),
                     rootZoom: root?.style.zoom ?? null,
                     dataset: root ? {...root.dataset} : null,
+                    writes: window.__shiftHelperZoomWrites || [],
                 };
             }"""
         )
