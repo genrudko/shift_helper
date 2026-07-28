@@ -99,6 +99,15 @@
                 "/static/event_journal_acceptance_stage4_alignment_contract.js",
             );
             root.dataset.acceptanceStage4Loaded = "true";
+            appendStylesheet(
+                "event-journal-acceptance-stage5-css",
+                "/static/event_journal_acceptance_stage5.css",
+            );
+            await appendScript(
+                "event-journal-acceptance-stage5-js",
+                "/static/event_journal_acceptance_stage5.js",
+            );
+            root.dataset.acceptanceStage5Loaded = "true";
         } catch (error) {
             root.dataset.acceptanceStageError = String(error);
             console.error("Acceptance repair failed to load", error);
