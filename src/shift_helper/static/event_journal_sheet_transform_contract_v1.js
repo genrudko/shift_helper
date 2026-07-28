@@ -42,14 +42,14 @@
             && rect.bottom > holderRect.top + 1
             && rect.top < holderRect.bottom - 1
         ));
+        const fallbackRow = rows.find((row) => !row.getData()?._draft) || rows[0];
         const candidate = visible.find(({row}) => !row.getData()?._draft)
             || visible[0]
-            || rows.find((row) => !row.getData()?._draft)
-            || rows[0];
-        const key = candidate?.row?.getData()?._rowKey ?? candidate?.getData?.()?._rowKey;
+            || (fallbackRow ? {row: fallbackRow, rect: null} : null);
+        const key = candidate?.row?.getData()?._rowKey;
         if (!key) return null;
 
-        const rect = candidate.rect || candidate.getElement?.()?.getBoundingClientRect?.();
+        const rect = candidate.rect || candidate.row.getElement?.()?.getBoundingClientRect?.();
         return {
             key,
             offset: rect ? (rect.top - holderRect.top) / currentScale() : 0,
