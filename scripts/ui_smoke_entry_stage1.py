@@ -40,6 +40,9 @@ def wait_for_stage1_geometry(page: Page) -> None:
                     && root.dataset.videoAcceptanceRepair === 'ready'
                     && root.dataset.acceptanceStage1 === 'ready'
                     && root.dataset.zoomApplying !== 'true'
+                    && root.dataset.frozenColumnsController === 'ready'
+                    && root.dataset.frozenColumnsApplying === undefined
+                    && Boolean(root.dataset.frozenColumnsApplied)
                     && Boolean(window.shiftHelperAcceptanceStage1);
             }""",
             timeout=20_000,
@@ -55,6 +58,7 @@ def wait_for_stage1_geometry(page: Page) -> None:
                     preferences: localStorage.getItem('shift-helper-ui-preferences-v1'),
                     legacyZoom: localStorage.getItem('shift-helper-operator-zoom-v1'),
                     ribbonZoom: document.getElementById('ribbon-zoom')?.value ?? null,
+                    frozenControl: document.getElementById('journal-frozen-through')?.value ?? null,
                     customSlider: Boolean(document.getElementById('acceptance-ribbon-zoom')),
                 });
             }"""
