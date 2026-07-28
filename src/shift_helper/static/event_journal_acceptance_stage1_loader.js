@@ -81,6 +81,10 @@
                 "event-journal-acceptance-stage3-js",
                 "/static/event_journal_acceptance_stage3.js",
             );
+            await appendScript(
+                "event-journal-acceptance-stage3-virtualization-js",
+                "/static/event_journal_acceptance_stage3_virtualization.js",
+            );
             root.dataset.acceptanceStage3Loaded = "true";
         } catch (error) {
             root.dataset.acceptanceStageError = String(error);
