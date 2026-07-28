@@ -118,7 +118,10 @@ def assert_aligned(snapshot: dict, stage: str) -> None:
 def test_virtualized_geometry(page: Page) -> None:
     holder = page.locator(".tabulator-tableholder")
     set_zoom(page, 150)
-    require(page.locator("body").evaluate("element => element.style.zoom") == "", "Body CSS zoom returned.")
+    require(
+        page.locator("body").evaluate("element => element.style.zoom") == "",
+        "Body CSS zoom returned.",
+    )
     require(
         page.locator("#event-journal").evaluate("element => element.style.zoom") == "",
         "Grid CSS zoom returned.",
@@ -147,9 +150,18 @@ def test_exclusive_selection(page: Page) -> None:
     header = page.locator('.tabulator-col[tabulator-field="description"]')
     header.click(position={"x": 42, "y": 14})
     page.wait_for_timeout(100)
-    require(root.get_attribute("data-selection-mode") == "columns", "Column selection mode was not entered.")
-    require(page.locator(".operator-column-selected").count() == 1, "Column header selection is ambiguous.")
-    require(page.locator(".journal-active-cell").count() == 0, "An active cell remained over a selected column.")
+    require(
+        root.get_attribute("data-selection-mode") == "columns",
+        "Column selection mode was not entered.",
+    )
+    require(
+        page.locator(".operator-column-selected").count() == 1,
+        "Column header selection is ambiguous.",
+    )
+    require(
+        page.locator(".journal-active-cell").count() == 0,
+        "An active cell remained over a selected column.",
+    )
     require(
         page.locator(".journal-fill-handle:visible").count() == 0,
         "The fill handle remained visible in column mode.",
@@ -159,17 +171,38 @@ def test_exclusive_selection(page: Page) -> None:
     cell = row.locator('.tabulator-cell[tabulator-field="asset_label"]')
     cell.click()
     page.wait_for_timeout(150)
-    require(root.get_attribute("data-selection-mode") == "cells", "Cell click did not leave column mode.")
-    require(page.locator(".operator-column-selected").count() == 0, "Column highlight remained after cell click.")
-    require(page.locator(".journal-active-cell").count() == 1, "Exactly one active cell was not established.")
+    require(
+        root.get_attribute("data-selection-mode") == "cells",
+        "Cell click did not leave column mode.",
+    )
+    require(
+        page.locator(".operator-column-selected").count() == 0,
+        "Column highlight remained after cell click.",
+    )
+    require(
+        page.locator(".journal-active-cell").count() == 1,
+        "Exactly one active cell was not established.",
+    )
     require(page.locator(".journal-fill-handle").count() <= 1, "Multiple fill handles exist.")
 
     row.locator(".journal-row-number").click()
     page.wait_for_timeout(150)
-    require(root.get_attribute("data-selection-mode") == "rows", "Row click did not enter row mode.")
-    require(page.locator(".operator-column-selected").count() == 0, "Column highlight remained in row mode.")
-    require(page.locator(".journal-active-cell").count() == 0, "Active-cell outline remained in row mode.")
-    require(page.locator(".journal-fill-handle:visible").count() == 0, "Fill handle remained in row mode.")
+    require(
+        root.get_attribute("data-selection-mode") == "rows",
+        "Row click did not enter row mode.",
+    )
+    require(
+        page.locator(".operator-column-selected").count() == 0,
+        "Column highlight remained in row mode.",
+    )
+    require(
+        page.locator(".journal-active-cell").count() == 0,
+        "Active-cell outline remained in row mode.",
+    )
+    require(
+        page.locator(".journal-fill-handle:visible").count() == 0,
+        "Fill handle remained in row mode.",
+    )
 
 
 def test_text_color_palette(page: Page) -> None:
