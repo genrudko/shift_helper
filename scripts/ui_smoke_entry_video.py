@@ -2,6 +2,7 @@
 
 from __future__ import annotations  # noqa: I001
 
+import json
 import runpy
 from pathlib import Path
 
@@ -11,6 +12,7 @@ ENTRY_SCRIPT = Path(__file__).with_name("ui_smoke_entry.py")
 ENTRY = runpy.run_path(str(ENTRY_SCRIPT), run_name="shift_helper_ui_smoke_entry_base")
 RIBBON = ENTRY["RIBBON"]
 BASE_FUNCTION = RIBBON["BASE_FUNCTION"]
+ORIGINAL_VIEWPORT_TEST = RIBBON["test_viewport_and_frozen_columns"]
 
 
 def wait_for_complete_view(page: Page) -> None:
@@ -124,12 +126,48 @@ def test_operator_repairs(page: Page) -> None:
     require(after_ranges == before_ranges, "Middle-button panning changed the cell selection.")
 
 
+def diagnostic_viewport_test(page: Page) -> None:
+    """Preserve the full test and attach exact persisted-zoom state on failure."""
+
+    try:
+        ORIGINAL_VIEWPORT_TEST(page)
+    except AssertionError as exc:
+        diagnostic = page.evaluate(
+            """() => {
+                const root = document.getElementById('event-journal');
+                const read = key => {
+                    try {
+                        const raw = localStorage.getItem(key);
+                        return raw === null ? null : JSON.parse(raw);
+                    } catch (error) {
+                        return `parse-error: ${error}`;
+                    }
+                };
+                return {
+                    preferences: read('shift-helper-ui-preferences-v1'),
+                    legacyZoom: read('shift-helper-operator-zoom-v1'),
+                    sheetZoom: root?.dataset.sheetZoom ?? null,
+                    zoomApplying: root?.dataset.zoomApplying ?? null,
+                    journalZoom: document.getElementById('journal-zoom')?.value ?? null,
+                    ribbonZoom: document.getElementById('ribbon-zoom')?.value ?? null,
+                    cssFontSize: getComputedStyle(document.documentElement)
+                        .getPropertyValue('--journal-font-size').trim(),
+                    rootZoom: root?.style.zoom ?? null,
+                    dataset: root ? {...root.dataset} : null,
+                };
+            }"""
+        )
+        raise AssertionError(
+            f"{exc}; zoom diagnostic="
+            + json.dumps(diagnostic, ensure_ascii=False, sort_keys=True)
+        ) from exc
+
+
 RIBBON["wait_for_operator_repair"] = wait_for_complete_view
-RIBBON["test_viewport_and_frozen_columns"].__globals__["wait_for_operator_repair"] = (
-    wait_for_complete_view
-)
+ORIGINAL_VIEWPORT_TEST.__globals__["wait_for_operator_repair"] = wait_for_complete_view
 RIBBON["test_operator_repairs"] = test_operator_repairs
-RIBBON["test_viewport_and_frozen_columns"].__globals__["test_operator_repairs"] = test_operator_repairs
+ORIGINAL_VIEWPORT_TEST.__globals__["test_operator_repairs"] = test_operator_repairs
+BASE_FUNCTION("run_smoke").__globals__["test_viewport_and_frozen_columns"] = diagnostic_viewport_test
 
 
 if __name__ == "__main__":
