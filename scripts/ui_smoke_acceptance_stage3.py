@@ -89,7 +89,7 @@ def test_ribbon_geometry(page: Page) -> None:
     require(max(tops) - min(tops) <= 3, f"Ribbon controls are vertically misaligned: {tops}")
 
     ordered = sorted(controls, key=lambda item: item["x"])
-    for left, right in zip(ordered, ordered[1:], strict=True):
+    for left, right in zip(ordered, ordered[1:], strict=False):
         require(
             right["x"] >= left["x"] + left["width"] - 1,
             f"Ribbon controls overlap: {left} / {right}",
