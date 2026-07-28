@@ -87,7 +87,12 @@ def test_operator_repairs(page: Page) -> None:
         page.locator("#ribbon-font-family option").count() >= 20,
         "The ribbon still exposes too few font families.",
     )
-    require(page.locator("#operator-font-size").is_visible(), "Manual font-size input is missing.")
+    font_size = page.locator("#ribbon-font-size")
+    require(font_size.is_visible(), "Font-size dropdown is missing.")
+    require(
+        font_size.locator("option").count() >= 18,
+        "Font-size dropdown is incomplete.",
+    )
     require(page.locator("#operator-text-direction").is_visible(), "Text-direction command is missing.")
 
     page.evaluate("window.shiftHelperEventGrid.setSort('start_date', 'desc')")
