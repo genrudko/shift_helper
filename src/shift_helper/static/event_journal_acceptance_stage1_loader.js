@@ -47,6 +47,11 @@
             window.shiftHelperZoom,
         );
         try {
+            await appendScript(
+                "event-journal-context-fallback-v1",
+                "/static/event_journal_context_fallback_v1.js",
+            );
+            root.dataset.contextFallbackLoaded = "true";
             appendStylesheet(
                 "event-journal-acceptance-stage1-css",
                 "/static/event_journal_acceptance_stage1.css",
