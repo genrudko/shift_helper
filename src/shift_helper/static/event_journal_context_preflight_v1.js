@@ -164,10 +164,7 @@
     window.shiftHelperContextPreflightClose = closeFallback;
 
     window.addEventListener("pointerdown", (event) => {
-        if (event.button === 2 && scheduleFallback(event)) {
-            event.preventDefault();
-            return;
-        }
+        if (event.button === 2 && scheduleFallback(event)) return;
         if (
             fallbackShell
             && event.target instanceof Element
