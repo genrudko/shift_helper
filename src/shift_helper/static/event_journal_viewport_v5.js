@@ -14,6 +14,7 @@
     const preferenceKey = "shift-helper-ui-preferences-v1";
     let geometryFrame = 0;
     let frozenApplying = false;
+    let frozenHydrated = false;
 
     const loadPreferences = () => {
         try {
@@ -82,8 +83,11 @@
         hideFillHandle();
         try {
             const preferences = loadPreferences();
-            const desired = frozenSelect.value || preferences.frozenThrough || "asset_label";
+            const desired = frozenHydrated
+                ? (frozenSelect.value || preferences.frozenThrough || "asset_label")
+                : (preferences.frozenThrough || frozenSelect.value || "asset_label");
             const applied = controller.applyBoundary(desired);
+            frozenHydrated = true;
             preferences.frozenThrough = applied;
             frozenSelect.value = applied;
             const ribbonSelect = document.getElementById("ribbon-frozen-through");
