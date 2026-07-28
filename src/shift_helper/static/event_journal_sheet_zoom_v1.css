@@ -31,16 +31,28 @@
  * compact filter row; the sheet body, not the header, receives the remaining
  * viewport height.
  */
+.journal-sheet-layer .tabulator-header,
+.journal-sheet-layer .tabulator-header .tabulator-header-contents,
+.journal-sheet-layer .tabulator-header .tabulator-headers {
+    box-sizing: border-box;
+    height: 64px !important;
+    min-height: 64px !important;
+    max-height: 64px !important;
+    overflow: hidden;
+}
+
 .journal-sheet-layer .tabulator-header .tabulator-col {
     height: 64px !important;
     min-height: 64px !important;
+    max-height: 64px !important;
     overflow: hidden;
 }
 
 .journal-sheet-layer .tabulator-header .tabulator-col-content {
     box-sizing: border-box;
-    height: 64px;
-    min-height: 64px;
+    height: 64px !important;
+    min-height: 64px !important;
+    max-height: 64px !important;
     padding: 5px 7px;
     overflow: hidden;
 }
@@ -50,6 +62,7 @@
     display: block;
     height: 22px;
     min-height: 22px;
+    max-height: 22px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap !important;
@@ -58,6 +71,8 @@
 .journal-sheet-layer .tabulator-header .tabulator-header-filter {
     box-sizing: border-box;
     height: 28px;
+    min-height: 28px;
+    max-height: 28px;
     margin-top: 4px;
     padding: 0;
     overflow: hidden;
@@ -67,5 +82,6 @@
     box-sizing: border-box;
     height: 24px;
     min-height: 24px;
+    max-height: 24px;
     white-space: nowrap;
 }
