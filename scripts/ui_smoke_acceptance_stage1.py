@@ -43,13 +43,14 @@ def set_zoom(page: Page, value: int) -> None:
             """expected => {
                 const root = document.getElementById('event-journal');
                 const fields = ['start_date', 'start_time', 'asset_label', 'description'];
+                const customSlider = document.getElementById('acceptance-ribbon-zoom');
                 return {
                     expected,
                     dataset: root ? {...root.dataset} : null,
                     nativeJournal: document.getElementById('journal-zoom')?.value ?? null,
                     nativeRibbon: document.getElementById('ribbon-zoom')?.value ?? null,
-                    customZoom: document.getElementById('acceptance-ribbon-zoom')?.dataset.zoom ?? null,
-                    customPosition: document.getElementById('acceptance-ribbon-zoom')?.dataset.position ?? null,
+                    customZoom: customSlider?.dataset.zoom ?? null,
+                    customPosition: customSlider?.dataset.position ?? null,
                     widths: Object.fromEntries(fields.map(field => [
                         field,
                         Number(window.shiftHelperEventGrid.getColumn(field)?.getWidth?.() || 0),
