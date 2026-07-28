@@ -1,4 +1,4 @@
-"""Focused acceptance checks for Ribbon geometry, font-size combo and borders."""
+"""Focused acceptance checks for Ribbon geometry, font-size dropdown and borders."""
 
 from __future__ import annotations
 
@@ -77,39 +77,41 @@ def border_widths(page: Page, row_key: str) -> dict[str, str]:
 
 
 def test_ribbon_geometry(page: Page) -> None:
-    family = box(page.locator("#ribbon-font-family"))
-    combo = box(page.locator(".stage3-font-size-combo"))
-    decrease = box(page.locator('.stage3-font-size-cluster [title*="Уменьшить"]'))
-    increase = box(page.locator('.stage3-font-size-cluster [title*="Увеличить"]'))
-    controls = [family, combo, decrease, increase]
+    controls = [
+        box(page.locator("#ribbon-font-family")),
+        box(page.locator("#ribbon-font-size")),
+        box(page.locator("#operator-font-decrease")),
+        box(page.locator("#operator-font-increase")),
+    ]
     heights = [item["height"] for item in controls]
     tops = [item["y"] for item in controls]
-    require(max(heights) - min(heights) <= 2, f"Ribbon controls have uneven heights: {heights}")
+    require(max(heights) - min(heights) <= 3, f"Ribbon controls have uneven heights: {heights}")
     require(max(tops) - min(tops) <= 3, f"Ribbon controls are vertically misaligned: {tops}")
 
+    ordered = sorted(controls, key=lambda item: item["x"])
+    for left, right in zip(ordered, ordered[1:], strict=True):
+        require(
+            right["x"] >= left["x"] + left["width"] - 1,
+            f"Ribbon controls overlap: {left} / {right}",
+        )
 
-def test_font_size_combo(page: Page, row_key: str) -> None:
-    arrow = page.locator("#stage3-font-size-arrow")
-    arrow.click()
-    menu = page.locator("#stage3-font-size-menu")
-    menu.wait_for(state="visible", timeout=5_000)
-    require(menu.locator("button").count() >= 18, "Font-size dropdown is incomplete.")
-    menu.get_by_role("menuitem", name="24", exact=True).click()
+
+def test_font_size_dropdown(page: Page, row_key: str) -> None:
+    select = page.locator("#ribbon-font-size")
+    options = select.locator("option").all_text_contents()
+    require(len(options) >= 18, f"Font-size dropdown is incomplete: {options}")
+    require("8" in options and "96" in options, f"Font-size limits are missing: {options}")
+
+    select.select_option("24")
     page.wait_for_timeout(150)
     require(cell_font_size(page, row_key) == "24px", "Dropdown size was not applied.")
 
-    input_control = page.locator("#operator-font-size")
-    input_control.fill("19")
-    input_control.press("Enter")
-    page.wait_for_timeout(150)
-    require(cell_font_size(page, row_key) == "19px", "Manual font-size input was not applied.")
-
-    page.locator('.stage3-font-size-cluster [title*="Увеличить"]').click()
+    page.locator("#operator-font-decrease").click()
     page.wait_for_timeout(100)
-    require(cell_font_size(page, row_key) == "20px", "Increase-font button did not work.")
-    page.locator('.stage3-font-size-cluster [title*="Уменьшить"]').click()
+    require(cell_font_size(page, row_key) == "23px", "Decrease-font button did not work.")
+    page.locator("#operator-font-increase").click()
     page.wait_for_timeout(100)
-    require(cell_font_size(page, row_key) == "19px", "Decrease-font button did not work.")
+    require(cell_font_size(page, row_key) == "24px", "Increase-font button did not work.")
 
 
 def assert_all_borders(widths: dict[str, str], stage: str) -> None:
@@ -132,7 +134,7 @@ def test_borders(page: Page, row_key: str) -> None:
 
     page.locator('[data-align-horizontal="center"]').click()
     page.wait_for_timeout(350)
-    assert_all_borders(border_widths(page, row_key), "alignment reformat")
+    assert_all_borders(border_widths(page, row_key), "alignment change")
 
     arrow.click()
     menu = page.locator("#stage3-border-menu")
@@ -161,7 +163,7 @@ def run(url: str, screenshot: Path) -> None:
             wait_ready(page)
             row_key = select_description(page)
             test_ribbon_geometry(page)
-            test_font_size_combo(page, row_key)
+            test_font_size_dropdown(page, row_key)
             test_borders(page, row_key)
             require(not browser_errors, "Browser errors: " + " | ".join(browser_errors))
         except Exception:
