@@ -215,7 +215,7 @@ def test_text_color_palette(page: Page) -> None:
         ),
         "The native text Color Picker is still exposed.",
     )
-    page.locator(".operator-text-color-arrow").click()
+    page.locator("#operator-text-color-control .operator-fill-arrow").click()
     palette = page.locator('.operator-color-palette[data-owner="text"]')
     palette.wait_for(state="visible", timeout=5_000)
     require(palette.locator(".operator-color-swatch").count() >= 32, "Text palette is incomplete.")
