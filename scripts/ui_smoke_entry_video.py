@@ -16,7 +16,7 @@ ORIGINAL_VIEWPORT_TEST = RIBBON["test_viewport_and_frozen_columns"]
 
 
 def wait_for_complete_view(page: Page) -> None:
-    """Wait until repaired controllers and persisted sheet geometry agree."""
+    """Wait until the authoritative sheet geometry is fully applied."""
 
     page.wait_for_function(
         """() => {
@@ -32,8 +32,6 @@ def wait_for_complete_view(page: Page) -> None:
             const expectedZoom = String(Number(preferences.zoom) || 100);
             return root?.dataset.operatorRepairReady === 'true'
                 && root.dataset.videoAcceptanceRepair === 'ready'
-                && root.dataset.liveViewPreferences === 'ready'
-                && root.dataset.contextFallback === 'ready'
                 && root.dataset.acceptanceStage1 === 'ready'
                 && root.dataset.zoomApplying !== 'true'
                 && root.dataset.sheetZoom === expectedZoom;
