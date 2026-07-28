@@ -97,14 +97,6 @@
         persistRequestedZoom();
     }
 
-    function loadLegacyContextController() {
-        if (document.getElementById("event-journal-context-fallback-legacy-v1")) return;
-        const legacy = document.createElement("script");
-        legacy.id = "event-journal-context-fallback-legacy-v1";
-        legacy.src = "/static/event_journal_context_fallback_legacy_v1.js";
-        document.body.appendChild(legacy);
-    }
-
     function bindLivePreferences() {
         if (bound) return;
         if (root?.dataset.videoAcceptanceRepair !== "ready") {
@@ -129,7 +121,7 @@
         });
         writeLivePreferences();
         root.dataset.liveViewPreferences = "ready";
-        loadLegacyContextController();
+        root.dataset.contextController = "ribbon-with-preflight";
     }
 
     bindLivePreferences();
