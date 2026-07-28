@@ -5,6 +5,7 @@
     const root = document.getElementById("event-journal");
     const preferenceKey = "shift-helper-ui-preferences-v1";
     let bound = false;
+    let reapplyFrame = 0;
 
     function controls() {
         return {
@@ -23,6 +24,13 @@
         }
     }
 
+    function reapplyCurrentZoom(value) {
+        cancelAnimationFrame(reapplyFrame);
+        reapplyFrame = requestAnimationFrame(() => {
+            window.shiftHelperZoom?.apply?.(value, false);
+        });
+    }
+
     function writeLivePreferences() {
         const live = controls();
         const preferences = readPreferences();
@@ -37,6 +45,7 @@
         } catch (_error) {
             // Workstation presentation settings must not block journal input.
         }
+        reapplyCurrentZoom(Number(preferences.zoom) || 100);
     }
 
     function loadLegacyContextController() {
