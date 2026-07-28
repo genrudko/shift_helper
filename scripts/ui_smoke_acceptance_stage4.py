@@ -26,7 +26,7 @@ def wait_ready(page: Page) -> None:
 
 
 def prepare_draft_cell(page: Page, value: str) -> str:
-    return page.evaluate(
+    row_key = page.evaluate(
         """async value => {
             const table = window.shiftHelperEventGrid;
             const row = table.getRows('active').find(candidate => candidate.getData()._draft);
@@ -34,11 +34,27 @@ def prepare_draft_cell(page: Page, value: str) -> str:
             await row.scrollTo('center', false);
             const cell = row.getCell('description');
             cell.setValue(value, true);
-            cell.getElement().click();
+            cell.getElement().dataset.stage4Target = 'true';
             return row.getData()._rowKey;
         }""",
         value,
     )
+    target = page.locator('[data-stage4-target="true"]')
+    target.wait_for(state="visible", timeout=5_000)
+    target.click()
+    page.wait_for_timeout(120)
+    require(
+        page.evaluate(
+            """() => {
+                const range = window.shiftHelperEventGrid.getRanges().at(-1);
+                const raw = range?.getCells?.() || [];
+                const cells = raw.length && Array.isArray(raw[0]) ? raw.flat() : raw;
+                return cells.some(cell => cell.getElement?.()?.dataset.stage4Target === 'true');
+            }"""
+        ),
+        "A real cell click did not move the Tabulator range to the Stage 4 target.",
+    )
+    return row_key
 
 
 def cell_snapshot(page: Page, row_key: str, field: str = "description") -> dict:
