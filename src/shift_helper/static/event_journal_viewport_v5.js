@@ -1,97 +1,46 @@
 "use strict";
 
+/*
+ * Geometry-only viewport controller.
+ * Zoom and row selection deliberately live in event_journal_bootstrap_v1.js.
+ */
+
 (() => {
     const root = document.getElementById("event-journal");
     const table = window.shiftHelperEventGrid;
-    const settingsDialog = document.getElementById("journal-view-settings");
     const frozenSelect = document.getElementById("journal-frozen-through");
-
-    if (!root || !table || !settingsDialog || !frozenSelect) return;
+    if (!root || !table || !frozenSelect) return;
 
     const preferenceKey = "shift-helper-ui-preferences-v1";
-    const widthKey = "shift-helper-column-base-widths-v1";
-    const defaults = {
-        theme: "dark",
-        zoom: 100,
-        fontSize: 13,
-        fontFamily: "Segoe UI",
-        frozenThrough: "asset_label",
-    };
-
-    let preferences = loadPreferences();
-    let frozenApplying = false;
     let geometryFrame = 0;
-    let resizeTimer = 0;
-    let viewportRedrawing = false;
-    let lastViewportWidth = root.clientWidth;
-    let lastViewportHeight = root.clientHeight;
-    let rowDrag = null;
-    let syntheticRowPointer = false;
-    let geometryBound = false;
+    let frozenApplying = false;
 
-    function loadPreferences() {
+    const loadPreferences = () => {
         try {
-            return {
-                ...structuredClone(defaults),
-                ...JSON.parse(localStorage.getItem(preferenceKey) || "{}"),
-            };
+            return JSON.parse(localStorage.getItem(preferenceKey) || "{}");
         } catch (_error) {
-            return structuredClone(defaults);
+            return {};
         }
-    }
-
-    function savePreferences() {
+    };
+    const savePreferences = (preferences) => {
         try {
             localStorage.setItem(preferenceKey, JSON.stringify(preferences));
         } catch (_error) {
-            // Visual preferences must never block journal input.
+            // Geometry preferences are optional.
         }
-    }
-
-    function effectiveTheme() {
-        if (preferences.theme !== "system") return preferences.theme;
-        return matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-    }
-
-    function availableFields() {
-        return new Set([
-            "none",
-            ...table.getColumns().map((column) => column.getField()).filter(Boolean),
-        ]);
-    }
-
-    function normalizePreferences() {
-        preferences.zoom = Math.min(400, Math.max(10, Number(preferences.zoom) || 100));
-        preferences.fontSize = Math.min(200, Math.max(1, Number(preferences.fontSize) || 13));
-        if (!availableFields().has(preferences.frozenThrough)) {
-            preferences.frozenThrough = defaults.frozenThrough;
-        }
-    }
-
-    function applyAppearance() {
-        normalizePreferences();
-        document.body.style.removeProperty("zoom");
-        document.body.style.removeProperty("width");
-        document.documentElement.dataset.theme = effectiveTheme();
-        document.documentElement.style.setProperty(
-            "--ui-font-family",
-            `"${preferences.fontFamily}", "Segoe UI", system-ui, sans-serif`,
-        );
-        document.documentElement.style.setProperty("--ui-viewport-height", "100vh");
-        savePreferences();
-    }
+    };
 
     function hideFillHandle() {
-        const handle = document.querySelector(".journal-fill-handle");
-        if (handle) handle.hidden = true;
+        document.querySelectorAll(".journal-fill-handle").forEach((handle) => {
+            handle.hidden = true;
+        });
     }
-
     function selectedLastCellElement() {
         if ((window.shiftHelperSelectedRowKeys || []).length) return null;
         const range = table.getRanges?.().at(-1);
         const raw = range?.getCells?.() || [];
         const cells = (raw.length && Array.isArray(raw[0]) ? raw.flat() : raw)
-            .filter((cell) => cell && typeof cell.getElement === "function");
+            .filter((cell) => cell?.getElement);
         const cell = cells.at(-1);
         if (!cell) return null;
         try {
@@ -101,120 +50,29 @@
             return null;
         }
     }
-
     function placeFillHandle() {
         const handle = document.querySelector(".journal-fill-handle");
-        const cellElement = selectedLastCellElement();
-        if (!handle || !cellElement) {
+        const cell = selectedLastCellElement();
+        if (!handle || !cell || root.dataset.selectionMode !== "cells") {
             hideFillHandle();
             return;
         }
         if (handle.parentElement !== document.body) document.body.appendChild(handle);
+        const rect = cell.getBoundingClientRect();
+        const scale = Number(
+            getComputedStyle(document.documentElement).getPropertyValue("--operator-zoom-scale"),
+        ) || 1;
+        const size = Math.max(6, Math.min(18, 9 * scale));
         handle.style.position = "fixed";
-        const cellRect = cellElement.getBoundingClientRect();
-        handle.style.left = `${cellRect.right - (handle.offsetWidth / 2)}px`;
-        handle.style.top = `${cellRect.bottom - (handle.offsetHeight / 2)}px`;
+        handle.style.width = `${size}px`;
+        handle.style.height = `${size}px`;
+        handle.style.left = `${rect.right - (size / 2)}px`;
+        handle.style.top = `${rect.bottom - (size / 2)}px`;
         handle.hidden = false;
     }
-
     function scheduleGeometry() {
         cancelAnimationFrame(geometryFrame);
         geometryFrame = requestAnimationFrame(placeFillHandle);
-    }
-
-    function describeRange(range) {
-        try {
-            const raw = range?.getCells?.() || [];
-            const cells = (raw.length && Array.isArray(raw[0]) ? raw.flat() : raw)
-                .filter((cell) => cell?.getRow && cell?.getField);
-            const first = cells[0];
-            const last = cells.at(-1);
-            if (!first || !last) return null;
-            return {
-                firstRowKey: first.getRow().getData()._rowKey,
-                firstField: first.getField(),
-                lastRowKey: last.getRow().getData()._rowKey,
-                lastField: last.getField(),
-            };
-        } catch (_error) {
-            return null;
-        }
-    }
-
-    function snapshotRanges() {
-        return (table.getRanges?.() || [])
-            .map(describeRange)
-            .filter(Boolean);
-    }
-
-    function clearRanges() {
-        for (const range of table.getRanges?.() || []) {
-            try {
-                range.remove();
-            } catch (_error) {
-                // A stale range must not block a viewport redraw.
-            }
-        }
-    }
-
-    function clearColumnSelection() {
-        root.querySelectorAll(".operator-column-selected").forEach((element) => {
-            element.classList.remove("operator-column-selected");
-        });
-    }
-
-    function restoreRanges(snapshots) {
-        if (!snapshots.length) return;
-        const rows = new Map(
-            table.getRows("active").map((row) => [row.getData()._rowKey, row]),
-        );
-        for (const snapshot of snapshots) {
-            const firstRow = rows.get(snapshot.firstRowKey);
-            const lastRow = rows.get(snapshot.lastRowKey);
-            const firstCell = firstRow?.getCell(snapshot.firstField);
-            const lastCell = lastRow?.getCell(snapshot.lastField);
-            if (!firstCell || !lastCell) continue;
-            try {
-                table.addRange(firstCell, lastCell);
-            } catch (_error) {
-                // Data or filtering may have removed one of the former endpoints.
-            }
-        }
-    }
-
-    function scheduleViewportRedraw(force = false) {
-        if (viewportRedrawing) return;
-        const width = root.clientWidth;
-        const height = root.clientHeight;
-        if (!force && width === lastViewportWidth && height === lastViewportHeight) {
-            scheduleGeometry();
-            return;
-        }
-        clearTimeout(resizeTimer);
-        resizeTimer = window.setTimeout(() => {
-            if (viewportRedrawing) return;
-            const nextWidth = root.clientWidth;
-            const nextHeight = root.clientHeight;
-            if (
-                !force
-                && nextWidth === lastViewportWidth
-                && nextHeight === lastViewportHeight
-            ) {
-                scheduleGeometry();
-                return;
-            }
-            viewportRedrawing = true;
-            const ranges = snapshotRanges();
-            clearRanges();
-            table.redraw(true);
-            requestAnimationFrame(() => {
-                restoreRanges(ranges);
-                lastViewportWidth = root.clientWidth;
-                lastViewportHeight = root.clientHeight;
-                viewportRedrawing = false;
-                scheduleGeometry();
-            });
-        }, 70);
     }
 
     function applyFrozenColumns() {
@@ -223,24 +81,18 @@
         frozenApplying = true;
         hideFillHandle();
         try {
-            preferences.frozenThrough = controller.applyBoundary(preferences.frozenThrough);
-            savePreferences();
+            const preferences = loadPreferences();
+            const desired = frozenSelect.value || preferences.frozenThrough || "asset_label";
+            const applied = controller.applyBoundary(desired);
+            preferences.frozenThrough = applied;
+            frozenSelect.value = applied;
+            const ribbonSelect = document.getElementById("ribbon-frozen-through");
+            if (ribbonSelect) ribbonSelect.value = applied;
+            savePreferences(preferences);
         } finally {
             frozenApplying = false;
         }
         scheduleGeometry();
-    }
-
-    function syncSettings() {
-        const theme = document.getElementById("journal-theme");
-        const zoom = document.getElementById("journal-zoom");
-        const fontSize = document.getElementById("journal-font-size");
-        const fontFamily = document.getElementById("journal-font-family");
-        if (theme) theme.value = preferences.theme;
-        if (zoom) zoom.value = String(preferences.zoom);
-        if (fontSize) fontSize.value = String(preferences.fontSize);
-        if (fontFamily) fontFamily.value = preferences.fontFamily;
-        frozenSelect.value = preferences.frozenThrough;
     }
 
     function protectEditor(editor) {
@@ -251,147 +103,39 @@
             editor.addEventListener(type, keepEditing);
         });
     }
-
-    new MutationObserver(() => {
+    const editorObserver = new MutationObserver(() => {
         root.querySelectorAll(".journal-stable-editor").forEach(protectEditor);
-    }).observe(root, {childList: true, subtree: true});
+    });
+    editorObserver.observe(root, {childList: true, subtree: true});
 
-    function rowNumberAtPoint(x, y) {
-        const element = document.elementFromPoint(x, y);
-        return element instanceof Element ? element.closest(".journal-row-number") : null;
-    }
-
-    function dispatchShiftSelection(rowNumber, ctrlKey) {
-        syntheticRowPointer = true;
-        try {
-            rowNumber.dispatchEvent(new PointerEvent("pointerdown", {
-                bubbles: true,
-                cancelable: true,
-                composed: true,
-                button: 0,
-                buttons: 1,
-                shiftKey: true,
-                ctrlKey,
-            }));
-        } finally {
-            syntheticRowPointer = false;
-        }
-    }
-
-    window.addEventListener("pointerdown", (event) => {
-        if (syntheticRowPointer || !event.isTrusted || event.button !== 0) return;
-        const target = event.target instanceof Element
-            ? event.target.closest(".journal-row-number")
-            : null;
-        if (!target || !root.contains(target)) return;
-        clearRanges();
-        clearColumnSelection();
-        hideFillHandle();
-        root.dataset.selectionMode = "rows";
-        rowDrag = {last: target, ctrlKey: event.ctrlKey || event.metaKey};
-        root.classList.add("journal-row-dragging");
-    }, true);
-
-    window.addEventListener("pointermove", (event) => {
-        if (!rowDrag || !(event.buttons & 1)) return;
-        const target = rowNumberAtPoint(event.clientX, event.clientY);
-        if (target && target !== rowDrag.last) {
-            rowDrag.last = target;
-            dispatchShiftSelection(target, rowDrag.ctrlKey);
-        }
-        const holder = root.querySelector(".tabulator-tableholder");
-        if (holder) {
-            const rect = holder.getBoundingClientRect();
-            const rowHeight = Number.parseFloat(
-                getComputedStyle(document.documentElement)
-                    .getPropertyValue("--journal-row-height"),
-            ) || 34;
-            const edge = Math.max(24, rowHeight);
-            if (event.clientY < rect.top + edge) holder.scrollTop -= Math.max(12, edge / 2);
-            else if (event.clientY > rect.bottom - edge) {
-                holder.scrollTop += Math.max(12, edge / 2);
-            }
-        }
-        event.preventDefault();
-    }, true);
-
-    const finishRowDrag = () => {
-        rowDrag = null;
-        root.classList.remove("journal-row-dragging");
-    };
-    window.addEventListener("pointerup", finishRowDrag, true);
-    window.addEventListener("pointercancel", finishRowDrag, true);
-
-    document.getElementById("open-view-settings")?.addEventListener("click", () => {
-        preferences = loadPreferences();
-        normalizePreferences();
-        syncSettings();
-    });
-    document.getElementById("journal-theme")?.addEventListener("change", (event) => {
-        preferences.theme = event.target.value;
-        applyAppearance();
-    });
-    document.getElementById("journal-font-size")?.addEventListener("input", (event) => {
-        preferences.fontSize = Number(event.target.value);
-        applyAppearance();
-        scheduleGeometry();
-    });
-    document.getElementById("journal-font-family")?.addEventListener("change", (event) => {
-        preferences.fontFamily = event.target.value;
-        applyAppearance();
-        scheduleGeometry();
-    });
-    frozenSelect.addEventListener("change", (event) => {
-        preferences.frozenThrough = event.target.value;
-        applyAppearance();
-        applyFrozenColumns();
-    });
-    document.getElementById("reset-view-settings")?.addEventListener("click", () => {
-        preferences = structuredClone(defaults);
-        try {
-            localStorage.removeItem(widthKey);
-        } catch (_error) {
-            // Ignore unavailable local storage.
-        }
-        applyAppearance();
-        syncSettings();
-        document.getElementById("journal-zoom")?.dispatchEvent(new Event("input", {bubbles: true}));
-        applyFrozenColumns();
-    });
-    document.getElementById("reset-grid-layout")?.addEventListener("click", () => {
-        try {
-            localStorage.removeItem(widthKey);
-        } catch (_error) {
-            // Ignore unavailable local storage.
-        }
-        scheduleViewportRedraw(true);
-    });
+    frozenSelect.addEventListener("change", applyFrozenColumns);
+    document.getElementById("ribbon-frozen-through")?.addEventListener(
+        "change",
+        () => window.setTimeout(applyFrozenColumns, 0),
+    );
+    document.getElementById("reset-view-settings")?.addEventListener(
+        "click",
+        () => window.setTimeout(applyFrozenColumns, 0),
+    );
 
     ["rangeChanged", "cellClick", "renderComplete", "columnMoved", "columnVisibilityChanged"]
         .forEach((eventName) => table.on(eventName, scheduleGeometry));
+    table.on("tableBuilt", applyFrozenColumns);
+    table.on("renderComplete", applyFrozenColumns);
 
-    function bindGeometry() {
-        if (geometryBound) return;
+    const bindHolder = () => {
         const holder = root.querySelector(".tabulator-tableholder");
-        if (!holder) return;
-        geometryBound = true;
+        if (!holder || holder.dataset.geometryBound === "true") return;
+        holder.dataset.geometryBound = "true";
         holder.addEventListener("scroll", scheduleGeometry, {passive: true});
-        new ResizeObserver(() => scheduleViewportRedraw(false)).observe(root);
-        document.querySelector(".journal-fill-handle")?.addEventListener("pointerup", () => {
-            requestAnimationFrame(scheduleGeometry);
-        });
-    }
+    };
+    table.on("tableBuilt", bindHolder);
+    table.on("renderComplete", bindHolder);
+    bindHolder();
 
-    table.on("tableBuilt", bindGeometry);
-    table.on("renderComplete", bindGeometry);
-    bindGeometry();
-    window.addEventListener("resize", () => scheduleViewportRedraw(false));
-    matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
-        if (preferences.theme === "system") applyAppearance();
-    });
-
-    applyAppearance();
-    syncSettings();
+    window.addEventListener("resize", scheduleGeometry);
+    window.addEventListener("shifthelper:zoom", scheduleGeometry);
     applyFrozenColumns();
     scheduleGeometry();
+    root.dataset.viewportController = "geometry-only";
 })();
