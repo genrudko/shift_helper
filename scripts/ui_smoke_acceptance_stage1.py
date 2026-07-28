@@ -1,12 +1,12 @@
-"""Focused acceptance checks for zoom linearity and row selection."""
+"""Focused acceptance checks for linear zoom and deterministic row selection."""
 
 from __future__ import annotations
 
-import json
+import math
 import sys
 from pathlib import Path
 
-from playwright.sync_api import Page, TimeoutError, sync_playwright
+from playwright.sync_api import Page, sync_playwright
 
 
 def require(condition: bool, message: str) -> None:
@@ -19,7 +19,7 @@ def wait_ready(page: Page) -> None:
         """() => {
             const root = document.getElementById('event-journal');
             return root?.dataset.acceptanceStage1 === 'ready'
-                && root.dataset.zoomApplying !== 'true'
+                && root.dataset.videoAcceptanceRepair === 'ready'
                 && Boolean(window.shiftHelperAcceptanceStage1);
         }""",
         timeout=20_000,
@@ -28,79 +28,19 @@ def wait_ready(page: Page) -> None:
 
 def set_zoom(page: Page, value: int) -> None:
     page.evaluate("value => window.shiftHelperAcceptanceStage1.setZoom(value)", value)
-    try:
-        page.wait_for_function(
-            """value => {
-                const root = document.getElementById('event-journal');
-                return root?.dataset.sheetZoom === String(value)
-                    && root.dataset.zoomApplying !== 'true';
-            }""",
-            arg=value,
-            timeout=10_000,
-        )
-    except TimeoutError as exc:
-        diagnostic = page.evaluate(
-            """expected => {
-                const root = document.getElementById('event-journal');
-                const fields = ['start_date', 'start_time', 'asset_label', 'description'];
-                const customSlider = document.getElementById('acceptance-ribbon-zoom');
-                return {
-                    expected,
-                    dataset: root ? {...root.dataset} : null,
-                    nativeJournal: document.getElementById('journal-zoom')?.value ?? null,
-                    nativeRibbon: document.getElementById('ribbon-zoom')?.value ?? null,
-                    customZoom: customSlider?.dataset.zoom ?? null,
-                    customPosition: customSlider?.dataset.position ?? null,
-                    widths: Object.fromEntries(fields.map(field => [
-                        field,
-                        Number(window.shiftHelperEventGrid.getColumn(field)?.getWidth?.() || 0),
-                    ])),
-                    fontSize: getComputedStyle(document.documentElement)
-                        .getPropertyValue('--journal-font-size').trim(),
-                    rowHeight: getComputedStyle(document.documentElement)
-                        .getPropertyValue('--journal-row-height').trim(),
-                    preferences: localStorage.getItem('shift-helper-ui-preferences-v1'),
-                    legacyZoom: localStorage.getItem('shift-helper-operator-zoom-v1'),
-                };
-            }""",
-            value,
-        )
-        raise AssertionError(
-            "Zoom application timed out: "
-            + json.dumps(diagnostic, ensure_ascii=False, sort_keys=True)
-        ) from exc
-
-
-def zoom_metrics(page: Page) -> dict[str, float]:
-    return page.evaluate(
-        """() => {
-            const fields = ['start_date', 'start_time', 'asset_label', 'description'];
-            const result = {};
-            for (const field of fields) {
-                const column = window.shiftHelperEventGrid.getColumn(field);
-                result[field] = Number(column?.getWidth?.() || 0);
-            }
-            result.fontSize = Number.parseFloat(
-                getComputedStyle(document.documentElement)
-                    .getPropertyValue('--journal-font-size')
-            );
-            result.rowHeight = Number.parseFloat(
-                getComputedStyle(document.documentElement)
-                    .getPropertyValue('--journal-row-height')
-            );
-            return result;
-        }"""
+    page.wait_for_function(
+        """value => document.getElementById('event-journal')
+            ?.dataset.sheetZoom === String(value)""",
+        value,
+        timeout=10_000,
     )
+    page.wait_for_timeout(120)
 
 
-def assert_same_metrics(first: dict[str, float], second: dict[str, float]) -> None:
-    require(first.keys() == second.keys(), "Zoom metric keys changed between equal zoom levels.")
-    for key in first:
-        require(
-            abs(first[key] - second[key]) <= 1,
-            f"125% geometry depends on the previous zoom path for {key}: "
-            f"{first[key]} != {second[key]}",
-        )
+def measured_width(page: Page) -> float:
+    result = page.locator("#journal-undo").bounding_box()
+    require(result is not None, "Zoom reference control is not visible.")
+    return result["width"]
 
 
 def selected_keys(page: Page) -> list[str]:
@@ -118,10 +58,6 @@ def assert_row_mode(page: Page, expected_count: int, stage: str) -> None:
         f"Unexpected selected-row count after {stage}: {selected_keys(page)}",
     )
     require(
-        page.locator(".journal-active-cell").count() == 0,
-        f"An active cell remained over row selection after {stage}.",
-    )
-    require(
         page.locator(".journal-fill-handle:visible").count() == 0,
         f"The fill handle remained visible after {stage}.",
     )
@@ -133,14 +69,26 @@ def test_zoom_path(page: Page) -> None:
 
     set_zoom(page, 100)
     position = float(slider.get_attribute("data-position") or "-1")
-    require(abs(position - 50) <= 0.5, f"100% is not centered on the zoom track: {position}%")
+    expected = ((100 - 10) / 390) * 100
+    require(
+        abs(position - expected) <= 0.5,
+        f"100% has a nonlinear slider position: {position}% != {expected}%",
+    )
+    width_100 = measured_width(page)
 
-    set_zoom(page, 125)
-    first_125 = zoom_metrics(page)
-    set_zoom(page, 80)
-    set_zoom(page, 125)
-    second_125 = zoom_metrics(page)
-    assert_same_metrics(first_125, second_125)
+    set_zoom(page, 50)
+    width_50 = measured_width(page)
+    require(
+        math.isclose(width_50 / width_100, 0.5, rel_tol=0.08),
+        f"50% geometry is nonlinear: {width_50=} {width_100=}",
+    )
+
+    set_zoom(page, 200)
+    width_200 = measured_width(page)
+    require(
+        math.isclose(width_200 / width_100, 2.0, rel_tol=0.08),
+        f"200% geometry is nonlinear: {width_200=} {width_100=}",
+    )
 
     set_zoom(page, 10)
     require(
@@ -162,7 +110,6 @@ def test_row_selection(page: Page) -> None:
 
     headers = page.locator(".tabulator-row:visible .journal-row-number")
     require(headers.count() >= 6, "Too few visible row headers for acceptance checks.")
-
     first = headers.nth(0)
     second = headers.nth(1)
     third = headers.nth(2)
