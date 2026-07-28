@@ -60,67 +60,10 @@
     }
 
     const ICONS = "/static/shift_helper_icons_v1.svg";
-    const frozenSelect = document.getElementById("journal-frozen-through");
     let redispatching = false;
     let fallbackShell = null;
 
     const svg = (name) => `<svg class="ribbon-icon" aria-hidden="true"><use href="${ICONS}#${name}"></use></svg>`;
-
-    function expectedFrozenFields(boundary, fields) {
-        if (boundary === "none") return new Set();
-        const index = fields.indexOf(boundary);
-        const fallback = fields.indexOf("asset_label");
-        const end = index >= 0 ? index : fallback;
-        if (end < 0) return new Set();
-        if (end === fields.length - 1) return new Set(fields.slice(0, -1));
-        return new Set(fields.slice(0, end + 1));
-    }
-
-    async function applyFrozenBoundary(boundary) {
-        if (
-            !frozenSelect
-            || root.dataset.frozenColumnsApplying === boundary
-            || root.dataset.frozenColumnsApplied === boundary
-        ) {
-            return;
-        }
-        root.dataset.frozenColumnsApplying = boundary;
-        delete root.dataset.frozenColumnsApplied;
-        try {
-            const layout = table.getColumnLayout();
-            const fields = layout.map((item) => item.field).filter(Boolean);
-            const expected = expectedFrozenFields(boundary, fields);
-            const nextLayout = layout.map((item) => item.field ? {
-                ...item,
-                frozen: expected.has(item.field),
-            } : {...item});
-            await Promise.resolve(table.setColumnLayout(nextLayout));
-            root.dataset.frozenColumnsController = "ready";
-            root.dataset.frozenColumnsApplied = boundary;
-        } catch (error) {
-            root.dataset.frozenColumnsError = String(error);
-        } finally {
-            delete root.dataset.frozenColumnsApplying;
-        }
-    }
-
-    function synchronizeFrozenBoundary() {
-        if (!root.isConnected) return;
-        const boundary = frozenSelect?.value;
-        if (
-            boundary
-            && boundary !== root.dataset.frozenColumnsApplied
-            && boundary !== root.dataset.frozenColumnsApplying
-        ) {
-            void applyFrozenBoundary(boundary);
-        }
-    }
-
-    if (frozenSelect) {
-        frozenSelect.addEventListener("input", synchronizeFrozenBoundary);
-        frozenSelect.addEventListener("change", synchronizeFrozenBoundary);
-        window.setInterval(synchronizeFrozenBoundary, 100);
-    }
 
     function pinRowHeaders() {
         root.querySelectorAll(".tabulator-row-header, .journal-row-number").forEach((element) => {
@@ -388,9 +331,7 @@
     table.on("renderComplete", () => {
         guardColumnMutations();
         pinRowHeaders();
-        synchronizeFrozenBoundary();
     });
     guardColumnMutations();
     pinRowHeaders();
-    synchronizeFrozenBoundary();
 })();
