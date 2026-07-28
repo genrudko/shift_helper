@@ -83,7 +83,7 @@
             let restoration = null;
             try {
                 restoration = row && typeof table.scrollToRow === "function"
-                    ? table.scrollToRow(row, "top", false)
+                    ? table.scrollToRow(anchor.key, "top", false)
                     : null;
             } catch (_error) {
                 restoration = null;
