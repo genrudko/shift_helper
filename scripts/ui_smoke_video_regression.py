@@ -44,12 +44,13 @@ def set_zoom(page: Page, value: int) -> None:
     require(immediate["width"] > 100 and immediate["height"] > 100, "Zoom collapsed the grid.")
     require(immediate["display"] != "none", "Zoom hid the grid container.")
     page.wait_for_function(
-        "document.getElementById('event-journal')?.dataset.zoomApplying !== 'true'",
+        """value => {
+            const root = document.getElementById('event-journal');
+            return root?.dataset.sheetZoom === String(value)
+                && root.dataset.zoomApplying !== 'true';
+        }""",
+        value,
         timeout=10_000,
-    )
-    require(
-        page.locator("#event-journal").get_attribute("data-sheet-zoom") == str(value),
-        f"Sheet zoom did not settle at {value}%.",
     )
 
 
