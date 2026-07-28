@@ -7,11 +7,13 @@
  */
 (() => {
     const root = document.getElementById("event-journal");
+    const viewport = document.getElementById("journal-sheet-viewport");
     const layer = document.getElementById("journal-sheet-layer");
     const controller = window.shiftHelperZoom;
     const table = window.shiftHelperEventGrid;
     if (
         !root
+        || !viewport
         || !layer
         || !table
         || typeof controller?.apply !== "function"
@@ -69,6 +71,17 @@
         );
     }
 
+    function updateHeaderMode(scale) {
+        const logicalHeight = viewport.clientHeight / scale;
+        const compact = scale >= 3 && logicalHeight < 170;
+        root.dataset.compactSheetHeader = compact ? "true" : "false";
+        root.dataset.sheetLogicalHeight = logicalHeight.toFixed(2);
+        root.style.setProperty(
+            "--journal-sheet-header-height",
+            compact ? "32px" : "64px",
+        );
+    }
+
     function scheduleGeometry(value) {
         cancelAnimationFrame(redrawFrame);
         redrawFrame = requestAnimationFrame(() => {
@@ -118,6 +131,7 @@
         layer.style.transform = `scale(${scale})`;
         layer.style.width = `${100 / scale}%`;
         layer.style.height = `${100 / scale}%`;
+        updateHeaderMode(scale);
         root.dataset.sheetTransformZoom = String(value);
         scheduleGeometry(value);
     }
