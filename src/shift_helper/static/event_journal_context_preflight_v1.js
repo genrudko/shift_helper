@@ -143,22 +143,26 @@
         )}px`;
     }
 
-    window.addEventListener("contextmenu", (event) => {
-        if (!(event.target instanceof Element)) return;
+    function scheduleFallback(event) {
+        if (!(event.target instanceof Element)) return false;
         const root = document.getElementById("event-journal");
-        if (!root || !root.contains(event.target)) return;
+        if (!root || !root.contains(event.target)) return false;
         const rowNumber = event.target.closest(".journal-row-number");
         const cell = event.target.closest(".tabulator-cell");
-        if (!rowNumber && !cell) return;
+        if (!rowNumber && !cell) return false;
 
-        event.preventDefault();
         const mode = rowNumber ? "rows" : "cells";
         const coordinates = {x: event.clientX, y: event.clientY};
         window.clearTimeout(fallbackTimer);
         fallbackTimer = window.setTimeout(() => showFallback(mode, coordinates), 40);
-    }, true);
+        return true;
+    }
 
     window.addEventListener("pointerdown", (event) => {
+        if (event.button === 2 && scheduleFallback(event)) {
+            event.preventDefault();
+            return;
+        }
         if (
             fallbackShell
             && event.target instanceof Element
@@ -167,6 +171,12 @@
             closeFallback();
         }
     }, true);
+
+    window.addEventListener("contextmenu", (event) => {
+        if (!scheduleFallback(event)) return;
+        event.preventDefault();
+    }, true);
+
     window.addEventListener("keydown", (event) => {
         if (event.key === "Escape") closeFallback();
     }, true);
