@@ -10,6 +10,10 @@
     let reapplyFrame = 0;
     let requestedZoom = 100;
 
+    function clampZoom(value) {
+        return Math.min(400, Math.max(10, Number(value) || 100));
+    }
+
     function controls() {
         return {
             theme: document.getElementById("journal-theme"),
@@ -25,6 +29,11 @@
         } catch (_error) {
             return {};
         }
+    }
+
+    function setRequestedZoom(value) {
+        requestedZoom = clampZoom(value);
+        window.shiftHelperPersistedZoom = requestedZoom;
     }
 
     function savePreferences(preferences) {
@@ -66,7 +75,7 @@
         if (!(target instanceof HTMLInputElement) || !zoomControlIds.has(target.id)) return;
         const value = Number(target.value);
         if (!Number.isFinite(value)) return;
-        requestedZoom = Math.min(400, Math.max(10, value));
+        setRequestedZoom(value);
         persistRequestedZoom();
     }
 
@@ -74,7 +83,17 @@
         const target = event.target;
         if (!(target instanceof HTMLInputElement) || !zoomControlIds.has(target.id)) return;
         const value = Number(target.value) + (event.deltaY < 0 ? 5 : -5);
-        requestedZoom = Math.min(400, Math.max(10, value));
+        setRequestedZoom(value);
+        persistRequestedZoom();
+    }
+
+    function rememberZoomButton(event) {
+        const button = event.target instanceof Element
+            ? event.target.closest("#ribbon-zoom-out, #ribbon-zoom-in")
+            : null;
+        if (!button) return;
+        const current = Number(document.getElementById("ribbon-zoom")?.value) || requestedZoom;
+        setRequestedZoom(current + (button.id === "ribbon-zoom-in" ? 5 : -5));
         persistRequestedZoom();
     }
 
@@ -94,12 +113,16 @@
         }
         bound = true;
         const stored = readPreferences();
-        requestedZoom = Number(stored.zoom)
+        setRequestedZoom(
+            Number(window.shiftHelperPersistedZoom)
+            || Number(stored.zoom)
             || Number(document.getElementById("ribbon-zoom")?.value)
-            || 100;
+            || 100,
+        );
         window.addEventListener("input", rememberZoomRequest, true);
         window.addEventListener("change", rememberZoomRequest, true);
         window.addEventListener("wheel", rememberZoomWheel, {capture: true, passive: true});
+        window.addEventListener("click", rememberZoomButton, true);
         Object.values(controls()).forEach((control) => {
             control?.addEventListener("input", writeLivePreferences, true);
             control?.addEventListener("change", writeLivePreferences, true);
