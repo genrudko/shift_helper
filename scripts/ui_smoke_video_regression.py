@@ -246,7 +246,10 @@ def run(url: str, screenshot: Path) -> None:
             require(not browser_errors, "Browser errors: " + " | ".join(browser_errors))
         except Exception:
             screenshot.parent.mkdir(parents=True, exist_ok=True)
-            page.screenshot(path=str(screenshot), full_page=True)
+            try:
+                page.screenshot(path=str(screenshot), full_page=False, timeout=5_000)
+            except Exception as screenshot_error:  # pragma: no cover - best-effort diagnostics
+                print(f"Viewport diagnostic screenshot failed: {screenshot_error}", file=sys.stderr)
             raise
         finally:
             context.close()
