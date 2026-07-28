@@ -1,0 +1,61 @@
+"use strict";
+
+/* Load Stage 1 only after the underlying journal repair and zoom engine are stable. */
+(() => {
+    const root = document.getElementById("event-journal");
+    if (!root) return;
+
+    function appendScript(id, source) {
+        return new Promise((resolve, reject) => {
+            const existing = document.getElementById(id);
+            if (existing) {
+                resolve(existing);
+                return;
+            }
+            const script = document.createElement("script");
+            script.id = id;
+            script.src = source;
+            script.addEventListener("load", () => resolve(script), {once: true});
+            script.addEventListener("error", reject, {once: true});
+            document.body.appendChild(script);
+        });
+    }
+
+    async function load() {
+        if (
+            root.dataset.operatorRepairReady !== "true"
+            || root.dataset.videoAcceptanceRepair !== "ready"
+            || typeof window.shiftHelperZoom?.apply !== "function"
+        ) {
+            requestAnimationFrame(load);
+            return;
+        }
+        if (root.dataset.acceptanceStage1Loading === "true") return;
+        root.dataset.acceptanceStage1Loading = "true";
+        window.shiftHelperStage1BaseZoomApply = window.shiftHelperZoom.apply.bind(
+            window.shiftHelperZoom,
+        );
+        try {
+            await appendScript(
+                "event-journal-acceptance-stage1-js",
+                "/static/event_journal_acceptance_stage1.js",
+            );
+            await appendScript(
+                "event-journal-acceptance-stage1-compat-js",
+                "/static/event_journal_acceptance_stage1_compat.js",
+            );
+            await appendScript(
+                "event-journal-acceptance-stage1-state-js",
+                "/static/event_journal_acceptance_stage1_state.js",
+            );
+            root.dataset.acceptanceStage1Loaded = "true";
+        } catch (error) {
+            root.dataset.acceptanceStage1Error = String(error);
+            console.error("Stage 1 failed to load", error);
+        } finally {
+            delete root.dataset.acceptanceStage1Loading;
+        }
+    }
+
+    load();
+})();
