@@ -1,0 +1,329 @@
+/* Stage 6: Page Layout, print sheet and preview. */
+.ribbon-panel[data-ribbon-panel="layout"] {
+    min-height: 108px;
+}
+
+.stage6-layout-group {
+    min-width: 330px;
+}
+
+.stage6-layout-controls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(88px, 1fr));
+    gap: 4px;
+    align-items: center;
+}
+
+.stage6-layout-control {
+    display: grid;
+    gap: 2px;
+}
+
+.stage6-layout-control span {
+    color: var(--ribbon-text-muted);
+    font-size: 9px;
+}
+
+.stage6-layout-control select {
+    box-sizing: border-box;
+    min-width: 0;
+    height: var(--stage3-control-height, 28px);
+    border: 1px solid var(--ribbon-border);
+    border-radius: 4px;
+    padding: 3px 23px 3px 6px;
+    background: var(--ribbon-input);
+    color: var(--ribbon-text);
+    font: inherit;
+    font-size: 10px;
+}
+
+.stage6-print-group {
+    min-width: 205px;
+}
+
+.stage6-print-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.stage6-page-setup-dialog,
+.stage6-preview-dialog {
+    padding: 0;
+    border: 1px solid var(--ribbon-border);
+    border-radius: 10px;
+    background: var(--ribbon-surface);
+    color: var(--ribbon-text);
+    box-shadow: 0 18px 54px rgb(0 0 0 / 35%);
+}
+
+.stage6-page-setup-dialog {
+    width: min(610px, calc(100vw - 28px));
+}
+
+.stage6-preview-dialog {
+    width: min(1120px, calc(100vw - 24px));
+    max-height: calc(100vh - 24px);
+}
+
+.stage6-page-setup-dialog::backdrop,
+.stage6-preview-dialog::backdrop {
+    background: rgb(0 0 0 / 42%);
+}
+
+.stage6-dialog-panel {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+}
+
+.stage6-dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--ribbon-border-soft);
+}
+
+.stage6-dialog-header h2 {
+    margin: 0;
+    font-size: 17px;
+}
+
+.stage6-dialog-header p {
+    margin: 3px 0 0;
+    color: var(--ribbon-text-muted);
+    font-size: 11px;
+}
+
+.stage6-dialog-close {
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: inherit;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.stage6-dialog-close:hover {
+    background: var(--ribbon-surface-hover);
+}
+
+.stage6-setup-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+    gap: 10px 14px;
+}
+
+.stage6-setup-grid label {
+    display: grid;
+    gap: 4px;
+    color: var(--ribbon-text-muted);
+    font-size: 11px;
+}
+
+.stage6-setup-grid input[type="text"],
+.stage6-setup-grid select {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 32px;
+    border: 1px solid var(--ribbon-border);
+    border-radius: 5px;
+    padding: 5px 8px;
+    background: var(--ribbon-input);
+    color: var(--ribbon-text);
+    font: inherit;
+}
+
+.stage6-checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 18px;
+    padding: 7px 0;
+}
+
+.stage6-checks label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+}
+
+.stage6-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.stage6-dialog-actions button,
+.stage6-print-actions button {
+    min-height: 30px;
+    padding: 5px 10px;
+    border: 1px solid var(--ribbon-border);
+    border-radius: 5px;
+    background: var(--ribbon-surface-raised, var(--ribbon-input));
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.stage6-dialog-actions button:hover,
+.stage6-print-actions button:hover {
+    background: var(--ribbon-surface-hover);
+}
+
+.stage6-preview-panel {
+    display: grid;
+    grid-template-rows: auto auto minmax(280px, 1fr) auto;
+    gap: 10px;
+    max-height: calc(100vh - 36px);
+    padding: 12px;
+}
+
+.stage6-preview-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: center;
+}
+
+.stage6-preview-summary {
+    color: var(--ribbon-text-muted);
+    font-size: 11px;
+}
+
+.stage6-preview-viewport {
+    overflow: auto;
+    padding: 18px;
+    border: 1px solid var(--ribbon-border-soft);
+    border-radius: 7px;
+    background: #565b62;
+}
+
+.stage6-preview-page {
+    box-sizing: border-box;
+    margin: 0 auto;
+    padding: 18px;
+    background: #fff;
+    color: #111;
+    box-shadow: 0 4px 18px rgb(0 0 0 / 35%);
+    transform-origin: top center;
+}
+
+.stage6-preview-page[data-orientation="portrait"] {
+    width: min(760px, 92%);
+    min-height: 920px;
+}
+
+.stage6-preview-page[data-orientation="landscape"] {
+    width: min(1020px, 98%);
+    min-height: 650px;
+}
+
+.stage6-print-document {
+    color: #111;
+    font: 9pt/1.25 "Segoe UI", Arial, sans-serif;
+}
+
+.stage6-print-heading {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: end;
+    margin-bottom: 8px;
+}
+
+.stage6-print-heading h1 {
+    margin: 0;
+    font-size: 14pt;
+}
+
+.stage6-print-heading small {
+    color: #555;
+    font-size: 8pt;
+}
+
+.stage6-print-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+}
+
+.stage6-print-table th,
+.stage6-print-table td {
+    padding: 3px 4px;
+    border: 1px solid #555;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+.stage6-print-table th {
+    background: #e9edf2;
+    font-weight: 700;
+    text-align: center;
+}
+
+.stage6-print-table--no-grid th,
+.stage6-print-table--no-grid td {
+    border-color: transparent;
+}
+
+.stage6-print-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 8px;
+    padding-top: 5px;
+    border-top: 1px solid #888;
+    color: #555;
+    font-size: 8pt;
+}
+
+#stage6-print-sheet {
+    display: none;
+}
+
+@media (max-width: 760px) {
+    .stage6-layout-controls,
+    .stage6-setup-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media print {
+    body > .app-header,
+    body > main,
+    body > dialog,
+    body > .journal-fill-handle,
+    body > .operator-color-palette,
+    body > .journal-workspace-menu,
+    body > .journal-ribbon-menu {
+        display: none !important;
+    }
+
+    #stage6-print-sheet {
+        display: block !important;
+    }
+
+    #stage6-print-sheet .stage6-print-document {
+        width: 100%;
+    }
+
+    #stage6-print-sheet thead {
+        display: table-header-group;
+    }
+
+    #stage6-print-sheet tr {
+        break-inside: avoid;
+    }
+
+    #stage6-print-sheet.stage6-fit-width .stage6-print-table {
+        width: 100%;
+        font-size: 7.5pt;
+    }
+}
