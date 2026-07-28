@@ -1,0 +1,220 @@
+/* Stage 5: Insert tab and technical symbol picker. */
+.ribbon-panel[data-ribbon-panel="insert"] {
+    min-height: 108px;
+}
+
+.stage5-symbol-group {
+    min-width: 280px;
+}
+
+.stage5-symbol-command {
+    min-width: 92px;
+}
+
+.stage5-symbol-quick {
+    display: grid;
+    grid-template-columns: repeat(4, 34px);
+    gap: 3px;
+    align-content: center;
+}
+
+.stage5-symbol-quick button {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 28px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--ribbon-text);
+    font: 600 15px/1 "Segoe UI Symbol", "Noto Sans Symbols", sans-serif;
+    cursor: pointer;
+}
+
+.stage5-symbol-quick button:hover,
+.stage5-symbol-quick button:focus-visible {
+    border-color: var(--ribbon-border);
+    background: var(--ribbon-surface-hover);
+}
+
+.stage5-symbol-dialog {
+    width: min(780px, calc(100vw - 28px));
+    max-height: min(760px, calc(100vh - 28px));
+    padding: 0;
+    border: 1px solid var(--ribbon-border);
+    border-radius: 10px;
+    background: var(--ribbon-surface);
+    color: var(--ribbon-text);
+    box-shadow: 0 18px 54px rgb(0 0 0 / 35%);
+}
+
+.stage5-symbol-dialog::backdrop {
+    background: rgb(0 0 0 / 38%);
+}
+
+.stage5-symbol-panel {
+    display: grid;
+    grid-template-rows: auto auto auto minmax(220px, 1fr) auto;
+    gap: 10px;
+    max-height: min(740px, calc(100vh - 40px));
+    padding: 14px;
+}
+
+.stage5-symbol-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--ribbon-border-soft);
+}
+
+.stage5-symbol-header h2 {
+    margin: 0;
+    font-size: 17px;
+}
+
+.stage5-symbol-header p {
+    margin: 3px 0 0;
+    color: var(--ribbon-text-muted);
+    font-size: 11px;
+}
+
+.stage5-symbol-close {
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: inherit;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.stage5-symbol-close:hover {
+    background: var(--ribbon-surface-hover);
+}
+
+.stage5-symbol-tools {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(180px, 0.55fr);
+    gap: 8px;
+}
+
+.stage5-symbol-tools input,
+.stage5-symbol-tools select {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 32px;
+    border: 1px solid var(--ribbon-border);
+    border-radius: 5px;
+    padding: 5px 8px;
+    background: var(--ribbon-input);
+    color: var(--ribbon-text);
+    font: inherit;
+}
+
+.stage5-symbol-recent {
+    display: grid;
+    gap: 5px;
+}
+
+.stage5-symbol-recent[hidden] {
+    display: none;
+}
+
+.stage5-symbol-recent-title {
+    color: var(--ribbon-text-muted);
+    font-size: 11px;
+}
+
+.stage5-symbol-recent-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.stage5-symbol-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+    gap: 5px;
+    align-content: start;
+    overflow: auto;
+    min-height: 220px;
+    padding: 4px;
+    border: 1px solid var(--ribbon-border-soft);
+    border-radius: 7px;
+    background: color-mix(in srgb, var(--ribbon-input) 68%, transparent);
+}
+
+.stage5-symbol-button {
+    display: grid;
+    grid-template-rows: 25px auto;
+    place-items: center;
+    min-height: 49px;
+    padding: 4px 3px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+.stage5-symbol-button:hover,
+.stage5-symbol-button:focus-visible {
+    border-color: var(--ribbon-border);
+    background: var(--ribbon-surface-hover);
+}
+
+.stage5-symbol-glyph {
+    font: 600 20px/1 "Segoe UI Symbol", "Noto Sans Symbols", "DejaVu Sans", sans-serif;
+}
+
+.stage5-symbol-name {
+    overflow: hidden;
+    width: 100%;
+    color: var(--ribbon-text-muted);
+    font-size: 9px;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.stage5-symbol-empty {
+    grid-column: 1 / -1;
+    padding: 28px 12px;
+    color: var(--ribbon-text-muted);
+    font-size: 12px;
+    text-align: center;
+}
+
+.stage5-symbol-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+    min-height: 25px;
+    color: var(--ribbon-text-muted);
+    font-size: 11px;
+}
+
+.stage5-symbol-preview {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.stage5-symbol-preview strong {
+    color: var(--ribbon-text);
+    font: 600 22px/1 "Segoe UI Symbol", "Noto Sans Symbols", sans-serif;
+}
+
+@media (max-width: 680px) {
+    .stage5-symbol-tools {
+        grid-template-columns: 1fr;
+    }
+
+    .stage5-symbol-grid {
+        grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+    }
+}
