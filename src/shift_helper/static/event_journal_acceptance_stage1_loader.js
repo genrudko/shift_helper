@@ -43,10 +43,17 @@
         }
         if (root.dataset.acceptanceStage1Loading === "true") return;
         root.dataset.acceptanceStage1Loading = "true";
-        window.shiftHelperStage1BaseZoomApply = window.shiftHelperZoom.apply.bind(
-            window.shiftHelperZoom,
-        );
         try {
+            await appendScript(
+                "event-journal-sheet-transform-contract-v1-js",
+                "/static/event_journal_sheet_transform_contract_v1.js",
+            );
+            if (root.dataset.sheetTransformContract !== "ready") {
+                throw new Error("Sheet transform contract did not initialize");
+            }
+            window.shiftHelperStage1BaseZoomApply = window.shiftHelperZoom.apply.bind(
+                window.shiftHelperZoom,
+            );
             await appendScript(
                 "event-journal-context-fallback-v1",
                 "/static/event_journal_context_fallback_v1.js",
