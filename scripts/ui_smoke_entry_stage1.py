@@ -12,6 +12,19 @@ BASE = runpy.run_path(str(BASE_SCRIPT), run_name="shift_helper_ui_smoke_stage1_b
 ENTRY = BASE["ENTRY"]
 ORIGINAL_VIEWPORT_TEST = BASE["ORIGINAL_VIEWPORT_TEST"]
 TEST_OPERATOR_REPAIRS = BASE["test_operator_repairs"]
+ORIGINAL_SCREENSHOT = Page.screenshot
+
+
+def bounded_diagnostic_screenshot(self: Page, *args, **kwargs):
+    """Do not let an infinite-sheet screenshot hide the primary smoke failure."""
+
+    if kwargs.get("full_page"):
+        kwargs["full_page"] = False
+    kwargs.setdefault("timeout", 5_000)
+    try:
+        return ORIGINAL_SCREENSHOT(self, *args, **kwargs)
+    except TimeoutError:
+        return b""
 
 
 def wait_for_stage1_geometry(page: Page) -> None:
@@ -45,6 +58,7 @@ def wait_for_stage1_geometry(page: Page) -> None:
         raise AssertionError(f"Stage 1 readiness timed out: {diagnostic}") from exc
 
 
+Page.screenshot = bounded_diagnostic_screenshot
 TEST_OPERATOR_REPAIRS.__globals__["wait_for_complete_view"] = wait_for_stage1_geometry
 ORIGINAL_VIEWPORT_TEST.__globals__["wait_for_operator_repair"] = wait_for_stage1_geometry
 
