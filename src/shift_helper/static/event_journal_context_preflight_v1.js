@@ -143,13 +143,38 @@
         )}px`;
     }
 
+    function hitFromEvent(event) {
+        const target = event.target instanceof Element ? event.target : null;
+        const pointTarget = document.elementFromPoint(event.clientX, event.clientY);
+        const candidates = [target, pointTarget].filter((item) => item instanceof Element);
+        const rowNumber = candidates
+            .map((item) => item.closest(".journal-row-number"))
+            .find(Boolean);
+        const cell = candidates
+            .map((item) => item.closest(".tabulator-cell"))
+            .find(Boolean);
+        return {rowNumber, cell};
+    }
+
     function scheduleFallback(event) {
-        if (!(event.target instanceof Element)) return false;
         const root = document.getElementById("event-journal");
-        if (!root || !root.contains(event.target)) return false;
-        const rowNumber = event.target.closest(".journal-row-number");
-        const cell = event.target.closest(".tabulator-cell");
-        if (!rowNumber && !cell) return false;
+        if (!root) return false;
+        const rootRect = root.getBoundingClientRect();
+        const insideRoot = event.clientX >= rootRect.left
+            && event.clientX <= rootRect.right
+            && event.clientY >= rootRect.top
+            && event.clientY <= rootRect.bottom;
+        if (!insideRoot) return false;
+
+        const {rowNumber, cell} = hitFromEvent(event);
+        const holder = root.querySelector(".tabulator-tableholder");
+        const holderRect = holder?.getBoundingClientRect();
+        const insideHolder = holderRect
+            && event.clientX >= holderRect.left
+            && event.clientX <= holderRect.right
+            && event.clientY >= holderRect.top
+            && event.clientY <= holderRect.bottom;
+        if (!rowNumber && !cell && !insideHolder) return false;
 
         const mode = rowNumber ? "rows" : "cells";
         const coordinates = {x: event.clientX, y: event.clientY};
