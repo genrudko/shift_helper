@@ -13,13 +13,39 @@ RIBBON = ENTRY["RIBBON"]
 BASE_FUNCTION = RIBBON["BASE_FUNCTION"]
 
 
+def wait_for_complete_view(page: Page) -> None:
+    """Wait until repaired controllers and persisted sheet geometry agree."""
+
+    page.wait_for_function(
+        """() => {
+            const root = document.getElementById('event-journal');
+            let preferences = {};
+            try {
+                preferences = JSON.parse(
+                    localStorage.getItem('shift-helper-ui-preferences-v1') || '{}'
+                );
+            } catch (_error) {
+                return false;
+            }
+            const expectedZoom = String(Number(preferences.zoom) || 100);
+            return root?.dataset.operatorRepairReady === 'true'
+                && root.dataset.videoAcceptanceRepair === 'ready'
+                && root.dataset.liveViewPreferences === 'ready'
+                && root.dataset.contextFallback === 'ready'
+                && root.dataset.zoomApplying !== 'true'
+                && root.dataset.sheetZoom === expectedZoom;
+        }""",
+        timeout=20_000,
+    )
+
+
 def test_operator_repairs(page: Page) -> None:
     """Run the original operator checks with an explicit fill-palette selector."""
 
     require = BASE_FUNCTION("require")
     saved_rows = BASE_FUNCTION("saved_rows")
     cell = BASE_FUNCTION("cell")
-    RIBBON["wait_for_operator_repair"](page)
+    wait_for_complete_view(page)
 
     root = page.locator("#event-journal")
     zoom = page.locator("#ribbon-zoom")
@@ -98,6 +124,10 @@ def test_operator_repairs(page: Page) -> None:
     require(after_ranges == before_ranges, "Middle-button panning changed the cell selection.")
 
 
+RIBBON["wait_for_operator_repair"] = wait_for_complete_view
+RIBBON["test_viewport_and_frozen_columns"].__globals__["wait_for_operator_repair"] = (
+    wait_for_complete_view
+)
 RIBBON["test_operator_repairs"] = test_operator_repairs
 RIBBON["test_viewport_and_frozen_columns"].__globals__["test_operator_repairs"] = test_operator_repairs
 
