@@ -13,8 +13,6 @@
     const detachedCellElement = document.createElement("span");
     const originalRedraw = table.redraw.bind(table);
     const originalGetRows = table.getRows.bind(table);
-    const originalGetColumnLayout = table.getColumnLayout?.bind(table);
-    const originalSetColumnLayout = table.setColumnLayout?.bind(table);
 
     let ready = Boolean(root.querySelector(".tabulator-tableholder"));
     let pending = false;
@@ -22,6 +20,7 @@
     let suppressNextForcedRedraw = false;
     let stickyFrame = 0;
     let virtualFrozenFields = new Set();
+    let pendingFrozenBoundary = null;
 
     function readPreferences() {
         try {
@@ -81,8 +80,39 @@
 
     function initializeVirtualFrozenFields() {
         const preferences = readPreferences();
-        virtualFrozenFields = fieldsThrough(preferences.frozenThrough || defaultBoundary);
+        pendingFrozenBoundary = preferences.frozenThrough || defaultBoundary;
+        if (orderedDataFields().length) {
+            applyFrozenBoundary(pendingFrozenBoundary);
+        } else {
+            root.dataset.frozenColumnsController = "initializing";
+        }
+    }
+
+    function applyFrozenBoundary(boundary, {persist = true} = {}) {
+        const fields = orderedDataFields();
+        const requestedBoundary = boundary || defaultBoundary;
+        if (!fields.length) {
+            pendingFrozenBoundary = requestedBoundary;
+            root.dataset.frozenColumnsController = "initializing";
+            return requestedBoundary;
+        }
+        const normalizedBoundary = requestedBoundary === "none"
+            ? "none"
+            : fields.includes(requestedBoundary)
+                ? requestedBoundary
+                : defaultBoundary;
+        pendingFrozenBoundary = null;
+        virtualFrozenFields = fieldsThrough(normalizedBoundary);
         syncFrozenDefinitions();
+        if (persist) {
+            persistFrozenBoundary();
+        } else {
+            root.dataset.frozenColumnsController = "ready";
+            root.dataset.frozenColumnsApplied = normalizedBoundary;
+            root.dataset.stableFrozenThrough = normalizedBoundary;
+        }
+        scheduleStableFrozenColumns();
+        return normalizedBoundary;
     }
 
     function persistFrozenBoundary() {
@@ -174,21 +204,6 @@
         stickyFrame = window.requestAnimationFrame(applyStableFrozenColumns);
     }
 
-    function applyVirtualColumnLayout(layout) {
-        if (!Array.isArray(layout)) {
-            return;
-        }
-        virtualFrozenFields = new Set(
-            layout
-                .filter((column) => column?.field && column.frozen)
-                .map((column) => column.field),
-        );
-        syncFrozenDefinitions();
-        suppressNextForcedRedraw = true;
-        persistFrozenBoundary();
-        scheduleStableFrozenColumns();
-    }
-
     function protectDestroyedCellComponents() {
         const sample = table.getRows()?.[0]?.getCells?.()?.[0];
         const prototype = sample ? Object.getPrototypeOf(sample) : null;
@@ -274,22 +289,12 @@
     }
 
     initializeVirtualFrozenFields();
-    persistFrozenBoundary();
-
-    if (originalGetColumnLayout) {
-        table.getColumnLayout = () => originalGetColumnLayout().map((column) => (
-            column?.field
-                ? {...column, frozen: virtualFrozenFields.has(column.field)}
-                : {...column}
-        ));
-    }
-
-    if (originalSetColumnLayout) {
-        table.setColumnLayout = (layout) => {
-            applyVirtualColumnLayout(layout);
-            return Promise.resolve(table.getColumnLayout?.() || layout);
-        };
-    }
+    window.shiftHelperFrozenColumns = {
+        applyBoundary: applyFrozenBoundary,
+        getBoundary: () => boundaryFromFields(),
+        getFields: () => [...virtualFrozenFields],
+        reapply: scheduleStableFrozenColumns,
+    };
 
     table.getRows = (range) => {
         if (range === "visible" && (!ready || !internalElementReady())) {
@@ -329,16 +334,20 @@
         ready = true;
         protectDestroyedCellComponents();
         pending = true;
-        syncFrozenDefinitions();
-        persistFrozenBoundary();
-        scheduleStableFrozenColumns();
+        applyFrozenBoundary(
+            pendingFrozenBoundary || readPreferences().frozenThrough || defaultBoundary,
+        );
         flushPending();
     });
     table.on("renderComplete", () => {
         ready = true;
         protectDestroyedCellComponents();
-        syncFrozenDefinitions();
-        scheduleStableFrozenColumns();
+        if (pendingFrozenBoundary !== null) {
+            applyFrozenBoundary(pendingFrozenBoundary);
+        } else {
+            syncFrozenDefinitions();
+            scheduleStableFrozenColumns();
+        }
         flushPending();
     });
     table.on("columnResized", scheduleStableFrozenColumns);
@@ -351,6 +360,9 @@
 
     if (ready) {
         window.requestAnimationFrame(() => {
+            if (pendingFrozenBoundary !== null) {
+                applyFrozenBoundary(pendingFrozenBoundary);
+            }
             pending = true;
             flushPending();
         });
