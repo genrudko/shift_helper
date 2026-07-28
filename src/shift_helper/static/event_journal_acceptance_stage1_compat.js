@@ -42,4 +42,6 @@
         event.stopImmediatePropagation();
         window.shiftHelperAcceptanceStage1.setZoom(event.target.value);
     }, true);
+
+    root.dataset.acceptanceStage1 = "ready";
 })();
