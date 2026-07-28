@@ -119,7 +119,7 @@
             control?.addEventListener("input", writeLivePreferences, true);
             control?.addEventListener("change", writeLivePreferences, true);
         });
-        writeLivePreferences();
+        reapplyCurrentZoom(requestedZoom);
         root.dataset.liveViewPreferences = "ready";
         root.dataset.contextController = "ribbon-with-preflight";
         root.dataset.contextFallback = "ready";
