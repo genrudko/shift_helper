@@ -51,6 +51,9 @@ jobs:
           python scripts/ui_smoke_acceptance_stage3.py \
             http://127.0.0.1:17944 ui-stage3-failure.png \
             2>&1 | tee -a ui-smoke.log
+          python scripts/ui_smoke_acceptance_stage4.py \
+            http://127.0.0.1:17944 ui-stage4-failure.png \
+            2>&1 | tee -a ui-smoke.log
           python scripts/ui_smoke_entry_stage1.py \
             http://127.0.0.1:17944 ui-smoke-failure.png \
             2>&1 | tee -a ui-smoke.log
@@ -79,4 +82,5 @@ jobs:
             ui-stage1-failure.png
             ui-stage2-failure.png
             ui-stage3-failure.png
+            ui-stage4-failure.png
           if-no-files-found: ignore
