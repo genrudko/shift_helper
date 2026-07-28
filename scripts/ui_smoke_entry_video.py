@@ -34,6 +34,7 @@ def wait_for_complete_view(page: Page) -> None:
                 && root.dataset.videoAcceptanceRepair === 'ready'
                 && root.dataset.liveViewPreferences === 'ready'
                 && root.dataset.contextFallback === 'ready'
+                && root.dataset.acceptanceStage1 === 'ready'
                 && root.dataset.zoomApplying !== 'true'
                 && root.dataset.sheetZoom === expectedZoom;
         }""",
@@ -42,7 +43,7 @@ def wait_for_complete_view(page: Page) -> None:
 
 
 def test_operator_repairs(page: Page) -> None:
-    """Run the original operator checks with an explicit fill-palette selector."""
+    """Run the original operator checks with explicit repaired controls."""
 
     require = BASE_FUNCTION("require")
     saved_rows = BASE_FUNCTION("saved_rows")
@@ -50,15 +51,23 @@ def test_operator_repairs(page: Page) -> None:
     wait_for_complete_view(page)
 
     root = page.locator("#event-journal")
-    zoom = page.locator("#ribbon-zoom")
-    require(zoom.get_attribute("min") == "10", "Zoom minimum is not 10%.")
-    require(zoom.get_attribute("max") == "400", "Zoom maximum is not 400%.")
+    zoom = page.locator("#acceptance-ribbon-zoom")
+    require(zoom.get_attribute("aria-valuemin") == "10", "Zoom minimum is not 10%.")
+    require(zoom.get_attribute("aria-valuemax") == "400", "Zoom maximum is not 400%.")
 
-    zoom.fill("100")
+    page.evaluate("window.shiftHelperAcceptanceStage1.setZoom(100)")
+    page.wait_for_function(
+        """() => document.getElementById('event-journal')?.dataset.sheetZoom === '100'"""
+    )
     zoom.hover()
     page.mouse.wheel(0, -100)
-    page.wait_for_timeout(150)
-    require(zoom.input_value() == "105", "Mouse wheel does not change zoom over the slider.")
+    page.wait_for_function(
+        """() => document.getElementById('event-journal')?.dataset.sheetZoom === '105'"""
+    )
+    require(
+        page.locator("#ribbon-zoom").input_value() == "105",
+        "Mouse wheel does not change zoom over the repaired slider.",
+    )
 
     first = saved_rows(page).first
     description = cell(first, "description")
