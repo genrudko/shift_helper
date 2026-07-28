@@ -65,20 +65,18 @@ def select_description_cell(page: Page) -> tuple[str, str]:
 
 def apply_rich_formatting(page: Page) -> None:
     page.locator("#ribbon-font-family").select_option("Tahoma")
-    size = page.locator("#operator-font-size")
-    size.fill("18")
-    size.press("Enter")
+    page.locator("#ribbon-font-size").select_option("18")
     page.locator('.ribbon-group--font [data-text-style="bold"]').click()
     page.locator('.ribbon-group--font [data-text-style="italic"]').click()
     page.locator('.ribbon-group--font [data-text-style="underline"]').click()
 
-    page.locator(".operator-text-color-arrow").click()
+    page.locator("#operator-text-color-control .operator-fill-arrow").click()
     text_palette = page.locator('.operator-color-palette[data-owner="text"]')
     text_palette.wait_for(state="visible", timeout=5_000)
     text_palette.locator('[title="#c00000"]').click()
 
     page.locator("#operator-fill-control .operator-fill-arrow").click()
-    fill_palette = page.locator('.operator-color-palette:not([data-owner="text"])')
+    fill_palette = page.locator('.operator-color-palette[data-owner="fill"]')
     fill_palette.wait_for(state="visible", timeout=5_000)
     fill_palette.locator('[title="#ffd966"]').click()
     page.wait_for_timeout(250)
@@ -129,7 +127,7 @@ def test_alignment_preserves_formatting(page: Page) -> None:
 
 
 def test_palette_closes(page: Page) -> None:
-    arrow = page.locator(".operator-text-color-arrow")
+    arrow = page.locator("#operator-text-color-control .operator-fill-arrow")
     arrow.click()
     palette = page.locator('.operator-color-palette[data-owner="text"]')
     palette.wait_for(state="visible", timeout=5_000)
