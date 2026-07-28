@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python scripts/ui_smoke_entry_video.py \
+          python scripts/ui_smoke_entry_stage1.py \
             http://127.0.0.1:17944 ui-smoke-failure.png \
             2>&1 | tee ui-smoke.log
           python scripts/ui_smoke_video_regression.py \
