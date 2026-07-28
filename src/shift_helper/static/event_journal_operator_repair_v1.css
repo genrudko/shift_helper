@@ -1,14 +1,9 @@
-/* UX-GRID-002 operator repair: Excel-like table controls without changing journal data. */
+/* UX-GRID-002 Repair: one owner per interaction, compact Excel-like Ribbon. */
 
 .operator-hidden-control {
     display: none !important;
 }
 
-#event-journal {
-    transform-origin: top left;
-}
-
-/* Keep the ribbon collapse lightweight. Geometry changes are handled once by Tabulator. */
 .journal-ribbon,
 .journal-ribbon__panels,
 .ribbon-panel,
@@ -18,7 +13,67 @@
     animation: none !important;
 }
 
-/* Zoom controls: the sheet supports the full 10–400% range. */
+/* Ribbon geometry */
+:root {
+    --ribbon-height: 98px;
+}
+
+.ribbon-panel {
+    align-items: stretch;
+    padding: 5px 8px 4px;
+    gap: 4px;
+}
+
+.ribbon-group {
+    min-width: 88px;
+    padding: 4px 8px 17px;
+    gap: 5px;
+}
+
+.ribbon-group--clipboard {
+    min-width: 108px;
+}
+
+.ribbon-group--font {
+    min-width: 248px;
+    grid-template-rows: 30px 30px;
+    align-content: center;
+}
+
+.ribbon-group--alignment {
+    min-width: 116px;
+    grid-template-rows: 30px 30px;
+    align-content: center;
+}
+
+.ribbon-group--cells {
+    min-width: 265px;
+}
+
+.ribbon-font-row,
+.ribbon-button-row {
+    min-height: 28px;
+    flex-wrap: nowrap;
+}
+
+#ribbon-font-family {
+    width: 126px;
+}
+
+#ribbon-font-size {
+    display: block !important;
+    width: 58px;
+    min-width: 58px;
+    appearance: auto;
+    cursor: pointer;
+}
+
+.operator-font-step {
+    width: 27px;
+    min-width: 27px;
+}
+
+/* Stable 10–400% status-bar zoom */
 .journal-statusbar__zoom {
     min-width: 260px;
 }
@@ -33,35 +88,7 @@
     text-align: center;
 }
 
-/* Font size is directly editable, with adjacent increase/decrease controls. */
-#operator-font-size {
-    width: 54px;
-    height: 27px;
-    box-sizing: border-box;
-    border: 1px solid var(--ribbon-border);
-    border-radius: 4px;
-    outline: 0;
-    padding: 0 4px;
-    background: var(--ribbon-input);
-    color: var(--ribbon-text);
-    font: inherit;
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
-    text-align: center;
-}
-
-#operator-font-size:focus {
-    border-color: var(--ribbon-accent);
-    box-shadow: 0 0 0 2px var(--ribbon-accent-soft);
-}
-
-#operator-font-size::-webkit-inner-spin-button,
-#operator-font-size::-webkit-outer-spin-button {
-    margin: 0;
-    opacity: 0.65;
-}
-
-/* Excel-like split fill command and discrete palette (no hover preview). */
+/* Excel-like split color commands */
 .operator-split-control {
     --operator-fill-color: #fff2cc;
     display: inline-flex;
@@ -104,7 +131,8 @@
 }
 
 .operator-fill-main:hover,
-.operator-fill-arrow:hover {
+.operator-fill-arrow:hover,
+.operator-fill-arrow[aria-expanded="true"] {
     background: var(--ribbon-surface-hover);
 }
 
@@ -121,7 +149,7 @@
 
 .operator-color-palette {
     position: fixed;
-    z-index: 1000;
+    z-index: 2000;
     display: grid;
     grid-template-columns: repeat(8, 23px);
     gap: 4px;
@@ -146,7 +174,8 @@
 }
 
 .operator-color-swatch:hover,
-.operator-color-swatch:focus-visible {
+.operator-color-swatch:focus-visible,
+.operator-color-swatch.is-current {
     outline: 2px solid var(--ribbon-accent);
     outline-offset: 1px;
 }
@@ -164,11 +193,12 @@
     cursor: pointer;
 }
 
-.operator-color-none:hover {
+.operator-color-none:hover,
+.operator-color-none:focus-visible {
     background: var(--ribbon-surface-hover);
 }
 
-/* Selection states: active cell, range, rows and columns must be unmistakable. */
+/* Selection states */
 .event-grid .tabulator-cell.tabulator-range-selected,
 .event-grid .tabulator-range-selected {
     background-color: inherit !important;
@@ -192,6 +222,11 @@
         inset 0 0 0 9999px rgba(78, 143, 200, 0.20) !important;
 }
 
+.event-grid .journal-row--multi-selected .tabulator-cell,
+.event-grid .journal-row--multi-selected .tabulator-cell.tabulator-frozen {
+    box-shadow: inset 0 0 0 9999px rgba(47, 111, 237, 0.22) !important;
+}
+
 .event-grid .tabulator-header .tabulator-col.operator-column-selected {
     background: color-mix(in srgb, var(--ribbon-accent) 24%, var(--ribbon-grid-header)) !important;
     box-shadow: inset 0 -3px var(--ribbon-accent);
@@ -202,7 +237,13 @@
     display: none !important;
 }
 
-/* Header title selects a column; the explicit arrow is the sort affordance. */
+.operator-row-dragging,
+.operator-row-dragging * {
+    cursor: row-resize !important;
+    user-select: none !important;
+}
+
+/* Header title selects; explicit arrow sorts. */
 .event-grid .tabulator-header .tabulator-col .tabulator-col-sorter {
     display: inline-grid;
     place-items: center;
@@ -218,13 +259,6 @@
     background: color-mix(in srgb, var(--ribbon-accent) 16%, transparent);
 }
 
-.event-grid .tabulator-header .tabulator-col .tabulator-arrow {
-    border-top-width: 5px;
-    border-right-width: 4px;
-    border-left-width: 4px;
-}
-
-/* Middle-button panning is a navigation mode, never a range-selection gesture. */
 .operator-middle-panning,
 .operator-middle-panning * {
     cursor: grabbing !important;
@@ -235,9 +269,22 @@
     overscroll-behavior: contain;
 }
 
-/* Rotated cell text should remain centered and not trigger horizontal overflow. */
 .event-grid .journal-cell-value {
     transform-origin: center;
+}
+
+@media (max-width: 1240px) {
+    .ribbon-group--font {
+        min-width: 228px;
+    }
+
+    #ribbon-font-family {
+        width: 108px;
+    }
+
+    .ribbon-group--cells {
+        min-width: 225px;
+    }
 }
 
 @media (max-width: 900px) {
