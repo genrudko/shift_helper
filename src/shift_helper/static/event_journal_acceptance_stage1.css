@@ -1,0 +1,23 @@
+/* Stage 1: deterministic hit testing for row headers. */
+#event-journal .tabulator-table {
+    pointer-events: none;
+}
+
+#event-journal .tabulator-row,
+#event-journal .tabulator-row .tabulator-cell,
+#event-journal .tabulator-row .journal-row-number {
+    pointer-events: auto;
+}
+
+#event-journal .tabulator-row .journal-row-number {
+    position: sticky !important;
+    left: 0 !important;
+    z-index: 40 !important;
+    isolation: isolate;
+    cursor: default;
+}
+
+#event-journal[data-selection-mode="rows"] .journal-active-cell {
+    outline: 0 !important;
+    box-shadow: none !important;
+}
