@@ -1,0 +1,5 @@
+/* Border overlays must never change the positioning mode of frozen cells. */
+#event-journal .tabulator-cell.operator-stable-frozen,
+#event-journal .tabulator-col.operator-stable-frozen {
+    position: sticky !important;
+}
