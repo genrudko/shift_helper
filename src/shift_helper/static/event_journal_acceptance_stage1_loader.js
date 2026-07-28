@@ -5,6 +5,17 @@
     const root = document.getElementById("event-journal");
     if (!root) return;
 
+    function appendStylesheet(id, source) {
+        const existing = document.getElementById(id);
+        if (existing) return existing;
+        const link = document.createElement("link");
+        link.id = id;
+        link.rel = "stylesheet";
+        link.href = source;
+        document.head.appendChild(link);
+        return link;
+    }
+
     function appendScript(id, source) {
         return new Promise((resolve, reject) => {
             const existing = document.getElementById(id);
@@ -36,6 +47,10 @@
             window.shiftHelperZoom,
         );
         try {
+            appendStylesheet(
+                "event-journal-acceptance-stage1-css",
+                "/static/event_journal_acceptance_stage1.css",
+            );
             await appendScript(
                 "event-journal-acceptance-stage1-js",
                 "/static/event_journal_acceptance_stage1.js",
