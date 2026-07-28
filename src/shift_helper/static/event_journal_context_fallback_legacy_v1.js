@@ -63,7 +63,9 @@
     let redispatching = false;
     let fallbackShell = null;
 
-    const svg = (name) => `<svg class="ribbon-icon" aria-hidden="true"><use href="${ICONS}#${name}"></use></svg>`;
+    const svg = (name) => (
+        `<svg class="ribbon-icon" aria-hidden="true"><use href="${ICONS}#${name}"></use></svg>`
+    );
 
     function pinRowHeaders() {
         root.querySelectorAll(".tabulator-row-header, .journal-row-number").forEach((element) => {
@@ -171,6 +173,24 @@
         return button;
     }
 
+    function buildToolbar() {
+        const toolbar = document.createElement("div");
+        toolbar.className = "journal-mini-toolbar";
+        toolbar.append(
+            mirrorSelect("ribbon-font-family", "Шрифт"),
+            mirrorSelect("ribbon-font-size", "Размер шрифта"),
+            toolbarButton("bold", "Полужирный", '[data-text-style="bold"]'),
+            toolbarButton("italic", "Курсив", '[data-text-style="italic"]'),
+            toolbarButton("fill", "Применить текущую заливку", "#apply-cell-fill"),
+            toolbarButton(
+                "align-center",
+                "Выровнять по центру",
+                '[data-align-horizontal="center"]',
+            ),
+        );
+        return toolbar;
+    }
+
     function fallbackCommand(label, icon, selector, danger = false) {
         const button = document.createElement("button");
         button.type = "button";
@@ -183,6 +203,25 @@
         return button;
     }
 
+    function placeFallbackShell(shell, coordinates) {
+        document.body.appendChild(shell);
+        fallbackShell = shell;
+        const rect = shell.getBoundingClientRect();
+        const margin = 8;
+        const left = Math.max(
+            margin,
+            Math.min(coordinates.clientX, innerWidth - rect.width - margin),
+        );
+        const top = Math.max(
+            margin,
+            coordinates.clientY + rect.height > innerHeight - margin
+                ? coordinates.clientY - rect.height
+                : coordinates.clientY,
+        );
+        shell.style.left = `${left}px`;
+        shell.style.top = `${top}px`;
+    }
+
     function showFallbackRowMenu(coordinates) {
         closeFallbackShell();
         const selectedCount = Math.max(1, (window.shiftHelperSelectedRowKeys || []).length);
@@ -192,46 +231,57 @@
         shell.className = "journal-context-shell";
         shell.dataset.contextFallbackMenu = "rows";
 
-        const toolbar = document.createElement("div");
-        toolbar.className = "journal-mini-toolbar";
-        toolbar.append(
-            mirrorSelect("ribbon-font-family", "Шрифт"),
-            mirrorSelect("ribbon-font-size", "Размер шрифта"),
-            toolbarButton("bold", "Полужирный", '[data-text-style="bold"]'),
-            toolbarButton("italic", "Курсив", '[data-text-style="italic"]'),
-            toolbarButton("fill", "Применить текущую заливку", "#apply-cell-fill"),
-            toolbarButton("align-center", "Выровнять по центру", '[data-align-horizontal="center"]'),
-        );
-
         const menu = document.createElement("div");
         menu.className = "journal-context-menu";
         menu.append(
             fallbackCommand(`Копировать${suffix}`, "copy", '[data-ribbon-command="copy"]'),
             fallbackCommand(`Вырезать${suffix}`, "cut", '[data-ribbon-command="cut"]'),
-            fallbackCommand("Вставить в выбранные строки", "paste", '[data-ribbon-command="paste"]'),
+            fallbackCommand(
+                "Вставить в выбранные строки",
+                "paste",
+                '[data-ribbon-command="paste"]',
+            ),
         );
         const separator = document.createElement("div");
         separator.className = "journal-context-separator";
         menu.append(
             separator,
-            fallbackCommand(`Удалить${suffix}`, "delete-row", '[data-ribbon-command="delete-rows"]', true),
+            fallbackCommand(
+                `Удалить${suffix}`,
+                "delete-row",
+                '[data-ribbon-command="delete-rows"]',
+                true,
+            ),
         );
 
-        shell.append(toolbar, menu);
-        document.body.appendChild(shell);
-        fallbackShell = shell;
+        shell.append(buildToolbar(), menu);
+        placeFallbackShell(shell, coordinates);
+    }
 
-        const rect = shell.getBoundingClientRect();
-        const margin = 8;
-        const left = Math.max(margin, Math.min(coordinates.clientX, innerWidth - rect.width - margin));
-        const top = Math.max(
-            margin,
-            coordinates.clientY + rect.height > innerHeight - margin
-                ? coordinates.clientY - rect.height
-                : coordinates.clientY,
+    function showFallbackCellMenu(coordinates) {
+        closeFallbackShell();
+        const shell = document.createElement("div");
+        shell.className = "journal-context-shell";
+        shell.dataset.contextFallbackMenu = "cells";
+
+        const menu = document.createElement("div");
+        menu.className = "journal-context-menu";
+        menu.append(
+            fallbackCommand("Копировать", "copy", '[data-ribbon-command="copy"]'),
+            fallbackCommand("Вырезать", "cut", '[data-ribbon-command="cut"]'),
+            fallbackCommand("Вставить", "paste", '[data-ribbon-command="paste"]'),
         );
-        shell.style.left = `${left}px`;
-        shell.style.top = `${top}px`;
+        const separator = document.createElement("div");
+        separator.className = "journal-context-separator";
+        menu.append(
+            separator,
+            fallbackCommand("Заполнить вниз", "vertical-bottom", '[data-ribbon-command="fill-down"]'),
+            fallbackCommand("Заполнить вправо", "align-right", '[data-ribbon-command="fill-right"]'),
+            fallbackCommand("Очистить содержимое", "clear", '[data-ribbon-command="clear"]'),
+        );
+
+        shell.append(buildToolbar(), menu);
+        placeFallbackShell(shell, coordinates);
     }
 
     window.addEventListener("pointerdown", (event) => {
@@ -247,9 +297,7 @@
             return;
         }
         const header = liveRowHeaderAtPoint(event.clientX, event.clientY);
-        if (!header) {
-            return;
-        }
+        if (!header) return;
         event.preventDefault();
         event.stopImmediatePropagation();
         redispatching = true;
@@ -268,15 +316,12 @@
         ) {
             return;
         }
-        if (event.target.closest(".journal-row-number")) {
-            return;
-        }
+        if (event.target.closest(".journal-row-number")) return;
 
         const rowHeader = liveRowHeaderAtPoint(event.clientX, event.clientY);
-        const target = rowHeader || liveCellAtPoint(event.clientX, event.clientY);
-        if (!target) {
-            return;
-        }
+        const liveCell = liveCellAtPoint(event.clientX, event.clientY);
+        const target = rowHeader || liveCell;
+        if (!target) return;
 
         event.preventDefault();
         const before = document.querySelectorAll(".journal-context-shell").length;
@@ -294,9 +339,7 @@
         };
 
         window.setTimeout(() => {
-            if (document.querySelectorAll(".journal-context-shell").length > before) {
-                return;
-            }
+            if (document.querySelectorAll(".journal-context-shell").length > before) return;
             redispatching = true;
             try {
                 target.dispatchEvent(new MouseEvent("contextmenu", {
@@ -312,20 +355,15 @@
                 redispatching = false;
             }
             window.setTimeout(() => {
-                if (
-                    rowHeader
-                    && document.querySelectorAll(".journal-context-shell").length <= before
-                ) {
-                    showFallbackRowMenu(coordinates);
-                }
+                if (document.querySelectorAll(".journal-context-shell").length > before) return;
+                if (rowHeader) showFallbackRowMenu(coordinates);
+                else showFallbackCellMenu(coordinates);
             }, 0);
         }, 0);
     }, true);
 
     window.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") {
-            closeFallbackShell();
-        }
+        if (event.key === "Escape") closeFallbackShell();
     }, true);
     window.addEventListener("resize", pinRowHeaders);
     table.on("renderComplete", () => {
