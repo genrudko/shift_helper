@@ -21,34 +21,97 @@ def wait_ready(page: Page) -> None:
             return root?.dataset.videoAcceptanceRepair === 'ready'
                 && root.dataset.operatorRepairReady === 'true'
                 && root.dataset.viewportController === 'geometry-only'
-                && Boolean(window.shiftHelperZoom)
+                && root.dataset.sheetViewport === 'ready'
+                && Boolean(document.getElementById('journal-sheet-viewport'))
+                && Boolean(document.getElementById('journal-sheet-layer'))
+                && Boolean(window.shiftHelperZoom?.layer?.())
                 && Boolean(window.shiftHelperOperatorRepair);
         }""",
         timeout=20_000,
     )
 
 
-def set_zoom(page: Page, value: int) -> float:
+def set_zoom(page: Page, value: int) -> dict[str, float]:
     page.evaluate("(value) => window.shiftHelperZoom.apply(value)", value)
     page.wait_for_function(
-        "(value) => document.getElementById('event-journal')?.dataset.sheetZoom === String(value)",
+        """(value) => {
+            const root = document.getElementById('event-journal');
+            const layer = document.getElementById('journal-sheet-layer');
+            return root?.dataset.sheetZoom === String(value)
+                && layer?.dataset.sheetZoom === String(value);
+        }""",
         arg=value,
     )
-    page.wait_for_timeout(120)
-    return page.locator("#journal-undo").bounding_box()["width"]
+    page.wait_for_timeout(160)
+    return page.evaluate(
+        """() => {
+            const table = window.shiftHelperEventGrid;
+            const holder = document.querySelector('.tabulator-tableholder');
+            const holderRect = holder?.getBoundingClientRect();
+            const row = table.getRows('active').find(candidate => {
+                const rect = candidate.getElement()?.getBoundingClientRect();
+                return rect && holderRect && rect.bottom > holderRect.top && rect.top < holderRect.bottom;
+            }) || table.getRows('active')[0];
+            const cell = row?.getCell('description')?.getElement?.();
+            const cellRect = cell?.getBoundingClientRect();
+            const ribbonRect = document.getElementById('journal-ribbon')?.getBoundingClientRect();
+            const undoRect = document.getElementById('journal-undo')?.getBoundingClientRect();
+            const viewportRect = document.getElementById('journal-sheet-viewport')?.getBoundingClientRect();
+            const layerRect = document.getElementById('journal-sheet-layer')?.getBoundingClientRect();
+            return {
+                cellWidth: cellRect?.width || 0,
+                cellTop: cellRect?.top || 0,
+                cellBottom: cellRect?.bottom || 0,
+                ribbonWidth: undoRect?.width || 0,
+                ribbonHeight: ribbonRect?.height || 0,
+                viewportWidth: viewportRect?.width || 0,
+                viewportHeight: viewportRect?.height || 0,
+                viewportTop: viewportRect?.top || 0,
+                viewportBottom: viewportRect?.bottom || 0,
+                layerWidth: layerRect?.width || 0,
+                layerHeight: layerRect?.height || 0,
+            };
+        }"""
+    )
 
 
 def test_linear_zoom(page: Page) -> None:
-    width_100 = set_zoom(page, 100)
-    width_50 = set_zoom(page, 50)
-    width_200 = set_zoom(page, 200)
+    metrics_100 = set_zoom(page, 100)
+    metrics_50 = set_zoom(page, 50)
+    metrics_200 = set_zoom(page, 200)
+    require(metrics_100["cellWidth"] > 0, f"Sheet cell geometry is unavailable: {metrics_100}")
     require(
-        math.isclose(width_50 / width_100, 0.5, rel_tol=0.08),
-        f"50% zoom is not linear: {width_50=} {width_100=}",
+        math.isclose(metrics_50["cellWidth"] / metrics_100["cellWidth"], 0.5, rel_tol=0.08),
+        f"50% sheet zoom is not linear: {metrics_50=} {metrics_100=}",
     )
     require(
-        math.isclose(width_200 / width_100, 2.0, rel_tol=0.08),
-        f"200% zoom is not linear: {width_200=} {width_100=}",
+        math.isclose(metrics_200["cellWidth"] / metrics_100["cellWidth"], 2.0, rel_tol=0.08),
+        f"200% sheet zoom is not linear: {metrics_200=} {metrics_100=}",
+    )
+    require(
+        math.isclose(metrics_50["ribbonWidth"], metrics_100["ribbonWidth"], rel_tol=0.03)
+        and math.isclose(metrics_200["ribbonWidth"], metrics_100["ribbonWidth"], rel_tol=0.03),
+        f"Ribbon controls scale together with the sheet: {metrics_50=} {metrics_100=} {metrics_200=}",
+    )
+    set_zoom(page, 100)
+
+
+def test_sheet_only_zoom_at_400(page: Page) -> None:
+    metrics = set_zoom(page, 400)
+    require(metrics["viewportHeight"] >= 180, f"400% zoom collapsed the sheet viewport: {metrics}")
+    require(
+        metrics["cellBottom"] > metrics["viewportTop"]
+        and metrics["cellTop"] < metrics["viewportBottom"],
+        f"No usable table row remains in the viewport at 400%: {metrics}",
+    )
+    require(
+        math.isclose(metrics["layerWidth"], metrics["viewportWidth"], rel_tol=0.03)
+        and math.isclose(metrics["layerHeight"], metrics["viewportHeight"], rel_tol=0.03),
+        f"Inverse sheet-layer sizing does not preserve the viewport: {metrics}",
+    )
+    require(
+        page.locator(".journal-workspace").evaluate("element => element.style.zoom") == "",
+        "400% sheet zoom reached the whole workspace and Ribbon.",
     )
     set_zoom(page, 100)
 
@@ -211,6 +274,7 @@ def run(url: str, screenshot: Path) -> None:
             page.locator(".event-grid.tabulator").wait_for(state="visible", timeout=20_000)
             wait_ready(page)
             test_linear_zoom(page)
+            test_sheet_only_zoom_at_400(page)
             test_row_drag(page)
             test_formatting_survives_alignment(page)
             test_palette_closes(page)
@@ -218,7 +282,10 @@ def run(url: str, screenshot: Path) -> None:
             require(not browser_errors, "Browser errors: " + " | ".join(browser_errors))
         except Exception:
             screenshot.parent.mkdir(parents=True, exist_ok=True)
-            page.screenshot(path=str(screenshot), full_page=True)
+            try:
+                page.screenshot(path=str(screenshot), full_page=False, timeout=5_000)
+            except Exception as screenshot_error:  # pragma: no cover - best-effort diagnostics
+                print(f"Stage 8 diagnostic screenshot failed: {screenshot_error}", file=sys.stderr)
             raise
         finally:
             context.close()

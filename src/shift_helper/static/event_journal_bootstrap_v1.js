@@ -146,28 +146,68 @@
     };
     const clampZoom = (value) => Math.min(400, Math.max(10, Number(value) || 100));
 
-    function ensureStylesheet() {
-        if (document.getElementById("event-journal-operator-repair-v1-css")) return;
+    function appendStylesheet(id, href) {
+        if (document.getElementById(id)) return;
         const stylesheet = document.createElement("link");
-        stylesheet.id = "event-journal-operator-repair-v1-css";
+        stylesheet.id = id;
         stylesheet.rel = "stylesheet";
-        stylesheet.href = "/static/event_journal_operator_repair_v1.css";
+        stylesheet.href = href;
         document.head.appendChild(stylesheet);
+    }
+
+    function ensureStylesheet() {
+        appendStylesheet(
+            "event-journal-operator-repair-v1-css",
+            "/static/event_journal_operator_repair_v1.css",
+        );
+        appendStylesheet(
+            "event-journal-sheet-zoom-v1-css",
+            "/static/event_journal_sheet_zoom_v1.css",
+        );
+    }
+
+    function ensureSheetLayer(root) {
+        let viewport = document.getElementById("journal-sheet-viewport");
+        let layer = document.getElementById("journal-sheet-layer");
+        if (viewport && layer && layer.contains(root)) return {viewport, layer};
+
+        viewport = document.createElement("div");
+        viewport.id = "journal-sheet-viewport";
+        viewport.className = "journal-sheet-viewport";
+        viewport.setAttribute("aria-label", "Область масштабирования листа");
+
+        layer = document.createElement("div");
+        layer.id = "journal-sheet-layer";
+        layer.className = "journal-sheet-layer";
+
+        const parent = root.parentElement;
+        if (!parent) return {viewport: root, layer: root};
+        parent.insertBefore(viewport, root);
+        viewport.appendChild(layer);
+        layer.appendChild(root);
+        root.dataset.sheetViewport = "ready";
+        return {viewport, layer};
     }
 
     function installStableZoom(root, table) {
         if (root.dataset.stableZoom === "ready") return;
         root.dataset.stableZoom = "ready";
         const workspace = root.closest(".journal-workspace") || root;
+        const {viewport, layer} = ensureSheetLayer(root);
         let frame = 0;
         let current = 100;
 
         const clearLegacyZoom = () => {
             document.body.style.removeProperty("zoom");
             document.body.style.removeProperty("width");
+            workspace.style.removeProperty("zoom");
+            workspace.style.removeProperty("width");
+            workspace.style.removeProperty("height");
+            workspace.style.removeProperty("transform-origin");
             root.style.removeProperty("zoom");
             root.style.removeProperty("width");
             root.style.removeProperty("height");
+            root.style.removeProperty("transform-origin");
         };
         const syncControls = (value) => {
             ["journal-zoom", "ribbon-zoom"].forEach((id) => {
@@ -193,15 +233,15 @@
             current = value;
             if (shouldPersist) persist(value);
             clearLegacyZoom();
-            workspace.style.transformOrigin = "top left";
-            workspace.style.zoom = String(scale);
-            workspace.style.width = `${100 / scale}%`;
-            document.documentElement.style.setProperty(
-                "--ui-viewport-height",
-                `${window.innerHeight / scale}px`,
-            );
+            layer.style.transformOrigin = "top left";
+            layer.style.zoom = String(scale);
+            layer.style.width = `${100 / scale}%`;
+            layer.style.height = `${100 / scale}%`;
+            document.documentElement.style.setProperty("--ui-viewport-height", "100vh");
             document.documentElement.style.setProperty("--operator-zoom-scale", String(scale));
             root.dataset.sheetZoom = String(value);
+            viewport.dataset.sheetZoom = String(value);
+            layer.dataset.sheetZoom = String(value);
             syncControls(value);
             cancelAnimationFrame(frame);
             frame = requestAnimationFrame(() => {
@@ -237,7 +277,7 @@
         document.getElementById("ribbon-zoom-out")?.addEventListener("click", adjust(-5), true);
         document.getElementById("ribbon-zoom-in")?.addEventListener("click", adjust(5), true);
 
-        workspace.addEventListener("wheel", (event) => {
+        viewport.addEventListener("wheel", (event) => {
             if (!event.ctrlKey) return;
             event.preventDefault();
             event.stopImmediatePropagation();
@@ -255,7 +295,12 @@
 
         const initial = loadJson(zoomKey, null) ?? loadJson(preferenceKey, {}).zoom ?? 100;
         apply(initial, false);
-        window.shiftHelperZoom = {apply: request, current: () => current};
+        window.shiftHelperZoom = {
+            apply: request,
+            current: () => current,
+            layer: () => layer,
+            viewport: () => viewport,
+        };
     }
 
     function installRowDrag(root, table) {
@@ -401,6 +446,11 @@
             }
             document.body.style.removeProperty("zoom");
             document.body.style.removeProperty("width");
+            const workspace = root.closest(".journal-workspace");
+            workspace?.style.removeProperty("zoom");
+            workspace?.style.removeProperty("width");
+            workspace?.style.removeProperty("height");
+            workspace?.style.removeProperty("transform-origin");
             root.style.removeProperty("zoom");
             root.style.removeProperty("width");
             root.style.removeProperty("height");
