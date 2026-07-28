@@ -369,8 +369,14 @@
         if (!select) return;
         const normalized = values.map(String);
         const current = select.value || String(fallback);
-        select.replaceChildren(...normalized.map((value) => new Option(value, value)));
-        select.value = normalized.includes(current) ? current : String(fallback);
+        const existing = [...select.options].map((option) => option.value);
+        const differs = existing.length !== normalized.length
+            || existing.some((value, index) => value !== normalized[index]);
+        if (differs) {
+            select.replaceChildren(...normalized.map((value) => new Option(value, value)));
+        }
+        const desired = normalized.includes(current) ? current : String(fallback);
+        if (select.value !== desired) select.value = desired;
     }
     function setFontSize(value) {
         const select = document.getElementById("ribbon-font-size");
@@ -381,6 +387,13 @@
         }
         select.value = String(size);
         select.dispatchEvent(new Event("change", {bubbles: true}));
+    }
+    function hydrateMiniToolbar(bar) {
+        if (!(bar instanceof Element) || bar.dataset.operatorFontLists === "ready") return;
+        const lists = bar.querySelectorAll("select");
+        fillSelect(lists[0], fonts, "Segoe UI");
+        fillSelect(lists[1], sizes, 13);
+        bar.dataset.operatorFontLists = "ready";
     }
     function bindFonts() {
         fillSelect(document.getElementById("ribbon-font-family"), fonts, "Segoe UI");
@@ -410,11 +423,14 @@
         decrease.addEventListener("click", () => setFontSize(Number(select.value || 13) - 1));
         increase.addEventListener("click", () => setFontSize(Number(select.value || 13) + 1));
 
-        const observer = new MutationObserver(() => {
-            document.querySelectorAll(".journal-mini-toolbar").forEach((bar) => {
-                const lists = bar.querySelectorAll("select");
-                fillSelect(lists[0], fonts, "Segoe UI");
-                fillSelect(lists[1], sizes, 13);
+        document.querySelectorAll(".journal-mini-toolbar").forEach(hydrateMiniToolbar);
+        const observer = new MutationObserver((records) => {
+            records.forEach((record) => {
+                record.addedNodes.forEach((node) => {
+                    if (!(node instanceof Element)) return;
+                    if (node.matches(".journal-mini-toolbar")) hydrateMiniToolbar(node);
+                    node.querySelectorAll(".journal-mini-toolbar").forEach(hydrateMiniToolbar);
+                });
             });
         });
         observer.observe(document.body, {childList: true, subtree: true});
