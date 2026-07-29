@@ -235,6 +235,12 @@
             .map(rowKey)
             .filter((key) => key && authoritativeRowKeys.has(key)),
     };
+    if (!document.getElementById("event-journal-print-draft-contract-v1-js")) {
+        const script = document.createElement("script");
+        script.id = "event-journal-print-draft-contract-v1-js";
+        script.src = "/static/event_journal_print_draft_contract_v1.js";
+        document.body.appendChild(script);
+    }
     reconcileRows();
     root.dataset.selectionModeContract = "ready";
 })();
