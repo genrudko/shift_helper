@@ -98,10 +98,10 @@ def load_or_create_session_secret(root: Path) -> str:
     secret = secrets.token_hex(32)
     try:
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
+    except FileExistsError as exc:
         existing = path.read_text(encoding="ascii").strip()
         if len(existing) < 64:
-            raise RuntimeError("Файл session secret повреждён.")
+            raise RuntimeError("Файл session secret повреждён.") from exc
         return existing
     with os.fdopen(descriptor, "w", encoding="ascii") as target:
         target.write(secret + "\n")
