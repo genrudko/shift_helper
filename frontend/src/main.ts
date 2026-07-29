@@ -798,7 +798,12 @@ function startEditingPersistence(
       clearEditorSelection();
       return;
     }
-    const currentCell = worksheet.getSelection().getCurrentCell();
+    const selection = worksheet.getSelection();
+    if (!selection) {
+      clearEditorSelection();
+      return;
+    }
+    const currentCell = selection.getCurrentCell();
     if (!currentCell) {
       clearEditorSelection();
       return;
