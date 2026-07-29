@@ -110,6 +110,102 @@ def test_journal_v2_host_and_snapshot_contract(tmp_path: Path) -> None:
     assert record["includeInReport"] is True
 
 
+def test_journal_v2_patch_persists_and_recalculates(tmp_path: Path) -> None:
+    app = create_app(testing=True, data_root=tmp_path)
+    client = app.test_client()
+    client.post("/events/new", data=_event_form())
+
+    response = client.patch(
+        "/events/api/v2/records/1",
+        json={
+            "revision": 1,
+            "changes": {
+                "description": "  Ограничение скорректировано  ",
+                "reason": "  Новая причина  ",
+                "rotorLimit": "0,90",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["schemaVersion"] == 1
+    record = body["record"]
+    assert record["revision"] == 2
+    assert record["description"] == "Ограничение скорректировано"
+    assert record["reason"] == "Новая причина"
+    assert record["rotorLimit"] == "0.90"
+    assert record["repairPowerMw"] == "0.55"
+
+    engine = app.extensions["shift_helper_database_engine"]
+    with Session(engine) as session:
+        event = session.get(Event, 1)
+        assert event is not None
+        assert event.revision == 2
+        assert event.description == "Ограничение скорректировано"
+        assert event.reason == "Новая причина"
+        assert str(event.rotor_limit) == "0.90"
+        assert str(event.repair_power_mw) == "0.55"
+
+
+def test_journal_v2_patch_rejects_stale_revision(tmp_path: Path) -> None:
+    app = create_app(testing=True, data_root=tmp_path)
+    client = app.test_client()
+    client.post("/events/new", data=_event_form())
+
+    accepted = client.patch(
+        "/events/api/v2/records/1",
+        json={"revision": 1, "changes": {"description": "Первая правка"}},
+    )
+    assert accepted.status_code == 200
+
+    conflict = client.patch(
+        "/events/api/v2/records/1",
+        json={"revision": 1, "changes": {"description": "Устаревшая правка"}},
+    )
+
+    assert conflict.status_code == 409
+    error = conflict.get_json()["error"]
+    assert error["code"] == "revision_conflict"
+    assert error["current"]["revision"] == 2
+    assert error["current"]["description"] == "Первая правка"
+
+    engine = app.extensions["shift_helper_database_engine"]
+    with Session(engine) as session:
+        event = session.get(Event, 1)
+        assert event is not None
+        assert event.description == "Первая правка"
+        assert event.revision == 2
+
+
+def test_journal_v2_patch_rejects_invalid_or_forbidden_change(tmp_path: Path) -> None:
+    app = create_app(testing=True, data_root=tmp_path)
+    client = app.test_client()
+    client.post("/events/new", data=_event_form())
+
+    invalid = client.patch(
+        "/events/api/v2/records/1",
+        json={"revision": 1, "changes": {"description": "   "}},
+    )
+    assert invalid.status_code == 422
+    assert invalid.get_json()["error"]["code"] == "validation_error"
+
+    forbidden = client.patch(
+        "/events/api/v2/records/1",
+        json={"revision": 1, "changes": {"status": "closed"}},
+    )
+    assert forbidden.status_code == 422
+    assert forbidden.get_json()["error"]["code"] == "validation_error"
+
+    engine = app.extensions["shift_helper_database_engine"]
+    with Session(engine) as session:
+        event = session.get(Event, 1)
+        assert event is not None
+        assert event.description == "Установлено ограничение по оборотам"
+        assert event.status == "open"
+        assert event.revision == 1
+
+
 def test_invalid_rotor_limit_is_rejected(tmp_path: Path) -> None:
     app = create_app(testing=True, data_root=tmp_path)
     client = app.test_client()

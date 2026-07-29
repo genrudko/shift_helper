@@ -22,3 +22,30 @@ export interface JournalSnapshot {
   generatedAt: string;
   records: JournalEventSnapshot[];
 }
+
+export type EditableJournalField =
+  | 'assetLabel'
+  | 'description'
+  | 'reason'
+  | 'actions'
+  | 'performer'
+  | 'errorCodes'
+  | 'rotorLimit';
+
+export interface JournalPatchRequest {
+  revision: number;
+  changes: Partial<Record<EditableJournalField, string | null>>;
+}
+
+export interface JournalPatchResponse {
+  schemaVersion: 1;
+  record: JournalEventSnapshot;
+}
+
+export interface JournalApiErrorBody {
+  error: {
+    code: string;
+    message: string;
+    current?: JournalEventSnapshot;
+  };
+}

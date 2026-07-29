@@ -5,6 +5,8 @@ from pathlib import Path
 
 from playwright.sync_api import ConsoleMessage, Page, sync_playwright
 
+EDITED_DESCRIPTION = "Изменение сохранено из Univer UI V2"
+
 
 def _seed_event(page: Page, base_url: str) -> None:
     response = page.request.post(
@@ -29,6 +31,22 @@ def _seed_event(page: Page, base_url: str) -> None:
 def _capture_console_error(message: ConsoleMessage, errors: list[str]) -> None:
     if message.type == "error":
         errors.append(message.text)
+
+
+def _wait_for_persisted_edit(page: Page, base_url: str) -> None:
+    for _attempt in range(100):
+        response = page.request.get(f"{base_url}/events/api/v2/snapshot")
+        if response.ok:
+            snapshot = response.json()
+            records = snapshot.get("records", [])
+            if (
+                len(records) == 1
+                and records[0].get("description") == EDITED_DESCRIPTION
+                and records[0].get("revision") == 2
+            ):
+                return
+        page.wait_for_timeout(100)
+    raise AssertionError("Редактирование Univer не было сохранено через optimistic PATCH API.")
 
 
 def main() -> None:
@@ -71,6 +89,19 @@ def main() -> None:
                     break
             if not visible_canvas:
                 raise AssertionError("Univer canvas не получил рабочую геометрию журнала.")
+
+            # Fixed viewport and approved column widths place the first record's
+            # description cell (F2) at this point. Use real mouse/keyboard input,
+            # not a readiness flag or direct Facade API mutation.
+            page.mouse.dblclick(690, 237)
+            page.keyboard.press("Control+A")
+            page.keyboard.type(EDITED_DESCRIPTION)
+            page.keyboard.press("Enter")
+
+            _wait_for_persisted_edit(page, base_url)
+            page.locator(".shift-helper-v2__status").filter(
+                has_text="все изменения сохранены"
+            ).wait_for(state="visible", timeout=10_000)
 
             if page_errors:
                 raise AssertionError("Page errors: " + " | ".join(page_errors))

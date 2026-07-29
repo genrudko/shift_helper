@@ -1,38 +1,86 @@
 import type { IWorkbookData } from '@univerjs/core';
 import { LocaleType } from '@univerjs/presets';
 
-import type { JournalEventSnapshot, JournalSnapshot } from './types';
+import type { EditableJournalField, JournalEventSnapshot, JournalSnapshot } from './types';
 
-type CellValue = string | number;
+export type CellValue = string | number;
 
 type JournalColumn = {
   readonly title: string;
   readonly width: number;
+  readonly field?: EditableJournalField;
   readonly value: (record: JournalEventSnapshot, visualIndex: number) => CellValue;
 };
 
-const DISPLAY_COLUMNS: readonly JournalColumn[] = [
+export const HEADER_ROW_INDEX = 0;
+
+export const DISPLAY_COLUMNS: readonly JournalColumn[] = [
   { title: '№', width: 56, value: (_record, index) => index + 1 },
   { title: 'Дата', width: 92, value: (record) => formatDate(record.startAt) },
   { title: 'Время', width: 72, value: (record) => formatTime(record.startAt) },
-  { title: 'Оборудование', width: 150, value: (record) => record.assetLabel },
+  {
+    title: 'Оборудование',
+    width: 150,
+    field: 'assetLabel',
+    value: (record) => record.assetLabel,
+  },
   { title: 'Тип события', width: 150, value: (record) => record.eventTypeLabel },
-  { title: 'Описание', width: 300, value: (record) => record.description },
-  { title: 'Причина', width: 240, value: (record) => record.reason ?? '' },
-  { title: 'Принятые меры', width: 260, value: (record) => record.actions ?? '' },
-  { title: 'Исполнитель', width: 170, value: (record) => record.performer ?? '' },
-  { title: 'Код ошибки', width: 110, value: (record) => record.errorCodes ?? '' },
-  { title: 'Ограничение', width: 110, value: (record) => formatDecimal(record.rotorLimit) },
+  {
+    title: 'Описание',
+    width: 300,
+    field: 'description',
+    value: (record) => record.description,
+  },
+  {
+    title: 'Причина',
+    width: 240,
+    field: 'reason',
+    value: (record) => record.reason ?? '',
+  },
+  {
+    title: 'Принятые меры',
+    width: 260,
+    field: 'actions',
+    value: (record) => record.actions ?? '',
+  },
+  {
+    title: 'Исполнитель',
+    width: 170,
+    field: 'performer',
+    value: (record) => record.performer ?? '',
+  },
+  {
+    title: 'Код ошибки',
+    width: 110,
+    field: 'errorCodes',
+    value: (record) => record.errorCodes ?? '',
+  },
+  {
+    title: 'Ограничение',
+    width: 110,
+    field: 'rotorLimit',
+    value: (record) => formatDecimal(record.rotorLimit),
+  },
   { title: 'P ремонт, МВт', width: 120, value: (record) => formatDecimal(record.repairPowerMw) },
-  { title: 'Состояние', width: 110, value: (record) => record.status === 'open' ? 'Открыто' : 'Завершено' },
+  {
+    title: 'Состояние',
+    width: 110,
+    value: (record) => (record.status === 'open' ? 'Открыто' : 'Завершено'),
+  },
   { title: 'Окончание', width: 132, value: (record) => formatDateTime(record.endAt) },
 ];
 
-const RECORD_ID_COLUMN = DISPLAY_COLUMNS.length;
-const REVISION_COLUMN = DISPLAY_COLUMNS.length + 1;
+export const RECORD_ID_COLUMN = DISPLAY_COLUMNS.length;
+export const REVISION_COLUMN = DISPLAY_COLUMNS.length + 1;
 const COLUMN_COUNT = DISPLAY_COLUMNS.length + 2;
 const HEADER_STYLE_ID = 'journal-header';
 const BODY_STYLE_ID = 'journal-body';
+
+const EDITABLE_FIELDS_BY_COLUMN = new Map<number, EditableJournalField>(
+  DISPLAY_COLUMNS.flatMap((column, columnIndex) =>
+    column.field ? ([[columnIndex, column.field]] as const) : []
+  )
+);
 
 function formatDate(value: string): string {
   const [datePart] = value.split('T');
@@ -56,13 +104,26 @@ function formatDecimal(value: string | null): string {
   return value?.replace('.', ',') ?? '';
 }
 
+export function getEditableField(columnIndex: number): EditableJournalField | null {
+  return EDITABLE_FIELDS_BY_COLUMN.get(columnIndex) ?? null;
+}
+
+export function getDisplayValue(
+  record: JournalEventSnapshot,
+  columnIndex: number,
+  visualIndex = 0
+): CellValue {
+  const column = DISPLAY_COLUMNS[columnIndex];
+  return column ? column.value(record, visualIndex) : '';
+}
+
 function buildCellData(snapshot: JournalSnapshot): Record<number, Record<number, object>> {
   const cellData: Record<number, Record<number, object>> = {
-    0: {},
+    [HEADER_ROW_INDEX]: {},
   };
 
   DISPLAY_COLUMNS.forEach((column, columnIndex) => {
-    cellData[0]![columnIndex] = {
+    cellData[HEADER_ROW_INDEX]![columnIndex] = {
       v: column.title,
       t: 1,
       s: HEADER_STYLE_ID,
@@ -150,7 +211,7 @@ export function buildWorkbookData(snapshot: JournalSnapshot): IWorkbookData {
         mergeData: [],
         cellData: buildCellData(snapshot),
         rowData: {
-          0: { h: 36 },
+          [HEADER_ROW_INDEX]: { h: 36 },
         },
         columnData: buildColumnData(),
         showGridlines: 1,

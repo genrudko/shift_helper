@@ -52,6 +52,11 @@ body {
   white-space: nowrap;
 }
 
+.shift-helper-v2__status--error {
+  color: #b42318;
+  font-weight: 600;
+}
+
 .shift-helper-v2__sheet {
   min-width: 0;
   min-height: 0;
