@@ -70,6 +70,46 @@ def test_event_create_edit_and_close(tmp_path: Path) -> None:
         assert event.revision == 3
 
 
+def test_journal_v2_host_and_snapshot_contract(tmp_path: Path) -> None:
+    app = create_app(testing=True, data_root=tmp_path)
+    client = app.test_client()
+
+    client.post("/events/new", data=_event_form())
+
+    host_response = client.get("/events/v2")
+    assert host_response.status_code == 200
+    host_html = host_response.get_data(as_text=True)
+    assert 'id="app"' in host_html
+    assert "/static/univer-v2/journal-v2.css" in host_html
+    assert "/static/univer-v2/journal-v2.js" in host_html
+    assert "event_journal" not in host_html
+
+    snapshot_response = client.get("/events/api/v2/snapshot")
+    assert snapshot_response.status_code == 200
+    snapshot = snapshot_response.get_json()
+    assert snapshot["schemaVersion"] == 1
+    assert isinstance(snapshot["generatedAt"], str)
+    assert len(snapshot["records"]) == 1
+
+    record = snapshot["records"][0]
+    assert record["id"] == 1
+    assert record["revision"] == 1
+    assert record["startAt"] == "2026-07-26T18:10"
+    assert record["endAt"] is None
+    assert record["assetLabel"] == "ВЭУ №17"
+    assert record["eventType"] == "rotor_limit"
+    assert record["eventTypeLabel"] == "Ограничение по оборотам"
+    assert record["description"] == "Установлено ограничение по оборотам"
+    assert record["reason"] == "Повышенная вибрация"
+    assert record["actions"] == "Информация передана сменному персоналу"
+    assert record["performer"] == "Иванов И.И."
+    assert record["errorCodes"] == "214"
+    assert record["rotorLimit"] == "0.80"
+    assert record["repairPowerMw"] == "1.00"
+    assert record["status"] == "open"
+    assert record["includeInReport"] is True
+
+
 def test_invalid_rotor_limit_is_rejected(tmp_path: Path) -> None:
     app = create_app(testing=True, data_root=tmp_path)
     client = app.test_client()
