@@ -1,3 +1,5 @@
+import { SheetsSelectionsService } from '@univerjs/sheets';
+
 import './clearSelection.css';
 
 import { patchRecordsBatch } from './api';
@@ -25,6 +27,13 @@ const CLEARABLE_FIELDS = new Set<EditableJournalField>([
   'rotorLimit',
 ]);
 
+type ResolvedRange = {
+  startRow: number;
+  startColumn: number;
+  rowCount: number;
+  columnCount: number;
+};
+
 function positiveInteger(value: unknown): number | null {
   if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
     return value;
@@ -38,6 +47,70 @@ function positiveInteger(value: unknown): number | null {
 
 function displayValue(value: unknown): string {
   return value === null || value === undefined ? '' : String(value);
+}
+
+function resolveRange(value: unknown): ResolvedRange | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Record<string, unknown>;
+
+  if (
+    typeof candidate.getRow === 'function' &&
+    typeof candidate.getColumn === 'function' &&
+    typeof candidate.getNumRows === 'function' &&
+    typeof candidate.getNumColumns === 'function'
+  ) {
+    return {
+      startRow: Number((candidate.getRow as () => unknown)()),
+      startColumn: Number((candidate.getColumn as () => unknown)()),
+      rowCount: Number((candidate.getNumRows as () => unknown)()),
+      columnCount: Number((candidate.getNumColumns as () => unknown)()),
+    };
+  }
+
+  const startRow = Number(candidate.startRow);
+  const endRow = Number(candidate.endRow);
+  const startColumn = Number(candidate.startColumn);
+  const endColumn = Number(candidate.endColumn);
+  if (
+    !Number.isInteger(startRow) ||
+    !Number.isInteger(endRow) ||
+    !Number.isInteger(startColumn) ||
+    !Number.isInteger(endColumn) ||
+    endRow < startRow ||
+    endColumn < startColumn
+  ) {
+    return null;
+  }
+  return {
+    startRow,
+    startColumn,
+    rowCount: endRow - startRow + 1,
+    columnCount: endColumn - startColumn + 1,
+  };
+}
+
+function commandRanges(univerAPI: any, event: any): unknown[] {
+  const explicitRanges = event?.params?.ranges;
+  if (Array.isArray(explicitRanges) && explicitRanges.length > 0) {
+    return explicitRanges;
+  }
+
+  try {
+    const injector = univerAPI?._injector;
+    const selectionService = injector?.get?.(SheetsSelectionsService) as
+      | SheetsSelectionsService
+      | undefined;
+    const selections = selectionService?.getCurrentSelections?.();
+    if (Array.isArray(selections) && selections.length > 0) {
+      return selections.map((selection) => selection.range);
+    }
+  } catch {
+    // Fall through to the public facade as a compatibility fallback.
+  }
+
+  const worksheet = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.();
+  const activeRange = worksheet?.getSelection?.()?.getActiveRange?.();
+  return activeRange ? [activeRange] : [];
 }
 
 export function startJournalClearSelection(
@@ -58,7 +131,7 @@ export function startJournalClearSelection(
 
   const clearResolvedRange = async (
     worksheet: any,
-    range: any
+    range: ResolvedRange | null
   ): Promise<void> => {
     if (clearing) return;
     if (!worksheet || !range) {
@@ -66,16 +139,8 @@ export function startJournalClearSelection(
       return;
     }
 
-    const startRow = range.getRow();
-    const startColumn = range.getColumn();
-    const rowCount = range.getNumRows();
-    const columnCount = range.getNumColumns();
-    html.dataset.clearResolvedRange = JSON.stringify({
-      startRow,
-      startColumn,
-      rowCount,
-      columnCount,
-    });
+    const { startRow, startColumn, rowCount, columnCount } = range;
+    html.dataset.clearResolvedRange = JSON.stringify(range);
     if (
       !Number.isInteger(startRow) ||
       !Number.isInteger(startColumn) ||
@@ -190,10 +255,22 @@ export function startJournalClearSelection(
     if (!CLEAR_COMMANDS.has(event.id)) return;
 
     const worksheet = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.();
-    const selection = worksheet?.getSelection?.();
-    const range = selection?.getActiveRange?.();
-    html.dataset.clearSelectionResolvedBeforeCancel = String(Boolean(range));
+    const ranges = commandRanges(univerAPI, event);
+    html.dataset.clearCommandRangeCount = String(ranges.length);
+    if (ranges.length !== 1) {
+      event.cancel = true;
+      html.dataset.clearIntercepted = 'true';
+      setStatus(
+        'error',
+        ranges.length === 0
+          ? 'Не удалось определить диапазон для очистки.'
+          : 'Очистка нескольких несмежных диапазонов пока недоступна.'
+      );
+      return;
+    }
 
+    const range = resolveRange(ranges[0]);
+    html.dataset.clearSelectionResolvedBeforeCancel = String(Boolean(range));
     event.cancel = true;
     html.dataset.clearIntercepted = 'true';
     void clearResolvedRange(worksheet, range);
