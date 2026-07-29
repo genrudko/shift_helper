@@ -76,6 +76,17 @@ def _set_control_value(locator: Locator, value: str) -> None:
     locator.dispatch_event("change")
 
 
+def _wait_for_working_canvas(page: Page) -> None:
+    for _attempt in range(100):
+        canvases = page.locator("canvas")
+        for index in range(canvases.count()):
+            box = canvases.nth(index).bounding_box()
+            if box and box["width"] > 500 and box["height"] > 300:
+                return
+        page.wait_for_timeout(100)
+    raise AssertionError("Univer canvas не получил рабочую геометрию журнала.")
+
+
 def main() -> None:
     base_url = os.environ.get("SHIFT_HELPER_BASE_URL", "http://127.0.0.1:17944")
     screenshot_path = Path(
@@ -102,20 +113,7 @@ def main() -> None:
                 has_text="Загружено записей: 1"
             ).wait_for(state="visible", timeout=30_000)
             page.locator(".shift-helper-v2__error").wait_for(state="detached", timeout=5_000)
-
-            canvas_count = page.locator("canvas").count()
-            if canvas_count < 1:
-                raise AssertionError("Univer не создал ни одного canvas.")
-
-            visible_canvas = False
-            for index in range(canvas_count):
-                canvas = page.locator("canvas").nth(index)
-                box = canvas.bounding_box()
-                if box and box["width"] > 500 and box["height"] > 300:
-                    visible_canvas = True
-                    break
-            if not visible_canvas:
-                raise AssertionError("Univer canvas не получил рабочую геометрию журнала.")
+            _wait_for_working_canvas(page)
 
             sheet_box = page.locator("#univer-sheet").bounding_box()
             if sheet_box is None:
