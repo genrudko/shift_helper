@@ -1,5 +1,5 @@
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
-import sheetsCoreEnUS from '@univerjs/preset-sheets-core/locales/en-US';
+import sheetsCoreRuRU from '@univerjs/preset-sheets-core/locales/ru-RU';
 import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets';
 
 import '@univerjs/preset-sheets-core/lib/index.css';
@@ -16,7 +16,7 @@ import {
 
 function requireRoot(): HTMLElement {
   const root = document.querySelector<HTMLElement>('#app');
-  if (!root) throw new Error('Не найден контейнер Journal UI V2.');
+  if (!root) throw new Error('Не найден контейнер журнала событий.');
   return root;
 }
 
@@ -30,9 +30,9 @@ async function start(): Promise<void> {
     configureEventTypeOptions(controls.eventType, snapshot.eventTypes);
     const draft = createDraft(snapshot.eventTypes);
     const { univerAPI } = createUniver({
-      locale: LocaleType.EN_US,
+      locale: LocaleType.RU_RU,
       locales: {
-        [LocaleType.EN_US]: mergeLocales(sheetsCoreEnUS),
+        [LocaleType.RU_RU]: mergeLocales(sheetsCoreRuRU),
       },
       presets: [
         UniverSheetsCorePreset({
