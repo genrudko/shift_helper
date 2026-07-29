@@ -16,7 +16,7 @@ export type ShellElements = {
 
 function requireElement<T extends Element>(root: ParentNode, selector: string): T {
   const element = root.querySelector<T>(selector);
-  if (!element) throw new Error(`Не найден элемент Journal UI V2: ${selector}`);
+  if (!element) throw new Error(`Не найден элемент журнала событий: ${selector}`);
   return element;
 }
 
@@ -26,7 +26,7 @@ export function renderShell(root: HTMLElement): ShellElements {
       <header class="shift-helper-v2__header">
         <div class="shift-helper-v2__title">
           <strong>Журнал событий</strong>
-          <span>Journal UI V2 · Univer Sheets OSS</span>
+          <span>Оперативные записи смены</span>
         </div>
         <span class="shift-helper-v2__status" role="status">Загрузка данных…</span>
       </header>
@@ -95,7 +95,7 @@ export function renderFailure(root: HTMLElement, error: unknown): void {
   container.className = 'shift-helper-v2__error';
   container.setAttribute('role', 'alert');
   const title = document.createElement('strong');
-  title.textContent = 'Journal UI V2 не запущен.';
+  title.textContent = 'Журнал событий не запущен.';
   container.append(title, document.createElement('br'), document.createTextNode(message));
   root.replaceChildren(container);
 }
