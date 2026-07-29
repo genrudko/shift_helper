@@ -6,6 +6,8 @@ from pathlib import Path
 from playwright.sync_api import ConsoleMessage, Page, sync_playwright
 
 EDITED_DESCRIPTION = "Изменение сохранено из Univer UI V2"
+CREATED_ASSET = "ВЭУ №18"
+CREATED_DESCRIPTION = "Новая запись создана из первой строки Univer"
 
 
 def _seed_event(page: Page, base_url: str) -> None:
@@ -33,20 +35,53 @@ def _capture_console_error(message: ConsoleMessage, errors: list[str]) -> None:
         errors.append(message.text)
 
 
+def _snapshot(page: Page, base_url: str) -> dict[str, object]:
+    response = page.request.get(f"{base_url}/events/api/v2/snapshot")
+    if not response.ok:
+        raise AssertionError(f"Snapshot API вернул HTTP {response.status}.")
+    return response.json()
+
+
 def _wait_for_persisted_edit(page: Page, base_url: str) -> None:
     for _attempt in range(100):
-        response = page.request.get(f"{base_url}/events/api/v2/snapshot")
-        if response.ok:
-            snapshot = response.json()
-            records = snapshot.get("records", [])
+        snapshot = _snapshot(page, base_url)
+        records = snapshot.get("records", [])
+        if (
+            isinstance(records, list)
+            and len(records) == 1
+            and records[0].get("description") == EDITED_DESCRIPTION
+            and records[0].get("revision") == 2
+        ):
+            return
+        page.wait_for_timeout(100)
+    raise AssertionError("Редактирование Univer не было сохранено через optimistic PATCH API.")
+
+
+def _assert_incomplete_draft_not_persisted(page: Page, base_url: str) -> None:
+    page.wait_for_timeout(400)
+    snapshot = _snapshot(page, base_url)
+    records = snapshot.get("records", [])
+    if not isinstance(records, list) or len(records) != 1:
+        raise AssertionError("Незавершённая строка ошибочно создала запись в SQLite.")
+
+
+def _wait_for_created_record(page: Page, base_url: str) -> None:
+    for _attempt in range(100):
+        snapshot = _snapshot(page, base_url)
+        records = snapshot.get("records", [])
+        if isinstance(records, list) and len(records) == 2:
+            created = records[1]
             if (
-                len(records) == 1
-                and records[0].get("description") == EDITED_DESCRIPTION
-                and records[0].get("revision") == 2
+                created.get("assetLabel") == CREATED_ASSET
+                and created.get("description") == CREATED_DESCRIPTION
+                and created.get("eventType") == "other"
+                and created.get("eventTypeLabel") == "Другое"
+                and created.get("revision") == 1
+                and created.get("includeInReport") is True
             ):
                 return
         page.wait_for_timeout(100)
-    raise AssertionError("Редактирование Univer не было сохранено через optimistic PATCH API.")
+    raise AssertionError("Новая строка Univer не была создана через POST API.")
 
 
 def main() -> None:
@@ -97,8 +132,27 @@ def main() -> None:
             page.keyboard.press("Control+A")
             page.keyboard.type(EDITED_DESCRIPTION)
             page.keyboard.press("Enter")
-
             _wait_for_persisted_edit(page, base_url)
+
+            # The next visual row is the only draft row. Filling one required
+            # field must not create a partial database record.
+            page.mouse.dblclick(340, 269)
+            page.keyboard.press("Control+A")
+            page.keyboard.type(CREATED_ASSET)
+            page.keyboard.press("Enter")
+            _assert_incomplete_draft_not_persisted(page, base_url)
+
+            # Completing the second required field creates exactly one event,
+            # converts the draft row to a persisted row and appends a fresh draft.
+            page.mouse.dblclick(690, 269)
+            page.keyboard.press("Control+A")
+            page.keyboard.type(CREATED_DESCRIPTION)
+            page.keyboard.press("Enter")
+            _wait_for_created_record(page, base_url)
+
+            page.locator(".shift-helper-v2__status").filter(
+                has_text="Загружено записей: 2"
+            ).wait_for(state="visible", timeout=10_000)
             page.locator(".shift-helper-v2__status").filter(
                 has_text="все изменения сохранены"
             ).wait_for(state="visible", timeout=10_000)

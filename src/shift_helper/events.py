@@ -47,6 +47,23 @@ V2_PATCH_FIELDS: dict[str, str] = {
 }
 V2_NULLABLE_PATCH_FIELDS = {"reason", "actions", "performer", "errorCodes", "rotorLimit"}
 
+# New rows use the same domain validator as the classic form. The browser sends
+# explicit defaults for start time, event type and report inclusion; the API
+# does not create partial records from an unfinished spreadsheet row.
+V2_CREATE_FIELDS: dict[str, str] = {
+    "startAt": "start_at",
+    "assetLabel": "asset_label",
+    "eventType": "event_type",
+    "description": "description",
+    "reason": "reason",
+    "actions": "actions",
+    "performer": "performer",
+    "errorCodes": "error_codes",
+    "rotorLimit": "rotor_limit",
+    "includeInReport": "include_in_report",
+}
+V2_NULLABLE_CREATE_FIELDS = {"reason", "actions", "performer", "errorCodes", "rotorLimit"}
+
 
 def _database_engine() -> Engine:
     return current_app.extensions["shift_helper_database_engine"]
@@ -105,6 +122,41 @@ def _v2_patch_form_values(event: Event, changes: Mapping[str, Any]) -> dict[str,
     return values
 
 
+def _v2_create_form_values(values: Mapping[str, Any]) -> dict[str, str]:
+    form_values = {
+        "start_at": "",
+        "asset_label": "",
+        "event_type": "",
+        "description": "",
+        "reason": "",
+        "actions": "",
+        "performer": "",
+        "error_codes": "",
+        "rotor_limit": "",
+        "include_in_report": "",
+    }
+
+    for api_field, raw_value in values.items():
+        model_field = V2_CREATE_FIELDS.get(api_field)
+        if model_field is None:
+            raise EventValidationError(f"Поле «{api_field}» нельзя передавать при создании записи.")
+
+        if api_field == "includeInReport":
+            if not isinstance(raw_value, bool):
+                raise EventValidationError(
+                    "Поле «includeInReport» должно содержать логическое значение."
+                )
+            form_values[model_field] = "on" if raw_value else ""
+        elif raw_value is None and api_field in V2_NULLABLE_CREATE_FIELDS:
+            form_values[model_field] = ""
+        elif isinstance(raw_value, str):
+            form_values[model_field] = raw_value
+        else:
+            raise EventValidationError(f"Поле «{api_field}» должно содержать текст.")
+
+    return form_values
+
+
 @events_blueprint.get("")
 def list_events() -> str:
     status = request.args.get("status", "all")
@@ -148,6 +200,47 @@ def journal_v2_snapshot() -> Response:
             "records": records,
         }
     )
+
+
+@events_blueprint.post("/api/v2/records")
+def journal_v2_create_record() -> tuple[Response, int]:
+    """Create one complete event from the first Univer draft row."""
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return _api_error("invalid_json", "Ожидался JSON-объект.", status=400)
+
+    client_id = payload.get("clientId")
+    values = payload.get("values")
+    if not isinstance(client_id, str) or not client_id.strip() or len(client_id) > 128:
+        return _api_error(
+            "invalid_client_id",
+            "Укажите корректный временный идентификатор строки.",
+            status=400,
+        )
+    if not isinstance(values, dict):
+        return _api_error("invalid_values", "Не переданы значения новой записи.", status=400)
+
+    try:
+        normalized = event_values_from_form(_v2_create_form_values(values))
+    except EventValidationError as exc:
+        return _api_error("validation_error", str(exc), status=422)
+
+    with Session(_database_engine()) as session:
+        event = Event(**normalized)
+        session.add(event)
+        session.commit()
+        session.refresh(event)
+        return (
+            jsonify(
+                {
+                    "schemaVersion": 1,
+                    "clientId": client_id,
+                    "record": _event_snapshot(event),
+                }
+            ),
+            201,
+        )
 
 
 @events_blueprint.patch("/api/v2/records/<int:event_id>")

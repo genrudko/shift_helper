@@ -1,7 +1,12 @@
 import type { IWorkbookData } from '@univerjs/core';
 import { LocaleType } from '@univerjs/presets';
 
-import type { EditableJournalField, JournalEventSnapshot, JournalSnapshot } from './types';
+import type {
+  EditableJournalField,
+  JournalDraftSnapshot,
+  JournalRowSnapshot,
+  JournalSnapshot,
+} from './types';
 
 export type CellValue = string | number;
 
@@ -9,7 +14,7 @@ type JournalColumn = {
   readonly title: string;
   readonly width: number;
   readonly field?: EditableJournalField;
-  readonly value: (record: JournalEventSnapshot, visualIndex: number) => CellValue;
+  readonly value: (record: JournalRowSnapshot, visualIndex: number) => CellValue;
 };
 
 export const HEADER_ROW_INDEX = 0;
@@ -109,7 +114,7 @@ export function getEditableField(columnIndex: number): EditableJournalField | nu
 }
 
 export function getDisplayValue(
-  record: JournalEventSnapshot,
+  record: JournalRowSnapshot,
   columnIndex: number,
   visualIndex = 0
 ): CellValue {
@@ -117,7 +122,23 @@ export function getDisplayValue(
   return column ? column.value(record, visualIndex) : '';
 }
 
-function buildCellData(snapshot: JournalSnapshot): Record<number, Record<number, object>> {
+function buildDisplayRow(record: JournalRowSnapshot, visualIndex: number): Record<number, object> {
+  const row: Record<number, object> = {};
+  DISPLAY_COLUMNS.forEach((column, columnIndex) => {
+    const value = column.value(record, visualIndex);
+    row[columnIndex] = {
+      v: value,
+      t: typeof value === 'number' ? 2 : 1,
+      s: BODY_STYLE_ID,
+    };
+  });
+  return row;
+}
+
+function buildCellData(
+  snapshot: JournalSnapshot,
+  draft: JournalDraftSnapshot
+): Record<number, Record<number, object>> {
   const cellData: Record<number, Record<number, object>> = {
     [HEADER_ROW_INDEX]: {},
   };
@@ -132,21 +153,18 @@ function buildCellData(snapshot: JournalSnapshot): Record<number, Record<number,
 
   snapshot.records.forEach((record, recordIndex) => {
     const rowIndex = recordIndex + 1;
-    const row: Record<number, object> = {};
-
-    DISPLAY_COLUMNS.forEach((column, columnIndex) => {
-      const value = column.value(record, recordIndex);
-      row[columnIndex] = {
-        v: value,
-        t: typeof value === 'number' ? 2 : 1,
-        s: BODY_STYLE_ID,
-      };
-    });
-
+    const row = buildDisplayRow(record, recordIndex);
     row[RECORD_ID_COLUMN] = { v: record.id, t: 2 };
     row[REVISION_COLUMN] = { v: record.revision, t: 2 };
     cellData[rowIndex] = row;
   });
+
+  const draftVisualIndex = snapshot.records.length;
+  const draftRowIndex = draftVisualIndex + 1;
+  const draftRow = buildDisplayRow(draft, draftVisualIndex);
+  draftRow[RECORD_ID_COLUMN] = { v: draft.clientId, t: 1 };
+  draftRow[REVISION_COLUMN] = { v: '', t: 1 };
+  cellData[draftRowIndex] = draftRow;
 
   return cellData;
 }
@@ -163,9 +181,12 @@ function buildColumnData(): Record<number, { w: number; hd: 0 | 1 }> {
   return columnData;
 }
 
-export function buildWorkbookData(snapshot: JournalSnapshot): IWorkbookData {
+export function buildWorkbookData(
+  snapshot: JournalSnapshot,
+  draft: JournalDraftSnapshot
+): IWorkbookData {
   const sheetId = 'event-journal-v2-sheet';
-  const visibleRows = snapshot.records.length + 1;
+  const visibleRows = snapshot.records.length + 2;
 
   return {
     id: 'shift-helper-event-journal-v2',
@@ -209,7 +230,7 @@ export function buildWorkbookData(snapshot: JournalSnapshot): IWorkbookData {
         defaultColumnWidth: 100,
         defaultRowHeight: 32,
         mergeData: [],
-        cellData: buildCellData(snapshot),
+        cellData: buildCellData(snapshot, draft),
         rowData: {
           [HEADER_ROW_INDEX]: { h: 36 },
         },

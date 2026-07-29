@@ -24,6 +24,23 @@ def _event_form(**overrides: str) -> dict[str, str]:
     return values
 
 
+def _v2_create_payload(**overrides: object) -> dict[str, object]:
+    values: dict[str, object] = {
+        "startAt": "2026-07-29T16:20",
+        "assetLabel": " ВЭУ №18 ",
+        "eventType": "other",
+        "description": " Новая запись из Univer ",
+        "reason": None,
+        "actions": " Передано смене ",
+        "performer": None,
+        "errorCodes": None,
+        "rotorLimit": None,
+        "includeInReport": True,
+    }
+    values.update(overrides)
+    return {"clientId": "draft:test-create", "values": values}
+
+
 def test_event_create_edit_and_close(tmp_path: Path) -> None:
     app = create_app(testing=True, data_root=tmp_path)
     client = app.test_client()
@@ -108,6 +125,68 @@ def test_journal_v2_host_and_snapshot_contract(tmp_path: Path) -> None:
     assert record["repairPowerMw"] == "1.00"
     assert record["status"] == "open"
     assert record["includeInReport"] is True
+
+
+def test_journal_v2_create_record_persists_complete_draft(tmp_path: Path) -> None:
+    app = create_app(testing=True, data_root=tmp_path)
+    client = app.test_client()
+
+    response = client.post("/events/api/v2/records", json=_v2_create_payload())
+
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["schemaVersion"] == 1
+    assert body["clientId"] == "draft:test-create"
+    record = body["record"]
+    assert record["id"] == 1
+    assert record["revision"] == 1
+    assert record["startAt"] == "2026-07-29T16:20"
+    assert record["assetLabel"] == "ВЭУ №18"
+    assert record["eventType"] == "other"
+    assert record["eventTypeLabel"] == "Другое"
+    assert record["description"] == "Новая запись из Univer"
+    assert record["reason"] is None
+    assert record["actions"] == "Передано смене"
+    assert record["status"] == "open"
+    assert record["includeInReport"] is True
+
+    engine = app.extensions["shift_helper_database_engine"]
+    with Session(engine) as session:
+        event = session.scalar(select(Event))
+        assert event is not None
+        assert event.asset_label == "ВЭУ №18"
+        assert event.description == "Новая запись из Univer"
+        assert event.event_type == "other"
+        assert event.revision == 1
+
+
+def test_journal_v2_create_rejects_partial_or_forbidden_draft(tmp_path: Path) -> None:
+    app = create_app(testing=True, data_root=tmp_path)
+    client = app.test_client()
+
+    partial = client.post(
+        "/events/api/v2/records",
+        json=_v2_create_payload(description="   "),
+    )
+    assert partial.status_code == 422
+    assert partial.get_json()["error"]["code"] == "validation_error"
+
+    forbidden_payload = _v2_create_payload()
+    forbidden_payload["values"]["status"] = "closed"
+    forbidden = client.post("/events/api/v2/records", json=forbidden_payload)
+    assert forbidden.status_code == 422
+    assert forbidden.get_json()["error"]["code"] == "validation_error"
+
+    invalid_id = client.post(
+        "/events/api/v2/records",
+        json={"clientId": "", "values": _v2_create_payload()["values"]},
+    )
+    assert invalid_id.status_code == 400
+    assert invalid_id.get_json()["error"]["code"] == "invalid_client_id"
+
+    engine = app.extensions["shift_helper_database_engine"]
+    with Session(engine) as session:
+        assert session.scalar(select(Event)) is None
 
 
 def test_journal_v2_patch_persists_and_recalculates(tmp_path: Path) -> None:

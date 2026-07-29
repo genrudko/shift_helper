@@ -1,6 +1,4 @@
-export interface JournalEventSnapshot {
-  id: number;
-  revision: number;
+export interface JournalRowSnapshot {
   startAt: string;
   endAt: string | null;
   assetLabel: string;
@@ -15,6 +13,15 @@ export interface JournalEventSnapshot {
   repairPowerMw: string | null;
   status: 'open' | 'closed';
   includeInReport: boolean;
+}
+
+export interface JournalEventSnapshot extends JournalRowSnapshot {
+  id: number;
+  revision: number;
+}
+
+export interface JournalDraftSnapshot extends JournalRowSnapshot {
+  clientId: string;
 }
 
 export interface JournalSnapshot {
@@ -39,6 +46,30 @@ export interface JournalPatchRequest {
 
 export interface JournalPatchResponse {
   schemaVersion: 1;
+  record: JournalEventSnapshot;
+}
+
+export interface JournalCreateValues {
+  startAt: string;
+  assetLabel: string;
+  eventType: string;
+  description: string;
+  reason: string | null;
+  actions: string | null;
+  performer: string | null;
+  errorCodes: string | null;
+  rotorLimit: string | null;
+  includeInReport: boolean;
+}
+
+export interface JournalCreateRequest {
+  clientId: string;
+  values: JournalCreateValues;
+}
+
+export interface JournalCreateResponse {
+  schemaVersion: 1;
+  clientId: string;
   record: JournalEventSnapshot;
 }
 
