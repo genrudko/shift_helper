@@ -8,6 +8,7 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "@univerjs/core": "0.25.1",
     "@univerjs/preset-sheets-core": "0.25.1",
     "@univerjs/presets": "0.25.1"
   },
