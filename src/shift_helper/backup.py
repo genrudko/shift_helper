@@ -13,7 +13,7 @@ from pathlib import Path
 from threading import Lock
 
 DEFAULT_BACKUP_RETENTION = 20
-BACKUP_MANIFEST_SCHEMA_VERSION = 1
+BACKUP_MANIFEST_SCHEMA_VERSION = 2
 _BACKUP_LOCK = Lock()
 
 
@@ -25,6 +25,8 @@ class BackupVerification:
     application_schema_version: str
     event_count: int
     audit_count: int
+    operation_count: int
+    presentation_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,7 +53,9 @@ def _sha256(path: Path) -> str:
 def _scalar(connection: sqlite3.Connection, statement: str) -> object:
     row = connection.execute(statement).fetchone()
     if row is None:
-        raise DatabaseBackupError(f"Проверка резервной копии не вернула результат: {statement}")
+        raise DatabaseBackupError(
+            f"Проверка резервной копии не вернула результат: {statement}"
+        )
     return row[0]
 
 
@@ -69,7 +73,13 @@ def verify_database_backup(path: Path) -> BackupVerification:
         if quick_check != "ok":
             raise DatabaseBackupError(f"SQLite quick_check: {quick_check}")
 
-        required_tables = {"events", "event_audit", "app_metadata"}
+        required_tables = {
+            "events",
+            "event_audit",
+            "event_operation",
+            "journal_presentation",
+            "app_metadata",
+        }
         tables = {
             row[0]
             for row in connection.execute(
@@ -79,18 +89,30 @@ def verify_database_backup(path: Path) -> BackupVerification:
         missing_tables = required_tables - tables
         if missing_tables:
             missing = ", ".join(sorted(missing_tables))
-            raise DatabaseBackupError(f"В резервной копии отсутствуют таблицы: {missing}.")
+            raise DatabaseBackupError(
+                f"В резервной копии отсутствуют таблицы: {missing}."
+            )
 
         schema_row = connection.execute(
             "SELECT value FROM app_metadata WHERE key = 'schema_version'"
         ).fetchone()
         if schema_row is None or not isinstance(schema_row[0], str):
-            raise DatabaseBackupError("В резервной копии отсутствует версия схемы приложения.")
+            raise DatabaseBackupError(
+                "В резервной копии отсутствует версия схемы приложения."
+            )
 
         event_count = int(_scalar(connection, "SELECT COUNT(*) FROM events"))
         audit_count = int(_scalar(connection, "SELECT COUNT(*) FROM event_audit"))
+        operation_count = int(
+            _scalar(connection, "SELECT COUNT(*) FROM event_operation")
+        )
+        presentation_count = int(
+            _scalar(connection, "SELECT COUNT(*) FROM journal_presentation")
+        )
     except sqlite3.DatabaseError as exc:
-        raise DatabaseBackupError(f"Резервная копия не открывается как SQLite: {exc}") from exc
+        raise DatabaseBackupError(
+            f"Резервная копия не открывается как SQLite: {exc}"
+        ) from exc
     finally:
         if "connection" in locals():
             connection.close()
@@ -102,6 +124,8 @@ def verify_database_backup(path: Path) -> BackupVerification:
         application_schema_version=schema_row[0],
         event_count=event_count,
         audit_count=audit_count,
+        operation_count=operation_count,
+        presentation_count=presentation_count,
     )
 
 
@@ -135,7 +159,9 @@ def create_database_backup(
         raise DatabaseBackupError("Основная база данных отсутствует.")
 
     backups_directory.mkdir(parents=True, exist_ok=True)
-    safe_reason = "".join(character if character.isalnum() else "-" for character in reason)
+    safe_reason = "".join(
+        character if character.isalnum() else "-" for character in reason
+    )
     safe_reason = safe_reason.strip("-")[:32] or "snapshot"
     generated_at = datetime.now()
     stamp = generated_at.strftime("%Y%m%dT%H%M%S%f")
@@ -166,6 +192,8 @@ def create_database_backup(
                 application_schema_version=verification.application_schema_version,
                 event_count=verification.event_count,
                 audit_count=verification.audit_count,
+                operation_count=verification.operation_count,
+                presentation_count=verification.presentation_count,
             )
             manifest_payload = {
                 "manifestSchemaVersion": BACKUP_MANIFEST_SCHEMA_VERSION,
@@ -177,6 +205,8 @@ def create_database_backup(
                 "applicationSchemaVersion": verification.application_schema_version,
                 "eventCount": verification.event_count,
                 "auditCount": verification.audit_count,
+                "operationCount": verification.operation_count,
+                "presentationCount": verification.presentation_count,
             }
             pending_manifest.write_text(
                 json.dumps(manifest_payload, ensure_ascii=False, indent=2) + "\n",
@@ -191,7 +221,9 @@ def create_database_backup(
             manifest.unlink(missing_ok=True)
             if isinstance(exc, DatabaseBackupError):
                 raise
-            raise DatabaseBackupError(f"Не удалось создать резервную копию: {exc}") from exc
+            raise DatabaseBackupError(
+                f"Не удалось создать резервную копию: {exc}"
+            ) from exc
 
     return DatabaseBackupResult(
         path=target,
@@ -202,17 +234,24 @@ def create_database_backup(
     )
 
 
-def prepare_verified_restore(backup_path: Path, destination_path: Path) -> BackupVerification:
+def prepare_verified_restore(
+    backup_path: Path,
+    destination_path: Path,
+) -> BackupVerification:
     """Prepare a verified restore candidate; the application must be stopped to activate it."""
 
     verification = verify_database_backup(backup_path)
     destination_path = destination_path.resolve()
-    candidate = destination_path.with_suffix(destination_path.suffix + ".restore.pending")
+    candidate = destination_path.with_suffix(
+        destination_path.suffix + ".restore.pending"
+    )
     candidate.parent.mkdir(parents=True, exist_ok=True)
     candidate.unlink(missing_ok=True)
     shutil.copy2(backup_path, candidate)
     candidate_verification = verify_database_backup(candidate)
     if candidate_verification.sha256 != verification.sha256:
         candidate.unlink(missing_ok=True)
-        raise DatabaseBackupError("Контрольная сумма кандидата восстановления не совпала.")
+        raise DatabaseBackupError(
+            "Контрольная сумма кандидата восстановления не совпала."
+        )
     return candidate_verification

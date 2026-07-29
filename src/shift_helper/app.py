@@ -67,6 +67,8 @@ def create_app(
         "sha256": None,
         "eventCount": 0,
         "auditCount": 0,
+        "operationCount": 0,
+        "presentationCount": 0,
         "lastError": None,
     }
 
@@ -127,6 +129,8 @@ def create_app(
                 sha256=result.verification.sha256,
                 eventCount=result.verification.event_count,
                 auditCount=result.verification.audit_count,
+                operationCount=result.verification.operation_count,
+                presentationCount=result.verification.presentation_count,
                 lastError=None,
             )
 

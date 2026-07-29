@@ -72,6 +72,8 @@ def runtime_status() -> Response:
                 "generatedAt": backup_state.get("generatedAt"),
                 "eventCount": backup_state.get("eventCount", 0),
                 "auditCount": backup_state.get("auditCount", 0),
+                "operationCount": backup_state.get("operationCount", 0),
+                "presentationCount": backup_state.get("presentationCount", 0),
                 "sha256": backup_state.get("sha256"),
                 "lastError": backup_state.get("lastError"),
                 "downloadAvailable": backup_path is not None and manifest_path is not None,
