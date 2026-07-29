@@ -65,6 +65,7 @@ jobs:
           run_stage "acceptance-stage-8" scripts/ui_smoke_acceptance_stage8.py ui-stage8-failure.png
           run_stage "full-ui-smoke" scripts/ui_smoke_entry_stage1.py ui-smoke-failure.png
           run_stage "operator-video-regression" scripts/ui_smoke_video_regression.py ui-video-regression-failure.png
+          run_stage "manual-rejection-regression" scripts/ui_smoke_manual_rejection.py ui-manual-rejection-failure.png
 
       - name: Stop isolated instance
         if: always()
@@ -84,6 +85,7 @@ jobs:
             ui-smoke.log
             ui-smoke-failure.png
             ui-video-regression-failure.png
+            ui-manual-rejection-failure.png
             ui-stage1-failure.png
             ui-stage2-failure.png
             ui-stage3-failure.png
