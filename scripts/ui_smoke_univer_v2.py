@@ -57,7 +57,7 @@ def main() -> None:
     screenshot_path.parent.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
         page = browser.new_page(viewport={"width": 1600, "height": 1000}, device_scale_factor=1)
         page_errors: list[str] = []
         console_errors: list[str] = []
