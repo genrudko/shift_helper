@@ -7,6 +7,7 @@ from typing import Any
 
 from flask import Flask, jsonify, render_template, request
 
+from .backup import DatabaseBackupError, create_database_backup
 from .database import initialize_database
 from .event_batch import event_batch_blueprint
 from .event_history import event_history_blueprint
@@ -35,10 +36,21 @@ def create_app(*, testing: bool = False, data_root: Path | None = None) -> Flask
         "recordCount": 0,
         "lastError": None,
     }
+    backup_state: dict[str, Any] = {
+        "status": "pending",
+        "path": None,
+        "manifestPath": None,
+        "generatedAt": None,
+        "sha256": None,
+        "eventCount": 0,
+        "auditCount": 0,
+        "lastError": None,
+    }
 
     app.extensions["shift_helper_runtime_paths"] = runtime_paths
     app.extensions["shift_helper_database_engine"] = engine
     app.extensions["shift_helper_event_mirror"] = mirror_state
+    app.extensions["shift_helper_database_backup"] = backup_state
     app.register_blueprint(events_blueprint)
     app.register_blueprint(event_history_blueprint)
     app.register_blueprint(event_batch_blueprint)
@@ -67,10 +79,36 @@ def create_app(*, testing: bool = False, data_root: Path | None = None) -> Flask
                 lastError=None,
             )
 
+    def create_verified_backup(reason: str) -> None:
+        try:
+            result = create_database_backup(
+                runtime_paths.database,
+                runtime_paths.backups,
+                reason=reason,
+            )
+        except DatabaseBackupError as exc:
+            app.logger.error("Database backup failed: %s", exc)
+            backup_state.update(status="error", lastError=str(exc))
+        except Exception as exc:  # pragma: no cover - defensive runtime reporting
+            app.logger.exception("Unexpected database backup failure")
+            backup_state.update(status="error", lastError=str(exc))
+        else:
+            backup_state.update(
+                status="ok",
+                path=str(result.path),
+                manifestPath=str(result.manifest_path),
+                generatedAt=result.generated_at.isoformat(timespec="microseconds"),
+                sha256=result.verification.sha256,
+                eventCount=result.verification.event_count,
+                auditCount=result.verification.audit_count,
+                lastError=None,
+            )
+
     refresh_event_mirror()
+    create_verified_backup("startup")
 
     @app.after_request
-    def synchronize_event_mirror(response):
+    def synchronize_derived_data(response):
         mutating_event_request = (
             request.path.startswith("/events")
             and request.method in {"POST", "PATCH", "PUT", "DELETE"}
@@ -78,7 +116,9 @@ def create_app(*, testing: bool = False, data_root: Path | None = None) -> Flask
         )
         if mutating_event_request:
             refresh_event_mirror()
+            create_verified_backup("event-mutation")
         response.headers["X-Shift-Helper-Event-Mirror"] = mirror_state["status"]
+        response.headers["X-Shift-Helper-Backup"] = backup_state["status"]
         return response
 
     @app.get("/")
@@ -97,6 +137,7 @@ def create_app(*, testing: bool = False, data_root: Path | None = None) -> Flask
                 "status": "ok",
                 "database": str(runtime_paths.database),
                 "eventMirror": mirror_state,
+                "databaseBackup": backup_state,
             }
         )
 
