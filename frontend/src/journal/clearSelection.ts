@@ -45,6 +45,7 @@ export function startJournalClearSelection(
   status: HTMLElement
 ): void {
   let clearing = false;
+  const html = document.documentElement;
 
   const setStatus = (
     state: 'saving' | 'error',
@@ -68,6 +69,12 @@ export function startJournalClearSelection(
     const startColumn = range.getColumn();
     const rowCount = range.getNumRows();
     const columnCount = range.getNumColumns();
+    html.dataset.clearResolvedRange = JSON.stringify({
+      startRow,
+      startColumn,
+      rowCount,
+      columnCount,
+    });
     if (
       !Number.isInteger(startRow) ||
       !Number.isInteger(startColumn) ||
@@ -132,6 +139,7 @@ export function startJournalClearSelection(
       }
     }
 
+    html.dataset.clearOperationCount = String(operations.length);
     if (operations.length === 0) {
       status.dataset.clearState = 'idle';
       status.classList.remove('shift-helper-v2__status--error');
@@ -148,19 +156,41 @@ export function startJournalClearSelection(
     );
     try {
       await patchRecordsBatch({ operations });
+      html.dataset.clearBatchResult = 'success';
       window.location.reload();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      html.dataset.clearBatchResult = `error:${message}`;
       clearing = false;
       setStatus('error', `Диапазон не очищен: ${message}`);
     }
   };
 
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      html.dataset.clearLastKey = event.key;
+      html.dataset.clearLastKeyTarget =
+        event.target instanceof Element ? event.target.tagName : 'unknown';
+    },
+    true
+  );
+
+  univerAPI.addEvent(univerAPI.Event.SelectionChanged, (event: any) => {
+    try {
+      html.dataset.clearLastSelection = JSON.stringify(event.selections ?? null);
+    } catch {
+      html.dataset.clearLastSelection = 'unserializable';
+    }
+  });
+
   univerAPI.addEvent(univerAPI.Event.BeforeCommandExecute, (event: any) => {
+    html.dataset.clearLastCommand = String(event.id ?? 'unknown');
     if (!CLEAR_COMMANDS.has(event.id)) return;
     event.cancel = true;
+    html.dataset.clearIntercepted = 'true';
     void clearActiveRange();
   });
 
-  document.documentElement.dataset.clearSelection = 'active';
+  html.dataset.clearSelection = 'active';
 }
