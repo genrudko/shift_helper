@@ -1,0 +1,21 @@
+{
+  "name": "shift-helper-journal-ui-v2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@univerjs/preset-sheets-core": "0.25.1",
+    "@univerjs/presets": "0.25.1"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.1.5"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}
