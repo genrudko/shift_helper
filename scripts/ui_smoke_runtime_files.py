@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from playwright.sync_api import ConsoleMessage, Page, sync_playwright
+from playwright.sync_api import ConsoleMessage, sync_playwright
 
 
 def _capture_console_error(message: ConsoleMessage, errors: list[str]) -> None:
