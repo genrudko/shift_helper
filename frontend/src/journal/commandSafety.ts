@@ -126,6 +126,33 @@ export function startJournalCommandSafety(univerAPI: any): void {
     showBlocked(message);
   };
 
+  const blockShortcut = (event: KeyboardEvent, message: string): void => {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    showBlocked(message);
+  };
+
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === 'x') {
+        blockShortcut(
+          event,
+          'Вырезание диапазона пока недоступно. Используйте копирование и вставку.'
+        );
+      } else if (key === 'z' && event.shiftKey) {
+        blockShortcut(event, 'Повтор пока недоступен для сохранённых записей.');
+      } else if (key === 'z') {
+        blockShortcut(event, 'Отмена пока недоступна для сохранённых записей.');
+      } else if (key === 'y') {
+        blockShortcut(event, 'Повтор пока недоступен для сохранённых записей.');
+      }
+    },
+    true
+  );
+
   univerAPI.addEvent(univerAPI.Event.BeforeCommandExecute, (event: any) => {
     const message = BLOCKED_COMMAND_MESSAGES.get(event.id);
     if (message) blockEvent(event, message);
