@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import ConsoleMessage, Page, sync_playwright
 
 
 def _seed_event(page: Page, base_url: str) -> None:
@@ -26,6 +26,11 @@ def _seed_event(page: Page, base_url: str) -> None:
         raise AssertionError(f"Не удалось создать тестовую запись: HTTP {response.status}")
 
 
+def _capture_console_error(message: ConsoleMessage, errors: list[str]) -> None:
+    if message.type == "error":
+        errors.append(message.text)
+
+
 def main() -> None:
     base_url = os.environ.get("SHIFT_HELPER_BASE_URL", "http://127.0.0.1:17944")
     screenshot_path = Path(
@@ -39,10 +44,7 @@ def main() -> None:
         page_errors: list[str] = []
         console_errors: list[str] = []
         page.on("pageerror", lambda error: page_errors.append(str(error)))
-        page.on(
-            "console",
-            lambda message: console_errors.append(message.text) if message.type == "error" else None,
-        )
+        page.on("console", lambda message: _capture_console_error(message, console_errors))
 
         try:
             _seed_event(page, base_url)
