@@ -17,6 +17,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.18.0"
+
+      - name: Build Univer frontend
+        working-directory: frontend
+        run: npm install --no-audit --no-fund && npm run check && npm run build
+
+      - name: Verify generated Windows frontend assets
+        shell: pwsh
+        run: |
+          $required = @(
+            ".\src\shift_helper\static\univer-v2\journal-v2.js",
+            ".\src\shift_helper\static\univer-v2\journal-v2.css"
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path $path) -or (Get-Item $path).Length -eq 0) {
+              throw "Missing or empty frontend asset: $path"
+            }
+          }
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -79,6 +101,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.18.0"
+
+      - name: Build Univer frontend
+        working-directory: frontend
+        run: npm install --no-audit --no-fund && npm run check && npm run build
+
+      - name: Verify generated Linux frontend assets
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -s src/shift_helper/static/univer-v2/journal-v2.js
+          test -s src/shift_helper/static/univer-v2/journal-v2.css
 
       - name: Set up Python
         uses: actions/setup-python@v5
