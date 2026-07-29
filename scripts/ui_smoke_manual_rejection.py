@@ -151,11 +151,21 @@ def test_row_drag_integrity(page: Page) -> None:
 def formatting_snapshot(page: Page) -> dict:
     return page.evaluate(
         """() => {
-            const cell = document.querySelector(
-                '.tabulator-row:visible .tabulator-cell[tabulator-field="description"]'
+            const root = document.getElementById('event-journal');
+            const holder = root.querySelector('.tabulator-tableholder');
+            const holderRect = holder.getBoundingClientRect();
+            const row = [...root.querySelectorAll('.tabulator-row')].find(candidate => {
+                const rect = candidate.getBoundingClientRect();
+                const style = getComputedStyle(candidate);
+                return rect.bottom > holderRect.top + 1
+                    && rect.top < holderRect.bottom - 1
+                    && style.display !== 'none'
+                    && style.visibility !== 'hidden';
+            });
+            const cell = row?.querySelector(
+                '.tabulator-cell[tabulator-field="description"]'
             );
             const value = cell?.querySelector('.journal-cell-value');
-            const row = cell?.closest('.tabulator-row');
             const table = window.shiftHelperEventGrid;
             const component = table.getRows('visible').find(
                 candidate => candidate.getElement() === row
