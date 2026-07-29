@@ -192,7 +192,7 @@ export function buildWorkbookData(
     id: 'shift-helper-event-journal-v2',
     name: 'Журнал событий',
     appVersion: '0.25.1',
-    locale: LocaleType.EN_US,
+    locale: LocaleType.RU_RU,
     styles: {
       [HEADER_STYLE_ID]: {
         bl: 1,
