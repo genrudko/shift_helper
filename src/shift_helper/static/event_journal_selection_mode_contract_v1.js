@@ -13,6 +13,7 @@
 
     let frame = 0;
     let snapshotFrame = 0;
+    let clearingRanges = false;
     const authoritativeRowKeys = new Set(window.shiftHelperSelectedRowKeys || []);
 
     function rowKey(row) {
@@ -29,12 +30,27 @@
     }
 
     function clearCellRanges() {
-        for (const range of table.getRanges?.() || []) {
-            try {
-                range.remove();
-            } catch (_error) {
-                // A stale virtual range must not block a row-selection gesture.
+        if (clearingRanges) return;
+        clearingRanges = true;
+        try {
+            const selectRange = table.modules?.selectRange;
+            if (typeof selectRange?.clearRanges === "function") {
+                // The vendored Tabulator range component recreates a default
+                // range when the last public RangeComponent is removed. The
+                // module-level clear is the only operation that leaves row
+                // mode with no active range and therefore no transparent row.
+                selectRange.clearRanges();
+                return;
             }
+            for (const range of table.getRanges?.() || []) {
+                try {
+                    range.remove();
+                } catch (_error) {
+                    // A stale virtual range must not block a row-selection gesture.
+                }
+            }
+        } finally {
+            clearingRanges = false;
         }
     }
 
@@ -51,7 +67,8 @@
             if (!(element instanceof Element)) return;
             const selected = authoritativeRowKeys.has(rowKey(row));
             element.classList.toggle("journal-row--multi-selected", selected);
-            if (selected) element.style.removeProperty("opacity");
+            if (selected) element.style.setProperty("opacity", "1", "important");
+            else element.style.removeProperty("opacity");
         });
         root.dataset.rowSelectionVisualCount = String(authoritativeRowKeys.size);
     }
@@ -87,11 +104,17 @@
     function settleNonCellMode(mode) {
         root.dataset.selectionMode = mode;
         clearCellVisuals();
-        queueMicrotask(clearCellVisuals);
+        queueMicrotask(() => {
+            clearCellVisuals();
+            if (mode === "rows") clearCellRanges();
+        });
         cancelAnimationFrame(frame);
         frame = requestAnimationFrame(() => {
             clearCellVisuals();
-            if (mode === "rows") reconcileRows();
+            if (mode === "rows") {
+                clearCellRanges();
+                reconcileRows();
+            }
         });
     }
 
@@ -125,6 +148,7 @@
 
         if (event.target.closest(".tabulator-cell") && root.contains(event.target)) {
             root.dataset.selectionMode = "cells";
+            table.getRows().forEach((row) => row.getElement?.()?.style.removeProperty("opacity"));
             authoritativeRowKeys.clear();
             window.shiftHelperSelectedRowKeys = [];
             root.querySelectorAll(".journal-row--multi-selected").forEach((element) => {
