@@ -12,6 +12,10 @@ from .database import initialize_database
 from .event_batch import event_batch_blueprint
 from .event_history import event_history_blueprint
 from .event_mirror import EventMirrorWriteError, refresh_event_journal_mirror
+from .event_presentation import (
+    event_presentation_blueprint,
+    initialize_event_presentation,
+)
 from .events import events_blueprint
 from .paths import build_runtime_paths, ensure_runtime_directories
 from .security import configure_lan_security, load_or_create_session_secret
@@ -39,6 +43,7 @@ def create_app(
     )
     configure_lan_security(app, enabled=lan_mode, token=lan_token)
     engine = initialize_database(runtime_paths.database)
+    initialize_event_presentation(engine)
 
     mirror_state: dict[str, Any] = {
         "status": "pending",
@@ -66,6 +71,7 @@ def create_app(
     app.register_blueprint(events_blueprint)
     app.register_blueprint(event_history_blueprint)
     app.register_blueprint(event_batch_blueprint)
+    app.register_blueprint(event_presentation_blueprint)
 
     def refresh_event_mirror() -> None:
         try:
@@ -123,6 +129,7 @@ def create_app(
     def synchronize_derived_data(response):
         mutating_event_request = (
             request.path.startswith("/events")
+            and request.path != "/events/api/v2/presentation"
             and request.method in {"POST", "PATCH", "PUT", "DELETE"}
             and response.status_code < 400
         )

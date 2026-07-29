@@ -106,11 +106,48 @@ export interface JournalBatchResponse {
   records: JournalEventSnapshot[];
 }
 
+export type JournalPresentationStyle = string | Record<string, unknown>;
+
+export interface JournalPresentationDimension {
+  w?: number;
+  h?: number;
+  hd?: 0 | 1;
+}
+
+export interface JournalPresentationPayload {
+  schemaVersion: 1;
+  workbookStyles: Record<string, unknown>;
+  sheet: {
+    zoomRatio: number;
+    freeze: {
+      startRow: number;
+      startColumn: number;
+      ySplit: number;
+      xSplit: number;
+    };
+    columnData: Record<string, JournalPresentationDimension>;
+    rowData: Record<string, JournalPresentationDimension>;
+    cellStyles: Record<string, Record<string, JournalPresentationStyle>>;
+  };
+}
+
+export interface JournalPresentationState {
+  schemaVersion: 1;
+  revision: number;
+  updatedAt: string | null;
+  presentation: JournalPresentationPayload;
+}
+
+export interface JournalPresentationSaveRequest {
+  revision: number;
+  presentation: JournalPresentationPayload;
+}
+
 export interface JournalApiErrorBody {
   error: {
     code: string;
     message: string;
-    current?: JournalEventSnapshot;
+    current?: unknown;
     operationIndex?: number;
     recordId?: number;
   };

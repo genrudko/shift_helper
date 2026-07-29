@@ -7,12 +7,15 @@ import type {
   JournalEventSnapshot,
   JournalPatchRequest,
   JournalPatchResponse,
+  JournalPresentationSaveRequest,
+  JournalPresentationState,
   JournalSnapshot,
   JournalTransitionRequest,
 } from './types';
 
 const SNAPSHOT_ENDPOINT = '/events/api/v2/snapshot';
 const RECORD_ENDPOINT = '/events/api/v2/records';
+const PRESENTATION_ENDPOINT = '/events/api/v2/presentation';
 
 export class JournalApiError extends Error {
   constructor(
@@ -22,6 +25,15 @@ export class JournalApiError extends Error {
     readonly current?: JournalEventSnapshot,
     readonly operationIndex?: number,
     readonly recordId?: number
+  ) {
+    super(message);
+  }
+}
+
+export class JournalPresentationConflictError extends Error {
+  constructor(
+    message: string,
+    readonly current: JournalPresentationState
   ) {
     super(message);
   }
@@ -41,7 +53,7 @@ function apiError(response: Response, body: unknown): JournalApiError {
     data.error?.message ?? `Сервер вернул HTTP ${response.status}.`,
     response.status,
     data.error?.code ?? 'unknown_error',
-    data.error?.current,
+    data.error?.current as JournalEventSnapshot | undefined,
     data.error?.operationIndex,
     data.error?.recordId
   );
@@ -79,6 +91,60 @@ export async function loadSnapshot(): Promise<JournalSnapshot> {
     throw new Error('Сервер вернул неподдерживаемый формат журнала.');
   }
   return data;
+}
+
+export async function loadPresentation(): Promise<JournalPresentationState> {
+  const response = await fetch(PRESENTATION_ENDPOINT, {
+    headers: { Accept: 'application/json' },
+    credentials: 'same-origin',
+  });
+  const body = await jsonResponse(response);
+  if (!response.ok) throw apiError(response, body);
+
+  const data = body as JournalPresentationState;
+  if (
+    data.schemaVersion !== 1 ||
+    typeof data.revision !== 'number' ||
+    data.presentation?.schemaVersion !== 1
+  ) {
+    throw new Error('Сервер вернул неподдерживаемое оформление журнала.');
+  }
+  return data;
+}
+
+export async function savePresentation(
+  payload: JournalPresentationSaveRequest
+): Promise<JournalPresentationState> {
+  const response = await fetch(PRESENTATION_ENDPOINT, {
+    method: 'PUT',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    credentials: 'same-origin',
+    body: JSON.stringify(payload),
+  });
+  const body = await jsonResponse(response);
+  if (!response.ok) {
+    const data = body as JournalApiErrorBody;
+    const current = data.error?.current as JournalPresentationState | undefined;
+    if (response.status === 409 && current?.presentation?.schemaVersion === 1) {
+      throw new JournalPresentationConflictError(
+        data.error.message ?? 'Оформление изменено на другом рабочем месте.',
+        current
+      );
+    }
+    throw apiError(response, body);
+  }
+  const result = body as JournalPresentationState;
+  if (
+    result.schemaVersion !== 1 ||
+    typeof result.revision !== 'number' ||
+    result.presentation?.schemaVersion !== 1
+  ) {
+    throw new Error('Сервер вернул неподдерживаемый результат сохранения оформления.');
+  }
+  return result;
 }
 
 export async function patchRecord(

@@ -5,9 +5,13 @@ import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets';
 import '@univerjs/preset-sheets-core/lib/index.css';
 import './styles.css';
 
-import { loadSnapshot } from './journal/api';
-import { buildWorkbookData } from './journal/buildWorkbook';
+import { loadPresentation, loadSnapshot } from './journal/api';
+import { buildWorkbookData, DISPLAY_COLUMNS } from './journal/buildWorkbook';
 import { createDraft, startJournalController } from './journal/controller';
+import {
+  applyPresentation,
+  startPresentationPersistence,
+} from './journal/presentation';
 import {
   configureEventTypeOptions,
   renderFailure,
@@ -26,7 +30,10 @@ async function start(): Promise<void> {
   const { status, controls } = renderShell(root);
 
   try {
-    const snapshot = await loadSnapshot();
+    const [snapshot, presentation] = await Promise.all([
+      loadSnapshot(),
+      loadPresentation(),
+    ]);
     configureEventTypeOptions(controls.eventType, snapshot.eventTypes);
     const draft = createDraft(snapshot.eventTypes);
     const { univerAPI } = createUniver({
@@ -42,7 +49,19 @@ async function start(): Promise<void> {
     });
 
     startJournalController(univerAPI, snapshot, draft, status, controls);
-    univerAPI.createWorkbook(buildWorkbookData(snapshot, draft));
+    const workbookData = applyPresentation(
+      buildWorkbookData(snapshot, draft),
+      presentation,
+      DISPLAY_COLUMNS.length
+    );
+    const workbook = univerAPI.createWorkbook(workbookData);
+    startPresentationPersistence(
+      univerAPI,
+      workbook,
+      presentation,
+      DISPLAY_COLUMNS.length,
+      status
+    );
   } catch (error) {
     renderFailure(root, error);
   }

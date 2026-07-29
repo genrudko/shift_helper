@@ -50,6 +50,13 @@ def _snapshot(page: Page, base_url: str) -> dict[str, object]:
     return response.json()
 
 
+def _presentation(page: Page, base_url: str) -> dict[str, object]:
+    response = page.request.get(f"{base_url}/events/api/v2/presentation")
+    if not response.ok:
+        raise AssertionError(f"Presentation API вернул HTTP {response.status}.")
+    return response.json()
+
+
 def _wait_for_snapshot(page: Page, base_url: str, predicate, failure_message: str) -> None:
     for _attempt in range(120):
         snapshot = _snapshot(page, base_url)
@@ -78,6 +85,23 @@ def _wait_for_record(
 
     _wait_for_snapshot(page, base_url, snapshot_predicate, failure_message)
     return found
+
+
+def _wait_for_presentation_style(page: Page, base_url: str) -> int:
+    for _attempt in range(120):
+        state = _presentation(page, base_url)
+        revision = state.get("revision")
+        presentation = state.get("presentation")
+        if isinstance(revision, int) and revision >= 1 and isinstance(presentation, dict):
+            sheet = presentation.get("sheet")
+            if isinstance(sheet, dict):
+                cell_styles = sheet.get("cellStyles")
+                if isinstance(cell_styles, dict):
+                    row = cell_styles.get("1")
+                    if isinstance(row, dict) and "5" in row:
+                        return revision
+        page.wait_for_timeout(100)
+    raise AssertionError("Оформление ячейки F2 не было сохранено presentation API.")
 
 
 def _assert_incomplete_draft_not_persisted(page: Page, base_url: str) -> None:
@@ -116,6 +140,8 @@ def main() -> None:
         context = browser.new_context(
             viewport={"width": 1600, "height": 1000},
             device_scale_factor=1,
+            locale="ru-RU",
+            timezone_id="Europe/Moscow",
         )
         context.grant_permissions(
             ["clipboard-read", "clipboard-write"],
@@ -276,6 +302,22 @@ def main() -> None:
             page.locator(".shift-helper-v2__status").filter(
                 has_text="все изменения сохранены"
             ).wait_for(state="visible", timeout=10_000)
+
+            page.mouse.click(description_x, row_two_y)
+            page.keyboard.press("Control+B")
+            presentation_revision = _wait_for_presentation_style(page, base_url)
+            page.locator('.shift-helper-v2__status[data-presentation-state="saved"]').wait_for(
+                state="visible", timeout=10_000
+            )
+
+            page.reload(wait_until="networkidle")
+            page.locator(".shift-helper-v2__status").filter(
+                has_text="Загружено записей: 2"
+            ).wait_for(state="visible", timeout=30_000)
+            _wait_for_working_canvas(page)
+            reloaded_presentation = _presentation(page, base_url)
+            if reloaded_presentation.get("revision") != presentation_revision:
+                raise AssertionError("Ревизия оформления изменилась или потерялась после reload.")
 
             if page_errors:
                 raise AssertionError("Page errors: " + " | ".join(page_errors))

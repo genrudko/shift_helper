@@ -43,7 +43,7 @@ def test_application_creates_verified_startup_and_mutation_backups(tmp_path: Pat
     startup = verify_database_backup(startup_backups[0])
     assert startup.event_count == 0
     assert startup.audit_count == 0
-    assert startup.application_schema_version == "4"
+    assert startup.application_schema_version == "5"
 
     response = client.post("/events/new", data=_event_form())
     assert response.status_code == 302
@@ -62,7 +62,7 @@ def test_application_creates_verified_startup_and_mutation_backups(tmp_path: Pat
     assert manifest["databaseFile"] == all_backups[-1].name
     assert manifest["sha256"] == latest.sha256 == _file_sha256(all_backups[-1])
     assert manifest["sizeBytes"] == latest.size_bytes
-    assert manifest["applicationSchemaVersion"] == "4"
+    assert manifest["applicationSchemaVersion"] == "5"
     assert manifest["eventCount"] == 1
     assert manifest["auditCount"] == 1
 
@@ -94,7 +94,7 @@ def test_backup_rotation_keeps_only_verified_pairs(tmp_path: Path) -> None:
     assert len(manifests) == 2
     assert {path.stem for path in backups} == {path.stem for path in manifests}
     for backup in backups:
-        assert verify_database_backup(backup).application_schema_version == "4"
+        assert verify_database_backup(backup).application_schema_version == "5"
 
 
 def test_prepare_restore_candidate_is_independently_verified(tmp_path: Path) -> None:
