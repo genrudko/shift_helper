@@ -1,0 +1,7 @@
+html[data-clear-selection="active"] .shift-helper-v2__status[data-clear-state="saving"] {
+  color: #175cd3;
+}
+
+html[data-clear-selection="active"] .shift-helper-v2__status[data-clear-state="error"] {
+  color: #b42318;
+}
