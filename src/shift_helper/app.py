@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 
 from .database import initialize_database
+from .event_mirror import EventMirrorWriteError, refresh_event_journal_mirror
 from .events import events_blueprint
 from .paths import build_runtime_paths, ensure_runtime_directories
 
@@ -23,9 +25,57 @@ def create_app(*, testing: bool = False, data_root: Path | None = None) -> Flask
     ensure_runtime_directories(runtime_paths)
     engine = initialize_database(runtime_paths.database)
 
+    mirror_state: dict[str, Any] = {
+        "status": "pending",
+        "path": None,
+        "pendingPath": None,
+        "generatedAt": None,
+        "recordCount": 0,
+        "lastError": None,
+    }
+
     app.extensions["shift_helper_runtime_paths"] = runtime_paths
     app.extensions["shift_helper_database_engine"] = engine
+    app.extensions["shift_helper_event_mirror"] = mirror_state
     app.register_blueprint(events_blueprint)
+
+    def refresh_event_mirror() -> None:
+        try:
+            result = refresh_event_journal_mirror(engine, runtime_paths.exports)
+        except EventMirrorWriteError as exc:
+            app.logger.warning("Event journal mirror is pending: %s", exc)
+            mirror_state.update(
+                status="error",
+                path=str(exc.target),
+                pendingPath=str(exc.pending),
+                lastError=str(exc),
+            )
+        except Exception as exc:  # pragma: no cover - defensive runtime reporting
+            app.logger.exception("Unexpected event journal mirror failure")
+            mirror_state.update(status="error", lastError=str(exc))
+        else:
+            mirror_state.update(
+                status="ok",
+                path=str(result.path),
+                pendingPath=None,
+                generatedAt=result.generated_at.isoformat(timespec="seconds"),
+                recordCount=result.record_count,
+                lastError=None,
+            )
+
+    refresh_event_mirror()
+
+    @app.after_request
+    def synchronize_event_mirror(response):
+        mutating_event_request = (
+            request.path.startswith("/events")
+            and request.method in {"POST", "PATCH", "PUT", "DELETE"}
+            and response.status_code < 400
+        )
+        if mutating_event_request:
+            refresh_event_mirror()
+        response.headers["X-Shift-Helper-Event-Mirror"] = mirror_state["status"]
+        return response
 
     @app.get("/")
     def index() -> str:
@@ -42,6 +92,7 @@ def create_app(*, testing: bool = False, data_root: Path | None = None) -> Flask
                 "application": "Shift-Helper",
                 "status": "ok",
                 "database": str(runtime_paths.database),
+                "eventMirror": mirror_state,
             }
         )
 
