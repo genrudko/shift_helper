@@ -20,6 +20,34 @@ def _records(page: Page, base_url: str) -> list[dict[str, object]]:
     return records
 
 
+def _wait_for_reasons(
+    page: Page,
+    base_url: str,
+    first_reason: object,
+    second_reason: object,
+    *,
+    timeout_ms: int = 10_000,
+) -> list[dict[str, object]]:
+    attempts = max(1, timeout_ms // 100)
+    for _attempt in range(attempts):
+        records = _records(page, base_url)
+        if (
+            len(records) == 2
+            and records[0].get("reason") == first_reason
+            and records[1].get("reason") == second_reason
+        ):
+            return records
+        page.wait_for_timeout(100)
+
+    status = page.locator(".shift-helper-v2__status")
+    status_text = status.text_content() if status.count() else "статус отсутствует"
+    records = _records(page, base_url)
+    raise AssertionError(
+        "Состояние причин не изменилось за отведённое время. "
+        f"Статус UI: {status_text!r}; записи: {records!r}"
+    )
+
+
 def _wait_for_history_controls(page: Page, *, can_undo: bool, can_redo: bool) -> None:
     selector = (
         '[data-testid="operation-history"]'
@@ -87,15 +115,11 @@ def main() -> None:
             page.mouse.down()
             page.mouse.move(reason_x, row_three_y, steps=6)
             page.mouse.up()
-            with page.expect_navigation(wait_until="networkidle", timeout=30_000):
-                page.keyboard.press("Delete")
+            page.keyboard.press("Delete")
 
+            cleared = _wait_for_reasons(page, base_url, None, None)
+            page.wait_for_load_state("networkidle", timeout=30_000)
             _wait_for_history_controls(page, can_undo=True, can_redo=False)
-            cleared = _records(page, base_url)
-            if cleared[0].get("reason") is not None:
-                raise AssertionError("Delete не очистил причину первой записи.")
-            if cleared[1].get("reason") is not None:
-                raise AssertionError("Delete не очистил причину второй записи.")
             if cleared[0].get("description") != before[0].get("description"):
                 raise AssertionError("Очистка диапазона изменила описание первой записи.")
             if cleared[1].get("description") != before[1].get("description"):
@@ -105,14 +129,15 @@ def main() -> None:
             if int(cleared[1].get("revision", 0)) <= int(before[1].get("revision", 0)):
                 raise AssertionError("Очистка не повысила ревизию второй записи.")
 
-            with page.expect_navigation(wait_until="networkidle", timeout=30_000):
-                page.keyboard.press("Control+Z")
+            page.keyboard.press("Control+Z")
+            restored = _wait_for_reasons(
+                page,
+                base_url,
+                first_reason,
+                second_reason,
+            )
+            page.wait_for_load_state("networkidle", timeout=30_000)
             _wait_for_history_controls(page, can_undo=True, can_redo=True)
-            restored = _records(page, base_url)
-            if restored[0].get("reason") != first_reason:
-                raise AssertionError("Undo не восстановил первую очищенную причину.")
-            if restored[1].get("reason") != second_reason:
-                raise AssertionError("Undo не восстановил вторую очищенную причину.")
 
             page.mouse.click(description_x, row_two_y)
             page.keyboard.press("Delete")
