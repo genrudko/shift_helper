@@ -56,11 +56,11 @@ export function startJournalClearSelection(
     status.textContent = message;
   };
 
-  const clearActiveRange = async (): Promise<void> => {
+  const clearResolvedRange = async (
+    worksheet: any,
+    range: any
+  ): Promise<void> => {
     if (clearing) return;
-    const worksheet = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.();
-    const selection = worksheet?.getSelection?.();
-    const range = selection?.getActiveRange?.();
     if (!worksheet || !range) {
       setStatus('error', 'Не удалось определить диапазон для очистки.');
       return;
@@ -188,9 +188,15 @@ export function startJournalClearSelection(
   univerAPI.addEvent(univerAPI.Event.BeforeCommandExecute, (event: any) => {
     html.dataset.clearLastCommand = String(event.id ?? 'unknown');
     if (!CLEAR_COMMANDS.has(event.id)) return;
+
+    const worksheet = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.();
+    const selection = worksheet?.getSelection?.();
+    const range = selection?.getActiveRange?.();
+    html.dataset.clearSelectionResolvedBeforeCancel = String(Boolean(range));
+
     event.cancel = true;
     html.dataset.clearIntercepted = 'true';
-    void clearActiveRange();
+    void clearResolvedRange(worksheet, range);
   });
 
   html.dataset.clearSelection = 'active';
