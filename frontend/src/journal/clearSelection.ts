@@ -13,6 +13,10 @@ import type {
 } from './types';
 
 const MAX_CLEAR_ROWS = 200;
+const CLEAR_COMMANDS = new Set([
+  'sheet.command.clear-selection-content',
+  'sheet.command.clear-selection-all',
+]);
 const CLEARABLE_FIELDS = new Set<EditableJournalField>([
   'reason',
   'actions',
@@ -41,7 +45,6 @@ export function startJournalClearSelection(
   status: HTMLElement
 ): void {
   let clearing = false;
-  let sheetEditing = false;
 
   const setStatus = (
     state: 'saving' | 'error',
@@ -53,7 +56,7 @@ export function startJournalClearSelection(
   };
 
   const clearActiveRange = async (): Promise<void> => {
-    if (clearing || sheetEditing) return;
+    if (clearing) return;
     const worksheet = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.();
     const range = worksheet?.getActiveRange?.();
     if (!worksheet || !range) {
@@ -153,33 +156,11 @@ export function startJournalClearSelection(
     }
   };
 
-  univerAPI.addEvent(univerAPI.Event.SheetEditStarted, () => {
-    sheetEditing = true;
+  univerAPI.addEvent(univerAPI.Event.BeforeCommandExecute, (event: any) => {
+    if (!CLEAR_COMMANDS.has(event.id)) return;
+    event.cancel = true;
+    void clearActiveRange();
   });
-  univerAPI.addEvent(univerAPI.Event.SheetEditEnded, () => {
-    sheetEditing = false;
-  });
-
-  document.addEventListener(
-    'keydown',
-    (event) => {
-      if (
-        event.isComposing ||
-        event.altKey ||
-        event.ctrlKey ||
-        event.metaKey ||
-        event.shiftKey ||
-        sheetEditing ||
-        (event.key !== 'Delete' && event.key !== 'Backspace')
-      ) {
-        return;
-      }
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      void clearActiveRange();
-    },
-    true
-  );
 
   document.documentElement.dataset.clearSelection = 'active';
 }
