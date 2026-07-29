@@ -22,6 +22,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.18.0"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+
+      - name: Type-check frontend
+        working-directory: frontend
+        run: npm run check
+
+      - name: Build Univer frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Verify generated frontend assets
+        shell: bash
+        run: |
+          test -s src/shift_helper/static/univer-v2/journal-v2.js
+          test -s src/shift_helper/static/univer-v2/journal-v2.css
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
