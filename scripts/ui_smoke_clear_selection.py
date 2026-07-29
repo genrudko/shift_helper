@@ -109,12 +109,9 @@ def main() -> None:
             reason_x = sheet_box["x"] + 930
             description_x = sheet_box["x"] + 690
             row_two_y = sheet_box["y"] + 173
-            row_three_y = row_two_y + 32
 
-            page.mouse.move(reason_x, row_two_y)
-            page.mouse.down()
-            page.mouse.move(reason_x, row_three_y, steps=6)
-            page.mouse.up()
+            page.mouse.click(reason_x, row_two_y)
+            page.keyboard.press("Shift+ArrowDown")
             page.keyboard.press("Delete")
 
             cleared = _wait_for_reasons(page, base_url, None, None)
