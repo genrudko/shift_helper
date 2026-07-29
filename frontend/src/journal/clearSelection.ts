@@ -32,15 +32,6 @@ function positiveInteger(value: unknown): number | null {
   return null;
 }
 
-function isTextEditingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  return Boolean(
-    target.closest(
-      'input, textarea, select, [contenteditable="true"], [role="textbox"]'
-    )
-  );
-}
-
 function displayValue(value: unknown): string {
   return value === null || value === undefined ? '' : String(value);
 }
@@ -50,6 +41,7 @@ export function startJournalClearSelection(
   status: HTMLElement
 ): void {
   let clearing = false;
+  let sheetEditing = false;
 
   const setStatus = (
     state: 'saving' | 'error',
@@ -61,7 +53,7 @@ export function startJournalClearSelection(
   };
 
   const clearActiveRange = async (): Promise<void> => {
-    if (clearing) return;
+    if (clearing || sheetEditing) return;
     const worksheet = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.();
     const range = worksheet?.getActiveRange?.();
     if (!worksheet || !range) {
@@ -161,6 +153,13 @@ export function startJournalClearSelection(
     }
   };
 
+  univerAPI.addEvent(univerAPI.Event.SheetEditStarted, () => {
+    sheetEditing = true;
+  });
+  univerAPI.addEvent(univerAPI.Event.SheetEditEnded, () => {
+    sheetEditing = false;
+  });
+
   document.addEventListener(
     'keydown',
     (event) => {
@@ -170,7 +169,7 @@ export function startJournalClearSelection(
         event.ctrlKey ||
         event.metaKey ||
         event.shiftKey ||
-        isTextEditingTarget(event.target) ||
+        sheetEditing ||
         (event.key !== 'Delete' && event.key !== 'Backspace')
       ) {
         return;
