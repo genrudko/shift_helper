@@ -141,7 +141,7 @@ def test_row_drag_integrity(page: Page) -> None:
             f"Row {index} lost its grid cells: {diagnostic}"
         ))
 
-    for previous, current in zip(diagnostic["rendered"], diagnostic["rendered"][1:]):
+    for previous, current in zip(diagnostic["rendered"], diagnostic["rendered"][1:], strict=False):
         require(
             abs(current["top"] - previous["bottom"]) <= 2,
             f"A blank physical gap remained between selected rows: {diagnostic}",
