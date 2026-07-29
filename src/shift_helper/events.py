@@ -6,9 +6,11 @@ from datetime import datetime
 
 from flask import (
     Blueprint,
+    Response,
     abort,
     current_app,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -41,6 +43,29 @@ def _get_event_or_404(session: Session, event_id: int) -> Event:
     return event
 
 
+def _event_snapshot(event: Event) -> dict[str, object]:
+    return {
+        "id": event.id,
+        "revision": event.revision,
+        "startAt": event.start_at.isoformat(timespec="minutes"),
+        "endAt": event.end_at.isoformat(timespec="minutes") if event.end_at else None,
+        "assetLabel": event.asset_label,
+        "eventType": event.event_type,
+        "eventTypeLabel": EVENT_TYPE_LABELS.get(event.event_type, event.event_type),
+        "description": event.description,
+        "reason": event.reason,
+        "actions": event.actions,
+        "performer": event.performer,
+        "errorCodes": event.error_codes,
+        "rotorLimit": str(event.rotor_limit) if event.rotor_limit is not None else None,
+        "repairPowerMw": (
+            str(event.repair_power_mw) if event.repair_power_mw is not None else None
+        ),
+        "status": event.status,
+        "includeInReport": event.include_in_report,
+    }
+
+
 @events_blueprint.get("")
 def list_events() -> str:
     status = request.args.get("status", "all")
@@ -59,6 +84,30 @@ def list_events() -> str:
         events=events,
         selected_status=status,
         event_type_labels=EVENT_TYPE_LABELS,
+    )
+
+
+@events_blueprint.get("/v2")
+def journal_v2() -> str:
+    """Render the clean Univer Sheets frontend host."""
+
+    return render_template("events/univer_v2.html")
+
+
+@events_blueprint.get("/api/v2/snapshot")
+def journal_v2_snapshot() -> Response:
+    """Return the stable read-only contract used by the first Univer vertical slice."""
+
+    statement = select(Event).order_by(Event.start_at.asc(), Event.id.asc())
+    with Session(_database_engine()) as session:
+        records = [_event_snapshot(event) for event in session.scalars(statement)]
+
+    return jsonify(
+        {
+            "schemaVersion": 1,
+            "generatedAt": datetime.now().isoformat(timespec="seconds"),
+            "records": records,
+        }
     )
 
 
