@@ -20,6 +20,23 @@ def _records(page: Page, base_url: str) -> list[dict[str, object]]:
     return records
 
 
+def _clear_diagnostics(page: Page) -> dict[str, object]:
+    return page.locator("html").evaluate(
+        """
+        (element) => ({
+          lastKey: element.dataset.clearLastKey ?? null,
+          lastKeyTarget: element.dataset.clearLastKeyTarget ?? null,
+          lastCommand: element.dataset.clearLastCommand ?? null,
+          intercepted: element.dataset.clearIntercepted ?? null,
+          selection: element.dataset.clearLastSelection ?? null,
+          resolvedRange: element.dataset.clearResolvedRange ?? null,
+          operationCount: element.dataset.clearOperationCount ?? null,
+          batchResult: element.dataset.clearBatchResult ?? null,
+        })
+        """
+    )
+
+
 def _wait_for_reasons(
     page: Page,
     base_url: str,
@@ -42,9 +59,11 @@ def _wait_for_reasons(
     status = page.locator(".shift-helper-v2__status")
     status_text = status.text_content() if status.count() else "статус отсутствует"
     records = _records(page, base_url)
+    diagnostics = _clear_diagnostics(page)
     raise AssertionError(
         "Состояние причин не изменилось за отведённое время. "
-        f"Статус UI: {status_text!r}; записи: {records!r}"
+        f"Статус UI: {status_text!r}; диагностика: {diagnostics!r}; "
+        f"записи: {records!r}"
     )
 
 
