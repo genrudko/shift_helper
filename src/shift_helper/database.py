@@ -5,11 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from sqlalchemy import create_engine, event, text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
 
 from .models import Base
 
-APPLICATION_SCHEMA_VERSION = "2"
+APPLICATION_SCHEMA_VERSION = "3"
 
 
 def create_database_engine(database_path: Path) -> Engine:
@@ -32,6 +32,178 @@ def create_database_engine(database_path: Path) -> Engine:
     return engine
 
 
+def _event_json(alias: str) -> str:
+    return f"""
+        json_object(
+            'id', {alias}.id,
+            'revision', {alias}.revision,
+            'startAt', {alias}.start_at,
+            'endAt', {alias}.end_at,
+            'assetLabel', {alias}.asset_label,
+            'eventType', {alias}.event_type,
+            'description', {alias}.description,
+            'reason', {alias}.reason,
+            'actions', {alias}.actions,
+            'performer', {alias}.performer,
+            'errorCodes', {alias}.error_codes,
+            'rotorLimit', {alias}.rotor_limit,
+            'repairPowerMw', {alias}.repair_power_mw,
+            'status', {alias}.status,
+            'includeInReport', {alias}.include_in_report,
+            'createdAt', {alias}.created_at,
+            'updatedAt', {alias}.updated_at
+        )
+    """
+
+
+def _initialize_event_audit(connection: Connection) -> None:
+    connection.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS event_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id INTEGER NOT NULL,
+                action TEXT NOT NULL CHECK (
+                    action IN ('baseline', 'create', 'update', 'close')
+                ),
+                old_revision INTEGER,
+                new_revision INTEGER NOT NULL,
+                changed_at TEXT NOT NULL,
+                before_json TEXT,
+                after_json TEXT NOT NULL
+            )
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            CREATE INDEX IF NOT EXISTS ix_event_audit_event_id_id
+            ON event_audit (event_id, id)
+            """
+        )
+    )
+
+    for trigger_name in (
+        "trg_events_audit_insert",
+        "trg_events_audit_update",
+        "trg_event_audit_immutable_update",
+        "trg_event_audit_immutable_delete",
+    ):
+        connection.execute(text(f"DROP TRIGGER IF EXISTS {trigger_name}"))
+
+    connection.execute(
+        text(
+            f"""
+            CREATE TRIGGER trg_events_audit_insert
+            AFTER INSERT ON events
+            BEGIN
+                INSERT INTO event_audit (
+                    event_id,
+                    action,
+                    old_revision,
+                    new_revision,
+                    changed_at,
+                    before_json,
+                    after_json
+                ) VALUES (
+                    NEW.id,
+                    'create',
+                    NULL,
+                    NEW.revision,
+                    COALESCE(NEW.updated_at, CURRENT_TIMESTAMP),
+                    NULL,
+                    {_event_json('NEW')}
+                );
+            END
+            """
+        )
+    )
+    connection.execute(
+        text(
+            f"""
+            CREATE TRIGGER trg_events_audit_update
+            AFTER UPDATE ON events
+            BEGIN
+                INSERT INTO event_audit (
+                    event_id,
+                    action,
+                    old_revision,
+                    new_revision,
+                    changed_at,
+                    before_json,
+                    after_json
+                ) VALUES (
+                    NEW.id,
+                    CASE
+                        WHEN OLD.status <> 'closed' AND NEW.status = 'closed' THEN 'close'
+                        ELSE 'update'
+                    END,
+                    OLD.revision,
+                    NEW.revision,
+                    COALESCE(NEW.updated_at, CURRENT_TIMESTAMP),
+                    {_event_json('OLD')},
+                    {_event_json('NEW')}
+                );
+            END
+            """
+        )
+    )
+
+    connection.execute(
+        text(
+            f"""
+            INSERT INTO event_audit (
+                event_id,
+                action,
+                old_revision,
+                new_revision,
+                changed_at,
+                before_json,
+                after_json
+            )
+            SELECT
+                events.id,
+                'baseline',
+                NULL,
+                events.revision,
+                COALESCE(events.updated_at, CURRENT_TIMESTAMP),
+                NULL,
+                {_event_json('events')}
+            FROM events
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM event_audit
+                WHERE event_audit.event_id = events.id
+            )
+            """
+        )
+    )
+
+    connection.execute(
+        text(
+            """
+            CREATE TRIGGER trg_event_audit_immutable_update
+            BEFORE UPDATE ON event_audit
+            BEGIN
+                SELECT RAISE(ABORT, 'event_audit is immutable');
+            END
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            CREATE TRIGGER trg_event_audit_immutable_delete
+            BEFORE DELETE ON event_audit
+            BEGIN
+                SELECT RAISE(ABORT, 'event_audit is immutable');
+            END
+            """
+        )
+    )
+
+
 def initialize_database(database_path: Path) -> Engine:
     """Create the database and current application schema when absent."""
     engine = create_database_engine(database_path)
@@ -51,6 +223,7 @@ def initialize_database(database_path: Path) -> Engine:
                 """
             )
         )
+        _initialize_event_audit(connection)
         connection.execute(
             text(
                 """

@@ -8,6 +8,7 @@ from typing import Any
 from flask import Flask, jsonify, render_template, request
 
 from .database import initialize_database
+from .event_history import event_history_blueprint
 from .event_mirror import EventMirrorWriteError, refresh_event_journal_mirror
 from .events import events_blueprint
 from .paths import build_runtime_paths, ensure_runtime_directories
@@ -38,6 +39,7 @@ def create_app(*, testing: bool = False, data_root: Path | None = None) -> Flask
     app.extensions["shift_helper_database_engine"] = engine
     app.extensions["shift_helper_event_mirror"] = mirror_state
     app.register_blueprint(events_blueprint)
+    app.register_blueprint(event_history_blueprint)
 
     def refresh_event_mirror() -> None:
         try:
