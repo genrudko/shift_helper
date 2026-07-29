@@ -74,6 +74,9 @@ def main() -> None:
             command_safety = page.locator("html").get_attribute("data-command-safety")
             if command_safety != "active":
                 raise AssertionError("Command safety не активирован.")
+            clear_adapter = page.locator("html").get_attribute("data-clear-selection")
+            if clear_adapter != "active":
+                raise AssertionError("Clear-selection adapter не активирован.")
             date_placeholder = page.locator('[data-testid="journal-date"]').get_attribute(
                 "placeholder"
             )
@@ -84,6 +87,7 @@ def main() -> None:
             _assert_menu_command_hidden(page, "univer.command.redo")
             _assert_menu_command_hidden(page, "sheet.command.cut")
             _assert_menu_command_hidden(page, "sheet.command.remove-row-confirm")
+            _assert_menu_command_hidden(page, "sheet.command.clear-selection-content")
 
             sheet_box = page.locator("#univer-sheet").bounding_box()
             if sheet_box is None:
@@ -92,14 +96,6 @@ def main() -> None:
             row_two_y = sheet_box["y"] + 173
 
             page.mouse.click(reason_x, row_two_y)
-            page.keyboard.press("Delete")
-            page.locator(".shift-helper-v2__safety-toast").filter(
-                has_text="Очистка содержимого диапазона"
-            ).wait_for(state="visible", timeout=5_000)
-            page.wait_for_timeout(300)
-            if _records(page, base_url) != before_records:
-                raise AssertionError("Заблокированная очистка изменила SQLite.")
-
             page.keyboard.press("Control+X")
             page.locator(".shift-helper-v2__safety-toast").filter(
                 has_text="Вырезание диапазона"
