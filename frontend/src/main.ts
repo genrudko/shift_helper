@@ -23,6 +23,7 @@ import {
   renderFailure,
   renderShell,
 } from './journal/shell';
+import { startZoomControl } from './journal/zoomControl';
 
 function requireRoot(): HTMLElement {
   const root = document.querySelector<HTMLElement>('#app');
@@ -57,7 +58,7 @@ async function start(): Promise<void> {
             sheetBar: true,
             statisticBar: true,
             menus: true,
-            zoomSlider: true,
+            zoomSlider: false,
             addSheetButtonConfig: {
               show: false,
             },
@@ -73,6 +74,10 @@ async function start(): Promise<void> {
       DISPLAY_COLUMNS.length
     );
     const workbook = univerAPI.createWorkbook(workbookData);
+    startZoomControl(
+      univerAPI,
+      presentation.presentation.sheet.zoomRatio
+    );
     startJournalCommandSafety(univerAPI);
     startPresentationPersistence(
       univerAPI,

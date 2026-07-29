@@ -2,7 +2,7 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  margin-left: auto;
+  margin-left: 0;
   padding: 2px;
   border: 1px solid #d8dee8;
   border-radius: 7px;
@@ -68,11 +68,5 @@
     width: 28px;
     justify-content: center;
     padding: 0;
-  }
-}
-
-@media (max-width: 860px) {
-  .shift-helper-v2__history-controls {
-    margin-left: auto;
   }
 }

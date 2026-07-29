@@ -63,6 +63,7 @@ jobs:
           python scripts/ui_smoke_command_safety.py
           python scripts/ui_smoke_runtime_files.py
           python scripts/ui_smoke_operation_history.py
+          python scripts/ui_smoke_zoom.py
           kill "$server_pid" 2>/dev/null || true
           wait "$server_pid" 2>/dev/null || true
           trap - EXIT

@@ -1,0 +1,85 @@
+.shift-helper-v2__zoom-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  margin-left: auto;
+  padding: 2px 4px;
+  border: 1px solid #d8dee8;
+  border-radius: 7px;
+  background: #f8fafc;
+}
+
+.shift-helper-v2__zoom-control ~ .shift-helper-v2__status {
+  margin-left: 0;
+}
+
+.shift-helper-v2__zoom-button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #344054;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.shift-helper-v2__zoom-button:hover:not(:disabled) {
+  background: #eef4ff;
+  color: #175cd3;
+}
+
+.shift-helper-v2__zoom-button:disabled {
+  color: #c5cad3;
+  cursor: default;
+}
+
+.shift-helper-v2__zoom-range {
+  width: 92px;
+  accent-color: #2563eb;
+}
+
+.shift-helper-v2__zoom-number {
+  box-sizing: border-box;
+  width: 48px;
+  height: 24px;
+  padding: 2px 3px;
+  border: 1px solid #cfd6e1;
+  border-radius: 5px;
+  background: #fff;
+  color: #344054;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.shift-helper-v2__zoom-percent {
+  margin-left: -2px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+@media (max-width: 1380px) {
+  .shift-helper-v2__zoom-range {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .shift-helper-v2__zoom-control {
+    display: none;
+  }
+
+  .shift-helper-v2__history-controls {
+    margin-left: auto;
+  }
+}
