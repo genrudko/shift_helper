@@ -14,18 +14,30 @@ from .event_history import event_history_blueprint
 from .event_mirror import EventMirrorWriteError, refresh_event_journal_mirror
 from .events import events_blueprint
 from .paths import build_runtime_paths, ensure_runtime_directories
+from .security import configure_lan_security, load_or_create_session_secret
 
 
-def create_app(*, testing: bool = False, data_root: Path | None = None) -> Flask:
+def create_app(
+    *,
+    testing: bool = False,
+    data_root: Path | None = None,
+    lan_mode: bool = False,
+    lan_token: str | None = None,
+) -> Flask:
     """Create and configure the local Shift-Helper web application."""
-    app = Flask(__name__)
-    app.config.update(
-        TESTING=testing,
-        SECRET_KEY="shift-helper-local-session",
-    )
 
     runtime_paths = build_runtime_paths(data_root)
     ensure_runtime_directories(runtime_paths)
+
+    app = Flask(__name__)
+    app.config.update(
+        TESTING=testing,
+        SECRET_KEY=load_or_create_session_secret(runtime_paths.root),
+        SESSION_COOKIE_NAME="shift_helper_session",
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Strict",
+    )
+    configure_lan_security(app, enabled=lan_mode, token=lan_token)
     engine = initialize_database(runtime_paths.database)
 
     mirror_state: dict[str, Any] = {
@@ -136,6 +148,7 @@ def create_app(*, testing: bool = False, data_root: Path | None = None) -> Flask
                 "application": "Shift-Helper",
                 "status": "ok",
                 "database": str(runtime_paths.database),
+                "lanMode": app.extensions["shift_helper_lan"],
                 "eventMirror": mirror_state,
                 "databaseBackup": backup_state,
             }

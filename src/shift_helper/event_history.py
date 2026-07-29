@@ -51,6 +51,8 @@ def event_history(event_id: int) -> tuple[Response, int] | Response:
                     old_revision,
                     new_revision,
                     changed_at,
+                    actor,
+                    client_ip,
                     before_json,
                     after_json
                 FROM event_audit
@@ -68,6 +70,8 @@ def event_history(event_id: int) -> tuple[Response, int] | Response:
                 "oldRevision": row["old_revision"],
                 "newRevision": row["new_revision"],
                 "changedAt": row["changed_at"],
+                "actor": row["actor"],
+                "clientIp": row["client_ip"],
                 "before": json.loads(row["before_json"]) if row["before_json"] else None,
                 "after": json.loads(row["after_json"]),
             }

@@ -7,9 +7,10 @@ from pathlib import Path
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Connection, Engine
 
+from .audit_context import current_audit_actor, current_audit_client_ip
 from .models import Base
 
-APPLICATION_SCHEMA_VERSION = "3"
+APPLICATION_SCHEMA_VERSION = "4"
 
 
 def create_database_engine(database_path: Path) -> Engine:
@@ -22,7 +23,10 @@ def create_database_engine(database_path: Path) -> Engine:
 
     @event.listens_for(engine, "connect")
     def configure_sqlite(dbapi_connection: object, _connection_record: object) -> None:
-        cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
+        connection = dbapi_connection  # type: ignore[assignment]
+        connection.create_function("shift_helper_actor", 0, current_audit_actor)
+        connection.create_function("shift_helper_client_ip", 0, current_audit_client_ip)
+        cursor = connection.cursor()
         try:
             cursor.execute("PRAGMA foreign_keys = ON")
             cursor.execute("PRAGMA busy_timeout = 5000")
@@ -56,6 +60,13 @@ def _event_json(alias: str) -> str:
     """
 
 
+def _audit_columns(connection: Connection) -> set[str]:
+    return {
+        str(row[1])
+        for row in connection.execute(text("PRAGMA table_info(event_audit)"))
+    }
+
+
 def _initialize_event_audit(connection: Connection) -> None:
     connection.execute(
         text(
@@ -69,12 +80,20 @@ def _initialize_event_audit(connection: Connection) -> None:
                 old_revision INTEGER,
                 new_revision INTEGER NOT NULL,
                 changed_at TEXT NOT NULL,
+                actor TEXT,
+                client_ip TEXT,
                 before_json TEXT,
                 after_json TEXT NOT NULL
             )
             """
         )
     )
+    columns = _audit_columns(connection)
+    if "actor" not in columns:
+        connection.execute(text("ALTER TABLE event_audit ADD COLUMN actor TEXT"))
+    if "client_ip" not in columns:
+        connection.execute(text("ALTER TABLE event_audit ADD COLUMN client_ip TEXT"))
+
     connection.execute(
         text(
             """
@@ -104,6 +123,8 @@ def _initialize_event_audit(connection: Connection) -> None:
                     old_revision,
                     new_revision,
                     changed_at,
+                    actor,
+                    client_ip,
                     before_json,
                     after_json
                 ) VALUES (
@@ -112,6 +133,8 @@ def _initialize_event_audit(connection: Connection) -> None:
                     NULL,
                     NEW.revision,
                     COALESCE(NEW.updated_at, CURRENT_TIMESTAMP),
+                    shift_helper_actor(),
+                    shift_helper_client_ip(),
                     NULL,
                     {_event_json('NEW')}
                 );
@@ -131,6 +154,8 @@ def _initialize_event_audit(connection: Connection) -> None:
                     old_revision,
                     new_revision,
                     changed_at,
+                    actor,
+                    client_ip,
                     before_json,
                     after_json
                 ) VALUES (
@@ -142,6 +167,8 @@ def _initialize_event_audit(connection: Connection) -> None:
                     OLD.revision,
                     NEW.revision,
                     COALESCE(NEW.updated_at, CURRENT_TIMESTAMP),
+                    shift_helper_actor(),
+                    shift_helper_client_ip(),
                     {_event_json('OLD')},
                     {_event_json('NEW')}
                 );
@@ -159,6 +186,8 @@ def _initialize_event_audit(connection: Connection) -> None:
                 old_revision,
                 new_revision,
                 changed_at,
+                actor,
+                client_ip,
                 before_json,
                 after_json
             )
@@ -168,6 +197,8 @@ def _initialize_event_audit(connection: Connection) -> None:
                 NULL,
                 events.revision,
                 COALESCE(events.updated_at, CURRENT_TIMESTAMP),
+                'migration',
+                NULL,
                 NULL,
                 {_event_json('events')}
             FROM events
