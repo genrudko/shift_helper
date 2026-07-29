@@ -2,9 +2,10 @@
 
 /*
  * One visual contract for mutually exclusive cell, row and column selection.
- * The history controller remains the data owner for selected row keys; this
- * contract clears stale Tabulator cell ranges before row mode and restores the
- * authoritative row classes after legacy render listeners have completed.
+ * The history controller remains the data owner for delete/undo. This layer
+ * owns the visual row contract: stale cell ranges cannot split row selection,
+ * selected keys are published in current active order, and row numbers always
+ * reflect the visible filtered/sorted position rather than an internal row id.
  */
 (() => {
     const root = document.getElementById("event-journal");
@@ -18,6 +19,35 @@
 
     function rowKey(row) {
         return row?.getData?.()._rowKey || null;
+    }
+
+    function activeRows() {
+        try {
+            return table.getRows("active");
+        } catch (_error) {
+            return table.getRows();
+        }
+    }
+
+    function rowNumberElement(row) {
+        const element = row?.getElement?.();
+        if (!(element instanceof Element) || !element.isConnected) return null;
+        return element.matches(".journal-row-number")
+            ? element
+            : element.querySelector(".journal-row-number");
+    }
+
+    function renumberRows() {
+        const rows = activeRows();
+        rows.forEach((row, index) => {
+            const number = rowNumberElement(row);
+            if (!number) return;
+            const value = String(index + 1);
+            if (number.textContent?.trim() !== value) number.textContent = value;
+            number.dataset.visualRowNumber = value;
+        });
+        root.dataset.visualRowCount = String(rows.length);
+        root.dataset.rowNumberContract = "ready";
     }
 
     function clearCellVisuals() {
@@ -57,11 +87,15 @@
     function reconcileRows() {
         cancelAnimationFrame(frame);
         frame = 0;
-        const available = new Set(table.getRows().map(rowKey).filter(Boolean));
+        const rows = activeRows();
+        const available = new Set(rows.map(rowKey).filter(Boolean));
         [...authoritativeRowKeys].forEach((key) => {
             if (!available.has(key)) authoritativeRowKeys.delete(key);
         });
-        window.shiftHelperSelectedRowKeys = [...authoritativeRowKeys];
+        const orderedKeys = rows
+            .map(rowKey)
+            .filter((key) => key && authoritativeRowKeys.has(key));
+        window.shiftHelperSelectedRowKeys = orderedKeys;
         table.getRows().forEach((row) => {
             const element = row.getElement?.();
             if (!(element instanceof Element)) return;
@@ -70,6 +104,11 @@
             if (selected) element.style.setProperty("opacity", "1", "important");
             else element.style.removeProperty("opacity");
         });
+        if (root.dataset.selectionMode === "rows" && authoritativeRowKeys.size) {
+            clearCellRanges();
+            clearCellVisuals();
+        }
+        renumberRows();
         root.dataset.rowSelectionVisualCount = String(authoritativeRowKeys.size);
     }
 
@@ -173,21 +212,28 @@
         }
     });
 
-    table.on("renderComplete", scheduleRowReconcile);
-    table.on("rowAdded", scheduleRowReconcile);
-    table.on("rowDeleted", scheduleRowReconcile);
+    ["renderComplete", "rowAdded", "rowDeleted", "dataFiltered", "dataSorted", "rowMoved"]
+        .forEach((eventName) => table.on(eventName, scheduleRowReconcile));
     table.on("cellClick", () => {
         cancelAnimationFrame(frame);
         authoritativeRowKeys.clear();
+        window.shiftHelperSelectedRowKeys = [];
         root.dataset.selectionMode = "cells";
+        scheduleRowReconcile();
     });
+
+    const rowObserver = new MutationObserver(scheduleRowReconcile);
+    rowObserver.observe(root, {childList: true, subtree: true});
 
     window.shiftHelperSelectionModeContract = {
         clearCellVisuals,
         clearCellRanges,
         reconcileRows,
         settleNonCellMode,
-        rowKeys: () => [...authoritativeRowKeys],
+        renumberRows,
+        rowKeys: () => activeRows()
+            .map(rowKey)
+            .filter((key) => key && authoritativeRowKeys.has(key)),
     };
     reconcileRows();
     root.dataset.selectionModeContract = "ready";
