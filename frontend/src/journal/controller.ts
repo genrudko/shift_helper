@@ -253,17 +253,6 @@ export function startJournalController(
     if (currentRow !== null) applyRecordToRow(worksheet, currentRow, record);
   };
 
-  const enqueueSave = (queueKey: string, task: () => Promise<void>): void => {
-    const previous = saveQueues.get(queueKey) ?? Promise.resolve();
-    const next = previous
-      .catch(() => undefined)
-      .then(task)
-      .finally(() => {
-        if (saveQueues.get(queueKey) === next) saveQueues.delete(queueKey);
-      });
-    saveQueues.set(queueKey, next);
-  };
-
   const clearEditorSelection = (): void => {
     activeRow = null;
     controls.selection.textContent = 'Выберите строку';
@@ -312,6 +301,33 @@ export function startJournalController(
     if (activeRow) syncEditorSelection(activeRow.worksheet, activeRow.row);
   };
 
+  const queueMatchesActiveRow = (queueKey: string): boolean => {
+    if (!activeRow) return false;
+    return typeof activeRow.identity === 'number'
+      ? queueKey === `record:${activeRow.identity}`
+      : queueKey === activeRow.identity;
+  };
+
+  const enqueueSave = (queueKey: string, task: () => Promise<void>): void => {
+    const previous = saveQueues.get(queueKey) ?? Promise.resolve();
+    const next = previous
+      .catch(() => undefined)
+      .then(task)
+      .finally(() => {
+        if (saveQueues.get(queueKey) === next) {
+          saveQueues.delete(queueKey);
+          if (queueMatchesActiveRow(queueKey)) refreshActiveEditor();
+          if (
+            pendingSaveCount === 0 &&
+            !status.classList.contains('shift-helper-v2__status--error')
+          ) {
+            setReadyStatus();
+          }
+        }
+      });
+    saveQueues.set(queueKey, next);
+  };
+
   const handleRecordError = (
     worksheet: WorksheetFacade,
     current: JournalEventSnapshot,
@@ -348,7 +364,6 @@ export function startJournalController(
         const updated = await patchRecord(recordId, { revision: current.revision, changes });
         recordsById.set(recordId, updated);
         restoreRecord(worksheet, updated);
-        refreshActiveEditor();
       } catch (error) {
         handleRecordError(worksheet, current, error, 'Изменение не сохранено');
       } finally {
@@ -367,7 +382,6 @@ export function startJournalController(
         const updated = await closeRecord(recordId, { revision: current.revision });
         recordsById.set(recordId, updated);
         restoreRecord(worksheet, updated);
-        refreshActiveEditor();
       } catch (error) {
         handleRecordError(worksheet, current, error, 'Событие не завершено');
       } finally {
@@ -402,7 +416,6 @@ export function startJournalController(
           applyDraftToRow(worksheet, draftRow + 1, nextDraft);
           if (activeRow?.identity === draftId) {
             activeRow = { worksheet, row: draftRow, identity: created.record.id };
-            refreshActiveEditor();
           }
         }
       } catch (error) {
