@@ -30,6 +30,7 @@ def _clear_diagnostics(page: Page) -> dict[str, object]:
           intercepted: element.dataset.clearIntercepted ?? null,
           selection: element.dataset.clearLastSelection ?? null,
           resolvedRange: element.dataset.clearResolvedRange ?? null,
+          commandRangeCount: element.dataset.clearCommandRangeCount ?? null,
           operationCount: element.dataset.clearOperationCount ?? null,
           batchResult: element.dataset.clearBatchResult ?? null,
         })
@@ -87,6 +88,16 @@ def _wait_for_working_canvas(page: Page) -> None:
     raise AssertionError("Univer canvas не получил рабочую геометрию журнала.")
 
 
+def _sheet_coordinates(page: Page) -> tuple[float, float, float]:
+    sheet_box = page.locator("#univer-sheet").bounding_box()
+    if sheet_box is None:
+        raise AssertionError("Не удалось определить геометрию контейнера Univer.")
+    reason_x = sheet_box["x"] + 930
+    description_x = sheet_box["x"] + 690
+    row_two_y = sheet_box["y"] + 173
+    return reason_x, description_x, row_two_y
+
+
 def main() -> None:
     base_url = os.environ.get("SHIFT_HELPER_BASE_URL", "http://127.0.0.1:17944")
 
@@ -122,13 +133,7 @@ def main() -> None:
             _wait_for_history_controls(page, can_undo=True, can_redo=False)
             _wait_for_working_canvas(page)
 
-            sheet_box = page.locator("#univer-sheet").bounding_box()
-            if sheet_box is None:
-                raise AssertionError("Не удалось определить геометрию контейнера Univer.")
-            reason_x = sheet_box["x"] + 930
-            description_x = sheet_box["x"] + 690
-            row_two_y = sheet_box["y"] + 173
-
+            reason_x, _description_x, row_two_y = _sheet_coordinates(page)
             page.mouse.click(reason_x, row_two_y)
             page.keyboard.press("Shift+ArrowDown")
             page.keyboard.press("Delete")
@@ -154,12 +159,23 @@ def main() -> None:
             )
             page.wait_for_load_state("networkidle", timeout=30_000)
             _wait_for_history_controls(page, can_undo=True, can_redo=True)
+            _wait_for_working_canvas(page)
 
+            _reason_x, description_x, row_two_y = _sheet_coordinates(page)
             page.mouse.click(description_x, row_two_y)
             page.keyboard.press("Delete")
-            page.locator('.shift-helper-v2__status[data-clear-state="error"]').filter(
-                has_text="обязательную или защищённую колонку"
-            ).wait_for(state="visible", timeout=5_000)
+            error_status = page.locator(
+                '.shift-helper-v2__status[data-clear-state="error"]'
+            ).filter(has_text="обязательную или защищённую колонку")
+            try:
+                error_status.wait_for(state="visible", timeout=5_000)
+            except Exception as exc:
+                diagnostics = _clear_diagnostics(page)
+                status_text = page.locator(".shift-helper-v2__status").text_content()
+                raise AssertionError(
+                    "Защищённая колонка не вернула ожидаемый fail-closed статус. "
+                    f"Статус UI: {status_text!r}; диагностика: {diagnostics!r}"
+                ) from exc
             page.wait_for_timeout(300)
             after_protected_delete = _records(page, base_url)
             if after_protected_delete != restored:
