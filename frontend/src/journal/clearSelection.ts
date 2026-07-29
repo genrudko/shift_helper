@@ -59,7 +59,8 @@ export function startJournalClearSelection(
   const clearActiveRange = async (): Promise<void> => {
     if (clearing) return;
     const worksheet = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.();
-    const range = worksheet?.getActiveRange?.();
+    const selection = worksheet?.getSelection?.();
+    const range = selection?.getActiveRange?.();
     if (!worksheet || !range) {
       setStatus('error', 'Не удалось определить диапазон для очистки.');
       return;
