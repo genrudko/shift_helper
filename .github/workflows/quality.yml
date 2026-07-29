@@ -31,6 +31,14 @@ jobs:
         working-directory: frontend
         run: npm install --no-audit --no-fund
 
+      - name: Upload generated frontend lockfile
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-package-lock
+          path: frontend/package-lock.json
+          if-no-files-found: error
+
       - name: Type-check frontend
         working-directory: frontend
         run: npm run check
