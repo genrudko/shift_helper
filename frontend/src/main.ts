@@ -16,6 +16,7 @@ import {
   applyPresentation,
   startPresentationPersistence,
 } from './journal/presentation';
+import { startRuntimeFileControls } from './journal/runtimeFiles';
 import {
   configureEventTypeOptions,
   renderFailure,
@@ -32,6 +33,7 @@ async function start(): Promise<void> {
   document.documentElement.lang = 'ru';
   const root = requireRoot();
   const { status, controls } = renderShell(root);
+  startRuntimeFileControls();
 
   try {
     const [snapshot, presentation] = await Promise.all([

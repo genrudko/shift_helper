@@ -18,6 +18,7 @@ from .event_presentation import (
 )
 from .events import events_blueprint
 from .paths import build_runtime_paths, ensure_runtime_directories
+from .runtime_files import runtime_files_blueprint
 from .security import configure_lan_security, load_or_create_session_secret
 
 
@@ -72,6 +73,7 @@ def create_app(
     app.register_blueprint(event_history_blueprint)
     app.register_blueprint(event_batch_blueprint)
     app.register_blueprint(event_presentation_blueprint)
+    app.register_blueprint(runtime_files_blueprint)
 
     def refresh_event_mirror() -> None:
         try:
