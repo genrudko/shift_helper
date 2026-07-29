@@ -12,6 +12,10 @@ CREATED_ASSET = "ВЭУ №18"
 CREATED_DESCRIPTION = "Новая запись создана из первой строки Univer"
 CREATED_START_AT = "2026-07-29T13:15"
 CREATED_EVENT_TYPE = "startup"
+BATCH_FIRST_DESCRIPTION = "Пакетное описание первой строки"
+BATCH_FIRST_REASON = "Пакетная причина первой строки"
+BATCH_SECOND_DESCRIPTION = "Пакетное описание второй строки"
+BATCH_SECOND_REASON = "Пакетная причина второй строки"
 
 
 def _seed_event(page: Page, base_url: str) -> None:
@@ -46,21 +50,34 @@ def _snapshot(page: Page, base_url: str) -> dict[str, object]:
     return response.json()
 
 
+def _wait_for_snapshot(page: Page, base_url: str, predicate, failure_message: str) -> None:
+    for _attempt in range(120):
+        snapshot = _snapshot(page, base_url)
+        records = snapshot.get("records", [])
+        if isinstance(records, list) and predicate(records):
+            return
+        page.wait_for_timeout(100)
+    raise AssertionError(failure_message)
+
+
 def _wait_for_record(
     page: Page,
     base_url: str,
     predicate,
     failure_message: str,
 ) -> dict[str, object]:
-    for _attempt in range(120):
-        snapshot = _snapshot(page, base_url)
-        records = snapshot.get("records", [])
-        if isinstance(records, list):
-            for record in records:
-                if isinstance(record, dict) and predicate(record, records):
-                    return record
-        page.wait_for_timeout(100)
-    raise AssertionError(failure_message)
+    found: dict[str, object] = {}
+
+    def snapshot_predicate(records: list[object]) -> bool:
+        nonlocal found
+        for record in records:
+            if isinstance(record, dict) and predicate(record, records):
+                found = record
+                return True
+        return False
+
+    _wait_for_snapshot(page, base_url, snapshot_predicate, failure_message)
+    return found
 
 
 def _assert_incomplete_draft_not_persisted(page: Page, base_url: str) -> None:
@@ -96,7 +113,15 @@ def main() -> None:
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(channel="chrome", headless=True)
-        page = browser.new_page(viewport={"width": 1600, "height": 1000}, device_scale_factor=1)
+        context = browser.new_context(
+            viewport={"width": 1600, "height": 1000},
+            device_scale_factor=1,
+        )
+        context.grant_permissions(
+            ["clipboard-read", "clipboard-write"],
+            origin=base_url,
+        )
+        page = context.new_page()
         page_errors: list[str] = []
         console_errors: list[str] = []
         page.on("pageerror", lambda error: page_errors.append(str(error)))
@@ -123,7 +148,6 @@ def main() -> None:
             asset_x = sheet_box["x"] + 340
             description_x = sheet_box["x"] + 690
 
-            # Real canvas editing of an existing persisted row.
             page.mouse.dblclick(description_x, row_two_y)
             page.keyboard.press("Control+A")
             page.keyboard.type(EDITED_DESCRIPTION)
@@ -140,9 +164,6 @@ def main() -> None:
                 "Редактирование Univer не было сохранено через optimistic PATCH API.",
             )
 
-            # The selected persisted row exposes dedicated date/time/type/report
-            # controls. Four rapid changes must serialize revisions without losing
-            # either half of the date-time value.
             page.locator('[data-testid="journal-selection"]').filter(
                 has_text="Событие №1"
             ).wait_for(state="visible", timeout=5_000)
@@ -190,8 +211,6 @@ def main() -> None:
             if not close_control.is_disabled():
                 raise AssertionError("Кнопка завершения осталась доступна для закрытой записи.")
 
-            # Select the only draft row and set its dedicated fields before the
-            # mandatory spreadsheet cells. This must still create no record.
             page.mouse.click(asset_x, row_three_y)
             page.locator('[data-testid="journal-selection"]').filter(
                 has_text="Новая строка"
@@ -202,15 +221,12 @@ def main() -> None:
             report_control.uncheck()
             _assert_incomplete_draft_not_persisted(page, base_url)
 
-            # Filling one required cell must not create a partial database row.
             page.mouse.dblclick(asset_x, row_three_y)
             page.keyboard.press("Control+A")
             page.keyboard.type(CREATED_ASSET)
             page.keyboard.press("Enter")
             _assert_incomplete_draft_not_persisted(page, base_url)
 
-            # Completing the second required cell creates exactly one event,
-            # converts the draft to a persisted row and appends a fresh draft.
             page.mouse.dblclick(description_x, row_three_y)
             page.keyboard.press("Control+A")
             page.keyboard.type(CREATED_DESCRIPTION)
@@ -232,6 +248,28 @@ def main() -> None:
                 "Новая строка Univer не была создана через POST API с параметрами редактора.",
             )
 
+            batch_text = (
+                f"{BATCH_FIRST_DESCRIPTION}\t{BATCH_FIRST_REASON}\n"
+                f"{BATCH_SECOND_DESCRIPTION}\t{BATCH_SECOND_REASON}"
+            )
+            page.mouse.click(description_x, row_two_y)
+            page.evaluate("text => navigator.clipboard.writeText(text)", batch_text)
+            page.keyboard.press("Control+V")
+            _wait_for_snapshot(
+                page,
+                base_url,
+                lambda records: (
+                    len(records) == 2
+                    and records[0].get("description") == BATCH_FIRST_DESCRIPTION
+                    and records[0].get("reason") == BATCH_FIRST_REASON
+                    and int(records[0].get("revision", 0)) >= 8
+                    and records[1].get("description") == BATCH_SECOND_DESCRIPTION
+                    and records[1].get("reason") == BATCH_SECOND_REASON
+                    and records[1].get("revision") == 2
+                ),
+                "Ctrl+V не был сохранён одной транзакционной batch-операцией.",
+            )
+
             page.locator(".shift-helper-v2__status").filter(
                 has_text="Загружено записей: 2"
             ).wait_for(state="visible", timeout=10_000)
@@ -249,6 +287,7 @@ def main() -> None:
             page.screenshot(path=str(screenshot_path), full_page=True)
             raise
         finally:
+            context.close()
             browser.close()
 
 

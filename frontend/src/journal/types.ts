@@ -91,10 +91,27 @@ export interface JournalCreateResponse {
   record: JournalEventSnapshot;
 }
 
+export interface JournalBatchOperation {
+  recordId: number;
+  revision: number;
+  changes: Partial<Record<EditableJournalField, string | null>>;
+}
+
+export interface JournalBatchRequest {
+  operations: JournalBatchOperation[];
+}
+
+export interface JournalBatchResponse {
+  schemaVersion: 1;
+  records: JournalEventSnapshot[];
+}
+
 export interface JournalApiErrorBody {
   error: {
     code: string;
     message: string;
     current?: JournalEventSnapshot;
+    operationIndex?: number;
+    recordId?: number;
   };
 }
