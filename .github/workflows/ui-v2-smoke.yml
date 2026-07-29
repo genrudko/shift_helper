@@ -1,0 +1,75 @@
+name: ui-v2-smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  chromium:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.18.0"
+
+      - name: Build Univer frontend
+        working-directory: frontend
+        run: npm install --no-audit --no-fund && npm run check && npm run build
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install application and browser tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m playwright install --with-deps chromium
+
+      - name: Run Univer Chromium smoke
+        shell: bash
+        env:
+          SHIFT_HELPER_PORT: "17944"
+          SHIFT_HELPER_BASE_URL: http://127.0.0.1:17944
+          SHIFT_HELPER_TEST_DATA_ROOT: .ui-v2-test-data
+          SHIFT_HELPER_UI_SCREENSHOT: ui-v2-smoke/univer-v2.png
+        run: |
+          set -Eeuo pipefail
+          rm -rf .ui-v2-test-data ui-v2-smoke
+          python scripts/run_ui_v2_test_server.py >ui-v2-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          python scripts/wait_for_health.py 17944
+          python scripts/ui_smoke_univer_v2.py
+          kill "$server_pid" 2>/dev/null || true
+          wait "$server_pid" 2>/dev/null || true
+          trap - EXIT
+
+      - name: Upload Univer smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: univer-v2-smoke-screenshot
+          path: ui-v2-smoke/univer-v2.png
+          if-no-files-found: warn
+
+      - name: Upload Univer smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: univer-v2-smoke-diagnostics
+          path: |
+            ui-v2-server.log
+            ui-v2-smoke/univer-v2.png
+          if-no-files-found: warn
