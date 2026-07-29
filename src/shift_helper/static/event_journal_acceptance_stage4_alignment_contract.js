@@ -218,10 +218,8 @@
 
         const family = textProperty("fontFamily", "Segoe UI");
         const size = textProperty("fontSize", 13);
-        const familyControl = document.getElementById("ribbon-font-family");
-        const sizeControl = document.getElementById("ribbon-font-size");
-        if (familyControl && family) familyControl.value = family;
-        if (sizeControl && size !== null) sizeControl.value = String(size);
+        if (family) document.getElementById("ribbon-font-family").value = family;
+        if (size !== null) document.getElementById("ribbon-font-size").value = String(size);
 
         const textColor = textProperty("color", "");
         const textControl = document.getElementById("operator-text-color-control");
@@ -237,6 +235,12 @@
     function scheduleControlSync() {
         cancelAnimationFrame(controlFrame);
         controlFrame = requestAnimationFrame(syncControls);
+    }
+
+    function scheduleAfterFormattingCommand() {
+        window.setTimeout(() => {
+            requestAnimationFrame(() => requestAnimationFrame(applyAll));
+        }, 0);
     }
 
     function updateColor(owner, color) {
@@ -269,6 +273,16 @@
         return control.style.getPropertyValue("--operator-fill-color").trim()
             || (control.dataset.owner === "text" ? "#1f2937" : "#fff2cc");
     }
+
+    window.addEventListener("pointerdown", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const command = event.target.closest(
+            "[data-text-style], [data-align-horizontal], [data-align-vertical], "
+            + "[data-ribbon-command='wrap'], #operator-text-direction, "
+            + "#ribbon-font-family, #ribbon-font-size, .journal-mini-toolbar select",
+        );
+        if (command) scheduleAfterFormattingCommand();
+    }, true);
 
     window.addEventListener("click", (event) => {
         if (!(event.target instanceof Element)) return;

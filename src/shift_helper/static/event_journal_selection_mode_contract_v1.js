@@ -124,6 +124,7 @@
         }
 
         if (event.target.closest(".tabulator-cell") && root.contains(event.target)) {
+            root.dataset.selectionMode = "cells";
             authoritativeRowKeys.clear();
             window.shiftHelperSelectedRowKeys = [];
             root.querySelectorAll(".journal-row--multi-selected").forEach((element) => {
@@ -139,7 +140,7 @@
     }, true);
 
     table.on("rangeChanged", () => {
-        if (root.dataset.selectionMode === "rows") {
+        if (root.dataset.selectionMode === "rows" && authoritativeRowKeys.size) {
             clearCellRanges();
             settleNonCellMode("rows");
             scheduleRowReconcile();
