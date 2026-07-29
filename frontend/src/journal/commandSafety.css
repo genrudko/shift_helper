@@ -1,0 +1,21 @@
+.shift-helper-v2__safety-toast {
+  position: absolute;
+  z-index: 50;
+  top: 52px;
+  right: 14px;
+  box-sizing: border-box;
+  max-width: min(480px, calc(100vw - 28px));
+  padding: 9px 12px;
+  border: 1px solid #f0b429;
+  border-radius: 7px;
+  background: #fffaeb;
+  box-shadow: 0 8px 24px rgb(16 24 40 / 14%);
+  color: #7a2e0e;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.shift-helper-v2__safety-toast[hidden] {
+  display: none;
+}

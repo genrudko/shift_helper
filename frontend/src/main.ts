@@ -7,6 +7,10 @@ import './styles.css';
 
 import { loadPresentation, loadSnapshot } from './journal/api';
 import { buildWorkbookData, DISPLAY_COLUMNS } from './journal/buildWorkbook';
+import {
+  JOURNAL_MENU_CONFIG,
+  startJournalCommandSafety,
+} from './journal/commandSafety';
 import { createDraft, startJournalController } from './journal/controller';
 import {
   applyPresentation,
@@ -44,6 +48,16 @@ async function start(): Promise<void> {
       presets: [
         UniverSheetsCorePreset({
           container: 'univer-sheet',
+          menu: JOURNAL_MENU_CONFIG,
+          footer: {
+            sheetBar: true,
+            statisticBar: true,
+            menus: true,
+            zoomSlider: true,
+            addSheetButtonConfig: {
+              show: false,
+            },
+          },
         }),
       ],
     });
@@ -55,6 +69,7 @@ async function start(): Promise<void> {
       DISPLAY_COLUMNS.length
     );
     const workbook = univerAPI.createWorkbook(workbookData);
+    startJournalCommandSafety(univerAPI);
     startPresentationPersistence(
       univerAPI,
       workbook,
