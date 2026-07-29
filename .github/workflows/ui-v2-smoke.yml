@@ -21,9 +21,17 @@ jobs:
         with:
           node-version: "22.18.0"
 
+      - name: Resolve locked frontend dependencies
+        working-directory: frontend
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Verify frontend dependency lock
+        working-directory: frontend
+        run: node ../scripts/verify_frontend_lock.mjs package-lock.json
+
       - name: Build Univer frontend
         working-directory: frontend
-        run: npm install --no-audit --no-fund && npm run check && npm run build
+        run: npm ci --ignore-scripts --no-audit --no-fund && npm run check && npm run build
 
       - name: Set up Python
         uses: actions/setup-python@v5
