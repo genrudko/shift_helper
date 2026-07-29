@@ -54,7 +54,7 @@ def test_event_mirror_tracks_create_patch_and_close(tmp_path: Path) -> None:
         assert sheet["A1"].value == "№"
         assert sheet["O1"].value == "В утренний рапорт"
         assert sheet["A2"].value == 1
-        assert sheet["B2"].value == date(2026, 7, 29)
+        assert sheet["B2"].value.date() == date(2026, 7, 29)
         assert sheet["C2"].value == time(11, 30)
         assert sheet["D2"].value == "ВЭУ №17"
         assert sheet["E2"].value == "Ограничение по оборотам"
