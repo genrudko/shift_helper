@@ -9,8 +9,6 @@ const BLOCKED_COMMAND_MESSAGES = new Map<string, string>([
   ['univer.command.undo', 'Используйте защищённую кнопку отмены Shift-Helper.'],
   ['univer.command.redo', 'Используйте защищённую кнопку повтора Shift-Helper.'],
   ['sheet.command.cut', 'Вырезание диапазона пока недоступно. Используйте копирование и вставку.'],
-  ['sheet.command.clear-selection-content', 'Очистка содержимого диапазона пока недоступна.'],
-  ['sheet.command.clear-selection-all', 'Полная очистка диапазона пока недоступна.'],
   ['sheet.command.auto-fill', 'Автозаполнение маркером пока недоступно.'],
   ['sheet.command.copy-down', 'Заполнение вниз пока недоступно.'],
   ['sheet.command.copy-right', 'Заполнение вправо пока недоступно.'],
@@ -80,6 +78,8 @@ const HIDDEN_ONLY_COMMANDS = [
   'sheet.menu.paste-special',
   'sheet.command.copy-formula-only',
   'sheet.menu.clear-selection',
+  'sheet.command.clear-selection-content',
+  'sheet.command.clear-selection-all',
   'sheet.menu.cell-insert',
   'sheet.menu.delete',
 ];
