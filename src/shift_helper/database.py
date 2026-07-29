@@ -7,10 +7,17 @@ from pathlib import Path
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Connection, Engine
 
-from .audit_context import current_audit_actor, current_audit_client_ip
+from .audit_context import (
+    current_audit_actor,
+    current_audit_client_ip,
+    current_operation_id,
+    current_operation_kind,
+    current_operation_reversible,
+    current_operation_track,
+)
 from .models import Base
 
-APPLICATION_SCHEMA_VERSION = "4"
+APPLICATION_SCHEMA_VERSION = "6"
 
 
 def create_database_engine(database_path: Path) -> Engine:
@@ -26,6 +33,14 @@ def create_database_engine(database_path: Path) -> Engine:
         connection = dbapi_connection  # type: ignore[assignment]
         connection.create_function("shift_helper_actor", 0, current_audit_actor)
         connection.create_function("shift_helper_client_ip", 0, current_audit_client_ip)
+        connection.create_function("shift_helper_operation_id", 0, current_operation_id)
+        connection.create_function("shift_helper_operation_kind", 0, current_operation_kind)
+        connection.create_function(
+            "shift_helper_operation_reversible",
+            0,
+            current_operation_reversible,
+        )
+        connection.create_function("shift_helper_operation_track", 0, current_operation_track)
         cursor = connection.cursor()
         try:
             cursor.execute("PRAGMA foreign_keys = ON")
@@ -60,11 +75,41 @@ def _event_json(alias: str) -> str:
     """
 
 
-def _audit_columns(connection: Connection) -> set[str]:
+def _table_columns(connection: Connection, table_name: str) -> set[str]:
     return {
         str(row[1])
-        for row in connection.execute(text("PRAGMA table_info(event_audit)"))
+        for row in connection.execute(text(f"PRAGMA table_info({table_name})"))
     }
+
+
+def _initialize_event_operations(connection: Connection) -> None:
+    connection.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS event_operation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                operation_id TEXT NOT NULL UNIQUE,
+                kind TEXT NOT NULL,
+                reversible INTEGER NOT NULL CHECK (reversible IN (0, 1)),
+                actor TEXT,
+                client_ip TEXT,
+                created_at TEXT NOT NULL,
+                state TEXT NOT NULL DEFAULT 'applied' CHECK (
+                    state IN ('applied', 'undone', 'discarded')
+                ),
+                discarded_at TEXT
+            )
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            CREATE INDEX IF NOT EXISTS ix_event_operation_state_id
+            ON event_operation (state, id)
+            """
+        )
+    )
 
 
 def _initialize_event_audit(connection: Connection) -> None:
@@ -74,6 +119,7 @@ def _initialize_event_audit(connection: Connection) -> None:
             CREATE TABLE IF NOT EXISTS event_audit (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 event_id INTEGER NOT NULL,
+                operation_id TEXT,
                 action TEXT NOT NULL CHECK (
                     action IN ('baseline', 'create', 'update', 'close')
                 ),
@@ -88,17 +134,27 @@ def _initialize_event_audit(connection: Connection) -> None:
             """
         )
     )
-    columns = _audit_columns(connection)
+    columns = _table_columns(connection, "event_audit")
     if "actor" not in columns:
         connection.execute(text("ALTER TABLE event_audit ADD COLUMN actor TEXT"))
     if "client_ip" not in columns:
         connection.execute(text("ALTER TABLE event_audit ADD COLUMN client_ip TEXT"))
+    if "operation_id" not in columns:
+        connection.execute(text("ALTER TABLE event_audit ADD COLUMN operation_id TEXT"))
 
     connection.execute(
         text(
             """
             CREATE INDEX IF NOT EXISTS ix_event_audit_event_id_id
             ON event_audit (event_id, id)
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            CREATE INDEX IF NOT EXISTS ix_event_audit_operation_id_id
+            ON event_audit (operation_id, id)
             """
         )
     )
@@ -117,8 +173,33 @@ def _initialize_event_audit(connection: Connection) -> None:
             CREATE TRIGGER trg_events_audit_insert
             AFTER INSERT ON events
             BEGIN
+                UPDATE event_operation
+                SET state = 'discarded', discarded_at = CURRENT_TIMESTAMP
+                WHERE state = 'undone' AND shift_helper_operation_track() = 1;
+
+                INSERT OR IGNORE INTO event_operation (
+                    operation_id,
+                    kind,
+                    reversible,
+                    actor,
+                    client_ip,
+                    created_at,
+                    state
+                )
+                SELECT
+                    shift_helper_operation_id(),
+                    shift_helper_operation_kind(),
+                    shift_helper_operation_reversible(),
+                    shift_helper_actor(),
+                    shift_helper_client_ip(),
+                    COALESCE(NEW.updated_at, CURRENT_TIMESTAMP),
+                    'applied'
+                WHERE shift_helper_operation_track() = 1
+                  AND shift_helper_operation_id() IS NOT NULL;
+
                 INSERT INTO event_audit (
                     event_id,
+                    operation_id,
                     action,
                     old_revision,
                     new_revision,
@@ -129,6 +210,7 @@ def _initialize_event_audit(connection: Connection) -> None:
                     after_json
                 ) VALUES (
                     NEW.id,
+                    shift_helper_operation_id(),
                     'create',
                     NULL,
                     NEW.revision,
@@ -148,8 +230,33 @@ def _initialize_event_audit(connection: Connection) -> None:
             CREATE TRIGGER trg_events_audit_update
             AFTER UPDATE ON events
             BEGIN
+                UPDATE event_operation
+                SET state = 'discarded', discarded_at = CURRENT_TIMESTAMP
+                WHERE state = 'undone' AND shift_helper_operation_track() = 1;
+
+                INSERT OR IGNORE INTO event_operation (
+                    operation_id,
+                    kind,
+                    reversible,
+                    actor,
+                    client_ip,
+                    created_at,
+                    state
+                )
+                SELECT
+                    shift_helper_operation_id(),
+                    shift_helper_operation_kind(),
+                    shift_helper_operation_reversible(),
+                    shift_helper_actor(),
+                    shift_helper_client_ip(),
+                    COALESCE(NEW.updated_at, CURRENT_TIMESTAMP),
+                    'applied'
+                WHERE shift_helper_operation_track() = 1
+                  AND shift_helper_operation_id() IS NOT NULL;
+
                 INSERT INTO event_audit (
                     event_id,
+                    operation_id,
                     action,
                     old_revision,
                     new_revision,
@@ -160,6 +267,7 @@ def _initialize_event_audit(connection: Connection) -> None:
                     after_json
                 ) VALUES (
                     NEW.id,
+                    shift_helper_operation_id(),
                     CASE
                         WHEN OLD.status <> 'closed' AND NEW.status = 'closed' THEN 'close'
                         ELSE 'update'
@@ -182,6 +290,7 @@ def _initialize_event_audit(connection: Connection) -> None:
             f"""
             INSERT INTO event_audit (
                 event_id,
+                operation_id,
                 action,
                 old_revision,
                 new_revision,
@@ -193,6 +302,7 @@ def _initialize_event_audit(connection: Connection) -> None:
             )
             SELECT
                 events.id,
+                NULL,
                 'baseline',
                 NULL,
                 events.revision,
@@ -254,6 +364,7 @@ def initialize_database(database_path: Path) -> Engine:
                 """
             )
         )
+        _initialize_event_operations(connection)
         _initialize_event_audit(connection)
         connection.execute(
             text(

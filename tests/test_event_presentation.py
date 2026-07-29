@@ -69,7 +69,7 @@ def test_presentation_state_is_separate_from_event_data(tmp_path: Path) -> None:
     with engine.connect() as connection:
         assert connection.scalar(
             text("SELECT value FROM app_metadata WHERE key = 'schema_version'")
-        ) == "5"
+        ) == "6"
         assert connection.scalar(text("SELECT COUNT(*) FROM events")) == 0
         assert connection.scalar(text("SELECT COUNT(*) FROM journal_presentation")) == 1
 

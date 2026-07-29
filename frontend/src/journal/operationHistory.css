@@ -1,0 +1,78 @@
+.shift-helper-v2__history-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  padding: 2px;
+  border: 1px solid #d8dee8;
+  border-radius: 7px;
+  background: #f8fafc;
+}
+
+.shift-helper-v2__history-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #344054;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.shift-helper-v2__history-button:hover:not(:disabled) {
+  background: #eef4ff;
+  color: #175cd3;
+}
+
+.shift-helper-v2__history-button:focus-visible {
+  outline: 2px solid rgb(37 99 235 / 24%);
+  outline-offset: 1px;
+}
+
+.shift-helper-v2__history-button:disabled {
+  color: #98a2b3;
+  cursor: default;
+}
+
+.shift-helper-v2__history-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.shift-helper-v2__history-controls[data-state="busy"] {
+  opacity: 0.65;
+}
+
+.shift-helper-v2__history-controls[data-state="error"] {
+  border-color: #fda29b;
+  background: #fff1f0;
+}
+
+@media (max-width: 1240px) {
+  .shift-helper-v2__history-button span {
+    display: none;
+  }
+
+  .shift-helper-v2__history-button {
+    width: 28px;
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+@media (max-width: 860px) {
+  .shift-helper-v2__history-controls {
+    margin-left: auto;
+  }
+}

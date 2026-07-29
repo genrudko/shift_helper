@@ -5,6 +5,8 @@ import type {
   JournalCreateRequest,
   JournalCreateResponse,
   JournalEventSnapshot,
+  JournalOperationState,
+  JournalOperationTransitionResponse,
   JournalPatchRequest,
   JournalPatchResponse,
   JournalPresentationSaveRequest,
@@ -16,6 +18,8 @@ import type {
 const SNAPSHOT_ENDPOINT = '/events/api/v2/snapshot';
 const RECORD_ENDPOINT = '/events/api/v2/records';
 const PRESENTATION_ENDPOINT = '/events/api/v2/presentation';
+const OPERATION_ENDPOINT = '/events/api/v2/operations';
+export const JOURNAL_DATA_MUTATED_EVENT = 'shift-helper:data-mutated';
 
 export class JournalApiError extends Error {
   constructor(
@@ -23,6 +27,7 @@ export class JournalApiError extends Error {
     readonly status: number,
     readonly code: string,
     readonly current?: JournalEventSnapshot,
+    readonly operationState?: JournalOperationState,
     readonly operationIndex?: number,
     readonly recordId?: number
   ) {
@@ -37,6 +42,10 @@ export class JournalPresentationConflictError extends Error {
   ) {
     super(message);
   }
+}
+
+function notifyDataMutation(): void {
+  window.dispatchEvent(new CustomEvent(JOURNAL_DATA_MUTATED_EVENT));
 }
 
 async function jsonResponse(response: Response): Promise<unknown> {
@@ -54,6 +63,7 @@ function apiError(response: Response, body: unknown): JournalApiError {
     response.status,
     data.error?.code ?? 'unknown_error',
     data.error?.current as JournalEventSnapshot | undefined,
+    data.error?.state,
     data.error?.operationIndex,
     data.error?.recordId
   );
@@ -91,6 +101,43 @@ export async function loadSnapshot(): Promise<JournalSnapshot> {
     throw new Error('Сервер вернул неподдерживаемый формат журнала.');
   }
   return data;
+}
+
+export async function loadOperationState(): Promise<JournalOperationState> {
+  const response = await fetch(`${OPERATION_ENDPOINT}/state`, {
+    headers: { Accept: 'application/json' },
+    credentials: 'same-origin',
+  });
+  const body = await jsonResponse(response);
+  if (!response.ok) throw apiError(response, body);
+  const data = body as JournalOperationState;
+  if (
+    data.schemaVersion !== 1 ||
+    typeof data.canUndo !== 'boolean' ||
+    typeof data.canRedo !== 'boolean'
+  ) {
+    throw new Error('Сервер вернул неподдерживаемое состояние отмены.');
+  }
+  return data;
+}
+
+export async function transitionOperation(
+  direction: 'undo' | 'redo',
+  operationId: string
+): Promise<JournalOperationTransitionResponse> {
+  const result = await mutationRequest<JournalOperationTransitionResponse>(
+    `${OPERATION_ENDPOINT}/${direction}`,
+    { operationId }
+  );
+  if (
+    result.schemaVersion !== 1 ||
+    result.direction !== direction ||
+    result.operationId !== operationId ||
+    !Array.isArray(result.records)
+  ) {
+    throw new Error('Сервер вернул неподдерживаемый результат операции истории.');
+  }
+  return result;
 }
 
 export async function loadPresentation(): Promise<JournalPresentationState> {
@@ -166,6 +213,7 @@ export async function patchRecord(
   if (result.schemaVersion !== 1 || typeof result.record?.id !== 'number') {
     throw new Error('Сервер вернул неподдерживаемый результат сохранения.');
   }
+  notifyDataMutation();
   return result.record;
 }
 
@@ -180,6 +228,7 @@ export async function closeRecord(
   if (result.schemaVersion !== 1 || typeof result.record?.id !== 'number') {
     throw new Error('Сервер вернул неподдерживаемый результат завершения события.');
   }
+  notifyDataMutation();
   return result.record;
 }
 
@@ -194,6 +243,7 @@ export async function createRecord(
   ) {
     throw new Error('Сервер вернул неподдерживаемый результат создания записи.');
   }
+  notifyDataMutation();
   return result;
 }
 
@@ -207,5 +257,6 @@ export async function patchRecordsBatch(
   if (result.schemaVersion !== 1 || !Array.isArray(result.records)) {
     throw new Error('Сервер вернул неподдерживаемый результат пакетной операции.');
   }
+  notifyDataMutation();
   return result.records;
 }

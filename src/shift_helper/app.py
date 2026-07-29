@@ -12,6 +12,10 @@ from .database import initialize_database
 from .event_batch import event_batch_blueprint
 from .event_history import event_history_blueprint
 from .event_mirror import EventMirrorWriteError, refresh_event_journal_mirror
+from .event_operations import (
+    event_operations_blueprint,
+    finalize_event_operation_schema,
+)
 from .event_presentation import (
     event_presentation_blueprint,
     initialize_event_presentation,
@@ -45,6 +49,7 @@ def create_app(
     configure_lan_security(app, enabled=lan_mode, token=lan_token)
     engine = initialize_database(runtime_paths.database)
     initialize_event_presentation(engine)
+    finalize_event_operation_schema(engine)
 
     mirror_state: dict[str, Any] = {
         "status": "pending",
@@ -73,6 +78,7 @@ def create_app(
     app.register_blueprint(event_history_blueprint)
     app.register_blueprint(event_batch_blueprint)
     app.register_blueprint(event_presentation_blueprint)
+    app.register_blueprint(event_operations_blueprint)
     app.register_blueprint(runtime_files_blueprint)
 
     def refresh_event_mirror() -> None:

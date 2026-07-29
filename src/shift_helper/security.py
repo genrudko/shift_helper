@@ -8,6 +8,7 @@ import os
 import secrets
 from pathlib import Path
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 from flask import (
     Flask,
@@ -63,6 +64,18 @@ _LOGIN_TEMPLATE = """
 </body>
 </html>
 """
+
+_OPERATION_ENDPOINTS: dict[str, tuple[str, bool, bool]] = {
+    "events.journal_v2_create_record": ("create", False, True),
+    "events.journal_v2_patch_record": ("patch", True, True),
+    "events.journal_v2_close_record": ("close", False, True),
+    "events.create_event": ("create", False, True),
+    "events.edit_event": ("edit", True, True),
+    "events.close_event": ("close", False, True),
+    "event_batch.patch_records_batch": ("batch", True, True),
+    "event_operations.undo_operation": ("history-undo", False, False),
+    "event_operations.redo_operation": ("history-redo", False, False),
+}
 
 
 def is_loopback_address(value: str | None) -> bool:
@@ -121,6 +134,16 @@ def _safe_next_path(value: str | None) -> str:
     return parsed.path + (("?" + parsed.query) if parsed.query else "")
 
 
+def _request_operation_metadata() -> tuple[str | None, str, bool, bool]:
+    endpoint = request.endpoint or ""
+    metadata = _OPERATION_ENDPOINTS.get(endpoint)
+    if metadata is None or request.method not in {"POST", "PATCH", "PUT", "DELETE"}:
+        return None, "request", False, False
+    operation_kind, reversible, track = metadata
+    operation_id = f"{operation_kind}:{uuid4().hex}"
+    return operation_id, operation_kind, reversible, track
+
+
 def configure_lan_security(app: Flask, *, enabled: bool, token: str | None) -> None:
     """Require an authenticated session for every non-loopback LAN request."""
 
@@ -174,7 +197,16 @@ def configure_lan_security(app: Flask, *, enabled: bool, token: str | None) -> N
         else:
             actor = "lan-login"
             audit_ip = remote_ip
-        g.shift_helper_audit_tokens = bind_audit_context(actor, audit_ip)
+
+        operation_id, operation_kind, reversible, track = _request_operation_metadata()
+        g.shift_helper_audit_tokens = bind_audit_context(
+            actor,
+            audit_ip,
+            operation_id=operation_id,
+            operation_kind=operation_kind,
+            operation_reversible=reversible,
+            operation_track=track,
+        )
         return None
 
     @app.teardown_request

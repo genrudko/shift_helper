@@ -6,8 +6,8 @@ type MenuItemConfig = {
 };
 
 const BLOCKED_COMMAND_MESSAGES = new Map<string, string>([
-  ['univer.command.undo', 'Отмена пока недоступна для сохранённых записей.'],
-  ['univer.command.redo', 'Повтор пока недоступен для сохранённых записей.'],
+  ['univer.command.undo', 'Используйте защищённую кнопку отмены Shift-Helper.'],
+  ['univer.command.redo', 'Используйте защищённую кнопку повтора Shift-Helper.'],
   ['sheet.command.cut', 'Вырезание диапазона пока недоступно. Используйте копирование и вставку.'],
   ['sheet.command.clear-selection-content', 'Очистка содержимого диапазона пока недоступна.'],
   ['sheet.command.clear-selection-all', 'Полная очистка диапазона пока недоступна.'],
@@ -126,29 +126,16 @@ export function startJournalCommandSafety(univerAPI: any): void {
     showBlocked(message);
   };
 
-  const blockShortcut = (event: KeyboardEvent, message: string): void => {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    showBlocked(message);
-  };
-
   document.addEventListener(
     'keydown',
     (event) => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
-      const key = event.key.toLowerCase();
-      if (key === 'x') {
-        blockShortcut(
-          event,
-          'Вырезание диапазона пока недоступно. Используйте копирование и вставку.'
-        );
-      } else if (key === 'z' && event.shiftKey) {
-        blockShortcut(event, 'Повтор пока недоступен для сохранённых записей.');
-      } else if (key === 'z') {
-        blockShortcut(event, 'Отмена пока недоступна для сохранённых записей.');
-      } else if (key === 'y') {
-        blockShortcut(event, 'Повтор пока недоступен для сохранённых записей.');
-      }
+      if (event.key.toLowerCase() !== 'x') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      showBlocked(
+        'Вырезание диапазона пока недоступно. Используйте копирование и вставку.'
+      );
     },
     true
   );
@@ -158,10 +145,10 @@ export function startJournalCommandSafety(univerAPI: any): void {
     if (message) blockEvent(event, message);
   });
   univerAPI.addEvent(univerAPI.Event.BeforeUndo, (event: any) => {
-    blockEvent(event, 'Отмена пока недоступна для сохранённых записей.');
+    blockEvent(event, 'Используйте защищённую кнопку отмены Shift-Helper.');
   });
   univerAPI.addEvent(univerAPI.Event.BeforeRedo, (event: any) => {
-    blockEvent(event, 'Повтор пока недоступен для сохранённых записей.');
+    blockEvent(event, 'Используйте защищённую кнопку повтора Shift-Helper.');
   });
   univerAPI.addEvent(univerAPI.Event.BeforeSheetCreate, (event: any) => {
     blockEvent(event, 'Создание дополнительных листов журнала запрещено.');

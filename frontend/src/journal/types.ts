@@ -106,6 +106,35 @@ export interface JournalBatchResponse {
   records: JournalEventSnapshot[];
 }
 
+export interface JournalOperationSummary {
+  operationId: string;
+  kind: string;
+  label: string;
+  reversible: boolean;
+  actor: string | null;
+  clientIp: string | null;
+  createdAt: string;
+  recordIds: number[];
+  recordCount: number;
+}
+
+export interface JournalOperationState {
+  schemaVersion: 1;
+  canUndo: boolean;
+  canRedo: boolean;
+  undo: JournalOperationSummary | null;
+  redo: JournalOperationSummary | null;
+  undoReason: string | null;
+}
+
+export interface JournalOperationTransitionResponse {
+  schemaVersion: 1;
+  direction: 'undo' | 'redo';
+  operationId: string;
+  records: JournalEventSnapshot[];
+  state: JournalOperationState;
+}
+
 export type JournalPresentationStyle = string | Record<string, unknown>;
 
 export interface JournalPresentationDimension {
@@ -148,6 +177,7 @@ export interface JournalApiErrorBody {
     code: string;
     message: string;
     current?: unknown;
+    state?: JournalOperationState;
     operationIndex?: number;
     recordId?: number;
   };

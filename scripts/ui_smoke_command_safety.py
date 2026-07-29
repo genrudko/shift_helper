@@ -100,14 +100,6 @@ def main() -> None:
             if _records(page, base_url) != before_records:
                 raise AssertionError("Заблокированная очистка изменила SQLite.")
 
-            page.keyboard.press("Control+Z")
-            page.locator(".shift-helper-v2__safety-toast").filter(
-                has_text="Отмена пока недоступна"
-            ).wait_for(state="visible", timeout=5_000)
-            page.wait_for_timeout(300)
-            if _records(page, base_url) != before_records:
-                raise AssertionError("Заблокированная отмена изменила SQLite.")
-
             page.keyboard.press("Control+X")
             page.locator(".shift-helper-v2__safety-toast").filter(
                 has_text="Вырезание диапазона"

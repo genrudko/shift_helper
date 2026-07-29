@@ -12,6 +12,7 @@ import {
   startJournalCommandSafety,
 } from './journal/commandSafety';
 import { createDraft, startJournalController } from './journal/controller';
+import { startOperationHistoryControls } from './journal/operationHistory';
 import {
   applyPresentation,
   startPresentationPersistence,
@@ -34,6 +35,7 @@ async function start(): Promise<void> {
   const root = requireRoot();
   const { status, controls } = renderShell(root);
   startRuntimeFileControls();
+  startOperationHistoryControls();
 
   try {
     const [snapshot, presentation] = await Promise.all([

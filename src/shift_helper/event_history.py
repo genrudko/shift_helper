@@ -47,6 +47,7 @@ def event_history(event_id: int) -> tuple[Response, int] | Response:
                 """
                 SELECT
                     id,
+                    operation_id,
                     action,
                     old_revision,
                     new_revision,
@@ -66,6 +67,7 @@ def event_history(event_id: int) -> tuple[Response, int] | Response:
         entries = [
             {
                 "id": row["id"],
+                "operationId": row["operation_id"],
                 "action": row["action"],
                 "oldRevision": row["old_revision"],
                 "newRevision": row["new_revision"],

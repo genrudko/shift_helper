@@ -63,6 +63,10 @@ def test_event_audit_tracks_create_update_and_close(tmp_path: Path) -> None:
         "127.0.0.1",
         "127.0.0.1",
     ]
+    assert entries[0]["operationId"].startswith("create:")
+    assert entries[1]["operationId"].startswith("patch:")
+    assert entries[2]["operationId"].startswith("close:")
+    assert len({entry["operationId"] for entry in entries}) == 3
     assert entries[0]["oldRevision"] is None
     assert entries[0]["before"] is None
     assert entries[0]["after"]["description"] == "Исходная запись аудита"
@@ -120,11 +124,12 @@ def test_schema_migration_creates_baseline_for_existing_events(tmp_path: Path) -
     with migrated_engine.connect() as connection:
         assert connection.scalar(
             text("SELECT value FROM app_metadata WHERE key = 'schema_version'")
-        ) == "4"
+        ) == "6"
         row = connection.execute(
             text(
                 """
                 SELECT
+                    operation_id,
                     action,
                     old_revision,
                     new_revision,
@@ -137,6 +142,7 @@ def test_schema_migration_creates_baseline_for_existing_events(tmp_path: Path) -
                 """
             )
         ).mappings().one()
+        assert row["operation_id"] is None
         assert row["action"] == "baseline"
         assert row["old_revision"] is None
         assert row["new_revision"] == 1
@@ -144,6 +150,7 @@ def test_schema_migration_creates_baseline_for_existing_events(tmp_path: Path) -
         assert row["client_ip"] is None
         assert row["before_json"] is None
         assert "Запись до включения аудита" in row["after_json"]
+        assert connection.scalar(text("SELECT COUNT(*) FROM event_operation")) == 0
 
     with Session(migrated_engine) as session:
         event = session.scalar(select(Event))
@@ -157,7 +164,7 @@ def test_schema_migration_creates_baseline_for_existing_events(tmp_path: Path) -
             connection.execute(
                 text(
                     """
-                    SELECT action, actor, client_ip
+                    SELECT action, operation_id, actor, client_ip
                     FROM event_audit
                     WHERE event_id = 1
                     ORDER BY id
@@ -166,5 +173,6 @@ def test_schema_migration_creates_baseline_for_existing_events(tmp_path: Path) -
             ).mappings()
         )
         assert [row["action"] for row in rows] == ["baseline", "update"]
+        assert rows[1]["operation_id"] is None
         assert rows[1]["actor"] == "system"
         assert rows[1]["client_ip"] is None
