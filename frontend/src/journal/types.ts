@@ -24,9 +24,15 @@ export interface JournalDraftSnapshot extends JournalRowSnapshot {
   clientId: string;
 }
 
+export interface JournalEventTypeOption {
+  value: string;
+  label: string;
+}
+
 export interface JournalSnapshot {
   schemaVersion: 1;
   generatedAt: string;
+  eventTypes: JournalEventTypeOption[];
   records: JournalEventSnapshot[];
 }
 
@@ -39,9 +45,21 @@ export type EditableJournalField =
   | 'errorCodes'
   | 'rotorLimit';
 
+export type JournalPatchField =
+  | EditableJournalField
+  | 'startAt'
+  | 'eventType'
+  | 'includeInReport';
+
+export type JournalPatchValue = string | null | boolean;
+
 export interface JournalPatchRequest {
   revision: number;
-  changes: Partial<Record<EditableJournalField, string | null>>;
+  changes: Partial<Record<JournalPatchField, JournalPatchValue>>;
+}
+
+export interface JournalTransitionRequest {
+  revision: number;
 }
 
 export interface JournalPatchResponse {

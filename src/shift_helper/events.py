@@ -33,17 +33,19 @@ from .models import Event
 events_blueprint = Blueprint("events", __name__, url_prefix="/events")
 EVENT_TYPE_LABELS = dict(EVENT_TYPE_CHOICES)
 
-# The first editable Univer slice deliberately exposes only fields that can be
-# represented as plain spreadsheet cells. Date/time, type, status and report
-# flags remain read-only until dedicated editors and transitions are added.
+# Plain spreadsheet cells and the compact row editor share one optimistic PATCH
+# contract. Status/end time still change only through an explicit transition.
 V2_PATCH_FIELDS: dict[str, str] = {
+    "startAt": "start_at",
     "assetLabel": "asset_label",
+    "eventType": "event_type",
     "description": "description",
     "reason": "reason",
     "actions": "actions",
     "performer": "performer",
     "errorCodes": "error_codes",
     "rotorLimit": "rotor_limit",
+    "includeInReport": "include_in_report",
 }
 V2_NULLABLE_PATCH_FIELDS = {"reason", "actions", "performer", "errorCodes", "rotorLimit"}
 
@@ -103,6 +105,13 @@ def _api_error(code: str, message: str, *, status: int, **details: object) -> tu
     return jsonify({"error": {"code": code, "message": message, **details}}), status
 
 
+def _valid_expected_revision(payload: Mapping[str, Any]) -> int | None:
+    revision = payload.get("revision")
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+        return None
+    return revision
+
+
 def _v2_patch_form_values(event: Event, changes: Mapping[str, Any]) -> dict[str, str]:
     values = event_values_for_form(event)
 
@@ -111,13 +120,18 @@ def _v2_patch_form_values(event: Event, changes: Mapping[str, Any]) -> dict[str,
         if model_field is None:
             raise EventValidationError(f"Поле «{api_field}» нельзя изменять через Journal UI V2.")
 
-        if raw_value is None and api_field in V2_NULLABLE_PATCH_FIELDS:
-            value = ""
+        if api_field == "includeInReport":
+            if not isinstance(raw_value, bool):
+                raise EventValidationError(
+                    "Поле «includeInReport» должно содержать логическое значение."
+                )
+            values[model_field] = "on" if raw_value else ""
+        elif raw_value is None and api_field in V2_NULLABLE_PATCH_FIELDS:
+            values[model_field] = ""
         elif isinstance(raw_value, str):
-            value = raw_value
+            values[model_field] = raw_value
         else:
             raise EventValidationError(f"Поле «{api_field}» должно содержать текст.")
-        values[model_field] = value
 
     return values
 
@@ -197,6 +211,10 @@ def journal_v2_snapshot() -> Response:
         {
             "schemaVersion": 1,
             "generatedAt": datetime.now().isoformat(timespec="seconds"),
+            "eventTypes": [
+                {"value": event_type, "label": label}
+                for event_type, label in EVENT_TYPE_CHOICES
+            ],
             "records": records,
         }
     )
@@ -251,13 +269,9 @@ def journal_v2_patch_record(event_id: int) -> tuple[Response, int] | Response:
     if not isinstance(payload, dict):
         return _api_error("invalid_json", "Ожидался JSON-объект.", status=400)
 
-    expected_revision = payload.get("revision")
+    expected_revision = _valid_expected_revision(payload)
     changes = payload.get("changes")
-    if (
-        not isinstance(expected_revision, int)
-        or isinstance(expected_revision, bool)
-        or expected_revision < 1
-    ):
+    if expected_revision is None:
         return _api_error("invalid_revision", "Укажите корректную ревизию записи.", status=400)
     if not isinstance(changes, dict) or not changes:
         return _api_error("invalid_changes", "Не переданы изменения записи.", status=400)
@@ -303,6 +317,73 @@ def journal_v2_patch_record(event_id: int) -> tuple[Response, int] | Response:
             return _api_error(
                 "revision_conflict",
                 "Запись уже изменена в другом окне. Обновите строку перед повторным сохранением.",
+                status=409,
+                current=_event_snapshot(current),
+            )
+
+        session.commit()
+        updated_event = session.get(Event, event_id)
+        if updated_event is None:
+            return _api_error("not_found", "Запись журнала не найдена.", status=404)
+
+        return jsonify({"schemaVersion": 1, "record": _event_snapshot(updated_event)})
+
+
+@events_blueprint.post("/api/v2/records/<int:event_id>/close")
+def journal_v2_close_record(event_id: int) -> tuple[Response, int] | Response:
+    """Close one open event through an explicit optimistic transition."""
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return _api_error("invalid_json", "Ожидался JSON-объект.", status=400)
+
+    expected_revision = _valid_expected_revision(payload)
+    if expected_revision is None:
+        return _api_error("invalid_revision", "Укажите корректную ревизию записи.", status=400)
+
+    with Session(_database_engine()) as session:
+        event = session.get(Event, event_id)
+        if event is None:
+            return _api_error("not_found", "Запись журнала не найдена.", status=404)
+
+        if event.revision != expected_revision:
+            return _api_error(
+                "revision_conflict",
+                "Запись уже изменена в другом окне. Обновите строку перед повторным действием.",
+                status=409,
+                current=_event_snapshot(event),
+            )
+        if event.status == "closed":
+            return _api_error(
+                "already_closed",
+                "Событие уже завершено.",
+                status=422,
+                current=_event_snapshot(event),
+            )
+
+        closed_at = datetime.now().replace(second=0, microsecond=0)
+        result = session.execute(
+            update(Event)
+            .where(
+                Event.id == event_id,
+                Event.revision == expected_revision,
+                Event.status == "open",
+            )
+            .values(
+                status="closed",
+                end_at=closed_at,
+                updated_at=closed_at,
+                revision=Event.revision + 1,
+            )
+        )
+        if result.rowcount != 1:
+            session.rollback()
+            current = session.get(Event, event_id)
+            if current is None:
+                return _api_error("not_found", "Запись журнала не найдена.", status=404)
+            return _api_error(
+                "revision_conflict",
+                "Запись уже изменена в другом окне. Обновите строку перед повторным действием.",
                 status=409,
                 current=_event_snapshot(current),
             )

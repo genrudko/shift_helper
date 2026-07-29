@@ -106,6 +106,11 @@ def test_journal_v2_host_and_snapshot_contract(tmp_path: Path) -> None:
     snapshot = snapshot_response.get_json()
     assert snapshot["schemaVersion"] == 1
     assert isinstance(snapshot["generatedAt"], str)
+    assert snapshot["eventTypes"][0] == {
+        "value": "emergency_stop",
+        "label": "Аварийный останов",
+    }
+    assert snapshot["eventTypes"][-1] == {"value": "other", "label": "Другое"}
     assert len(snapshot["records"]) == 1
 
     record = snapshot["records"][0]
@@ -227,6 +232,64 @@ def test_journal_v2_patch_persists_and_recalculates(tmp_path: Path) -> None:
         assert str(event.repair_power_mw) == "0.55"
 
 
+def test_journal_v2_specialized_patch_updates_start_type_and_report_flag(tmp_path: Path) -> None:
+    app = create_app(testing=True, data_root=tmp_path)
+    client = app.test_client()
+    client.post("/events/new", data=_event_form())
+
+    response = client.patch(
+        "/events/api/v2/records/1",
+        json={
+            "revision": 1,
+            "changes": {
+                "startAt": "2026-07-28T12:45",
+                "eventType": "dispatch_command",
+                "includeInReport": False,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    record = response.get_json()["record"]
+    assert record["revision"] == 2
+    assert record["startAt"] == "2026-07-28T12:45"
+    assert record["eventType"] == "dispatch_command"
+    assert record["eventTypeLabel"] == "Диспетчерская команда"
+    assert record["includeInReport"] is False
+
+    engine = app.extensions["shift_helper_database_engine"]
+    with Session(engine) as session:
+        event = session.get(Event, 1)
+        assert event is not None
+        assert event.start_at.isoformat(timespec="minutes") == "2026-07-28T12:45"
+        assert event.event_type == "dispatch_command"
+        assert event.include_in_report is False
+        assert event.revision == 2
+
+
+def test_journal_v2_close_transition_is_optimistic_and_explicit(tmp_path: Path) -> None:
+    app = create_app(testing=True, data_root=tmp_path)
+    client = app.test_client()
+    client.post("/events/new", data=_event_form())
+
+    closed = client.post("/events/api/v2/records/1/close", json={"revision": 1})
+    assert closed.status_code == 200
+    record = closed.get_json()["record"]
+    assert record["revision"] == 2
+    assert record["status"] == "closed"
+    assert record["endAt"] is not None
+
+    stale = client.post("/events/api/v2/records/1/close", json={"revision": 1})
+    assert stale.status_code == 409
+    assert stale.get_json()["error"]["code"] == "revision_conflict"
+    assert stale.get_json()["error"]["current"]["revision"] == 2
+
+    repeated = client.post("/events/api/v2/records/1/close", json={"revision": 2})
+    assert repeated.status_code == 422
+    assert repeated.get_json()["error"]["code"] == "already_closed"
+    assert repeated.get_json()["error"]["current"]["status"] == "closed"
+
+
 def test_journal_v2_patch_rejects_stale_revision(tmp_path: Path) -> None:
     app = create_app(testing=True, data_root=tmp_path)
     client = app.test_client()
@@ -268,6 +331,20 @@ def test_journal_v2_patch_rejects_invalid_or_forbidden_change(tmp_path: Path) ->
     )
     assert invalid.status_code == 422
     assert invalid.get_json()["error"]["code"] == "validation_error"
+
+    invalid_type = client.patch(
+        "/events/api/v2/records/1",
+        json={"revision": 1, "changes": {"eventType": "unsupported"}},
+    )
+    assert invalid_type.status_code == 422
+    assert invalid_type.get_json()["error"]["code"] == "validation_error"
+
+    invalid_flag = client.patch(
+        "/events/api/v2/records/1",
+        json={"revision": 1, "changes": {"includeInReport": "yes"}},
+    )
+    assert invalid_flag.status_code == 422
+    assert invalid_flag.get_json()["error"]["code"] == "validation_error"
 
     forbidden = client.patch(
         "/events/api/v2/records/1",
