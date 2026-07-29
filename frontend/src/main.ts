@@ -794,6 +794,10 @@ function startEditingPersistence(
   });
 
   univerAPI.addEvent(univerAPI.Event.SelectionChanged, ({ worksheet }) => {
+    if (!worksheet) {
+      clearEditorSelection();
+      return;
+    }
     const currentCell = worksheet.getSelection().getCurrentCell();
     if (!currentCell) {
       clearEditorSelection();
@@ -803,7 +807,7 @@ function startEditingPersistence(
   });
 
   univerAPI.addEvent(univerAPI.Event.CellClicked, ({ row, worksheet }) => {
-    syncEditorSelection(worksheet, row);
+    if (worksheet) syncEditorSelection(worksheet, row);
   });
 
   clearEditorSelection();
