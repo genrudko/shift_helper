@@ -68,8 +68,10 @@ async function start(): Promise<void> {
         UniverSheetsCorePreset({
           container: 'univer-sheet',
           menu: JOURNAL_MENU_CONFIG,
-          disableForceStringAlert: true,
-          disableForceStringMark: true,
+          sheets: {
+            disableForceStringAlert: true,
+            disableForceStringMark: true,
+          },
           footer: {
             sheetBar: true,
             statisticBar: true,
