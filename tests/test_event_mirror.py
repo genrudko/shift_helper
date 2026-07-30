@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, time, timedelta
 from pathlib import Path
 
 import pytest
@@ -13,11 +13,26 @@ from shift_helper.event_mirror import (
     refresh_event_journal_mirror,
 )
 
+EXPECTED_HEADERS = (
+    "Дата останова",
+    "Время останова",
+    "№ ВЭУ",
+    "Описание события",
+    "Причина",
+    "Действия персонала",
+    "Исполнитель",
+    "Дата пуска",
+    "Время пуска",
+    "Простой",
+    "Кто внёс запись",
+    "Потери",
+)
+
 
 def _event_form() -> dict[str, str]:
     return {
         "start_at": "2026-07-29T11:30",
-        "asset_label": "ВЭУ №17",
+        "asset_label": "17",
         "event_type": "rotor_limit",
         "description": "Проверка зеркала журнала",
         "reason": "Повышенная вибрация",
@@ -29,7 +44,7 @@ def _event_form() -> dict[str, str]:
     }
 
 
-def test_event_mirror_tracks_create_patch_and_close(tmp_path: Path) -> None:
+def test_event_mirror_tracks_approved_form_patch_and_pusk(tmp_path: Path) -> None:
     app = create_app(testing=True, data_root=tmp_path)
     client = app.test_client()
     mirror_path = tmp_path / "exports" / EVENT_MIRROR_FILENAME
@@ -46,41 +61,41 @@ def test_event_mirror_tracks_create_patch_and_close(tmp_path: Path) -> None:
     workbook = load_workbook(mirror_path, data_only=False)
     try:
         assert workbook.sheetnames == [EVENT_MIRROR_SHEET, EVENT_MIRROR_META_SHEET]
+        assert EVENT_MIRROR_SHEET == "ЖС"
         sheet = workbook[EVENT_MIRROR_SHEET]
         meta = workbook[EVENT_MIRROR_META_SHEET]
         assert meta.sheet_state == "hidden"
         assert sheet.freeze_panes == "D2"
-        assert sheet.auto_filter.ref == "A1:O2"
-        assert sheet["A1"].value == "№"
-        assert sheet["O1"].value == "В утренний рапорт"
-        assert sheet["A2"].value == 1
-        assert sheet["B2"].value.date() == date(2026, 7, 29)
-        assert sheet["C2"].value == time(11, 30)
-        assert sheet["D2"].value == "ВЭУ №17"
-        assert sheet["E2"].value == "Ограничение по оборотам"
-        assert sheet["F2"].value == "Проверка зеркала журнала"
-        assert sheet["K2"].value == 0.8
-        assert sheet["L2"].value == 1
-        assert sheet["M2"].value == "Открыто"
-        assert sheet["N2"].value is None
-        assert sheet["O2"].value == "Да"
-        assert sheet["B2"].number_format == "dd.mm.yyyy"
-        assert sheet["C2"].number_format == "hh:mm"
-        assert sheet["N2"].number_format == "dd.mm.yyyy hh:mm"
-        assert meta["B1"].value == 1
+        assert sheet.auto_filter.ref == "A1:L2"
+        assert tuple(cell.value for cell in sheet[1]) == EXPECTED_HEADERS
+        assert sheet["A2"].value.date() == date(2026, 7, 29)
+        assert sheet["B2"].value == time(11, 30)
+        assert sheet["C2"].value == "17"
+        assert sheet["D2"].value == "Проверка зеркала журнала"
+        assert sheet["E2"].value == "Повышенная вибрация"
+        assert sheet["F2"].value == "Информация передана сменному персоналу"
+        assert sheet["G2"].value == "Иванов И.И."
+        assert sheet["H2"].value is None
+        assert sheet["I2"].value is None
+        assert sheet["J2"].value is None
+        assert sheet["K2"].value == "Локальное рабочее место"
+        assert sheet["L2"].value is None
+        assert sheet["A2"].number_format == "dd.mm.yyyy"
+        assert sheet["B2"].number_format == "hh:mm"
+        assert sheet["H2"].number_format == "dd.mm.yyyy"
+        assert sheet["I2"].number_format == "hh:mm"
+        assert sheet["J2"].number_format == "[h]:mm"
+        assert meta["B1"].value == 2
         assert meta["B6"].value == 1
         assert meta["C6"].value == 1
     finally:
         workbook.close()
 
     patched = client.patch(
-        "/events/api/v2/records/1",
+        "/events/api/v3/records/1",
         json={
             "revision": 1,
-            "changes": {
-                "description": "Описание обновлено",
-                "includeInReport": False,
-            },
+            "changes": {"description": "Описание обновлено"},
         },
     )
     assert patched.status_code == 200
@@ -90,13 +105,18 @@ def test_event_mirror_tracks_create_patch_and_close(tmp_path: Path) -> None:
     try:
         sheet = workbook[EVENT_MIRROR_SHEET]
         meta = workbook[EVENT_MIRROR_META_SHEET]
-        assert sheet["F2"].value == "Описание обновлено"
-        assert sheet["O2"].value == "Нет"
+        assert sheet["D2"].value == "Описание обновлено"
         assert meta["C6"].value == 2
     finally:
         workbook.close()
 
-    closed = client.post("/events/api/v2/records/1/close", json={"revision": 2})
+    closed = client.patch(
+        "/events/api/v3/records/1",
+        json={
+            "revision": 2,
+            "changes": {"endAt": "2026-07-29T13:15"},
+        },
+    )
     assert closed.status_code == 200
     assert closed.headers["X-Shift-Helper-Event-Mirror"] == "ok"
 
@@ -105,8 +125,9 @@ def test_event_mirror_tracks_create_patch_and_close(tmp_path: Path) -> None:
         sheet = workbook[EVENT_MIRROR_SHEET]
         meta = workbook[EVENT_MIRROR_META_SHEET]
         assert sheet.max_row == 2
-        assert sheet["M2"].value == "Завершено"
-        assert sheet["N2"].value is not None
+        assert sheet["H2"].value.date() == date(2026, 7, 29)
+        assert sheet["I2"].value == time(13, 15)
+        assert sheet["J2"].value == timedelta(hours=1, minutes=45)
         assert meta["C6"].value == 3
     finally:
         workbook.close()
