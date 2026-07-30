@@ -31,8 +31,8 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  min-height: 44px;
-  padding: 6px 14px;
+  min-height: 40px;
+  padding: 4px 14px;
   border-bottom: 1px solid #d8dee8;
   background: #ffffff;
 }
@@ -65,85 +65,32 @@ select {
 
 .shift-helper-v2__editor {
   display: flex;
-  align-items: end;
-  gap: 10px;
-  min-height: 48px;
-  padding: 6px 14px;
+  align-items: center;
+  gap: 14px;
+  min-height: 38px;
+  padding: 4px 14px;
   border-bottom: 1px solid #d8dee8;
   background: #f9fafb;
 }
 
 .shift-helper-v2__selection {
-  align-self: center;
-  min-width: 104px;
+  min-width: 190px;
   color: #344054;
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
 
-.shift-helper-v2__field {
-  display: grid;
-  gap: 3px;
-  color: #475467;
-  font-size: 11px;
-}
-
-.shift-helper-v2__field input,
-.shift-helper-v2__field select {
-  box-sizing: border-box;
-  height: 30px;
-  padding: 4px 8px;
-  border: 1px solid #cfd6e1;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #182230;
+.shift-helper-v2__editing-hint {
+  overflow: hidden;
+  color: #667085;
   font-size: 12px;
-}
-
-.shift-helper-v2__field input {
-  width: 132px;
-}
-
-.shift-helper-v2__field--type {
-  min-width: 220px;
-}
-
-.shift-helper-v2__field--type select {
-  width: 100%;
-}
-
-.shift-helper-v2__field input:focus,
-.shift-helper-v2__field select:focus {
-  border-color: #2563eb;
-  outline: 2px solid rgb(37 99 235 / 16%);
-}
-
-.shift-helper-v2__field input:disabled,
-.shift-helper-v2__field select:disabled {
-  background: #eef1f5;
-  color: #98a2b3;
-}
-
-.shift-helper-v2__report {
-  display: inline-flex;
-  align-items: center;
-  align-self: center;
-  gap: 7px;
-  color: #344054;
-  font-size: 12px;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.shift-helper-v2__report input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-}
-
 .shift-helper-v2__close {
-  align-self: end;
-  height: 30px;
+  height: 28px;
   margin-left: auto;
   padding: 0 12px;
   border: 1px solid #b42318;
@@ -189,7 +136,8 @@ select {
     overflow-x: auto;
   }
 
-  .shift-helper-v2__title span {
+  .shift-helper-v2__title span,
+  .shift-helper-v2__editing-hint {
     display: none;
   }
 }
