@@ -28,6 +28,21 @@ def main() -> None:
         page.on("console", lambda message: _capture_console_error(message, console_errors))
 
         try:
+            snapshot_response = page.request.get(
+                f"{base_url}/events/api/v3/snapshot"
+            )
+            if not snapshot_response.ok:
+                raise AssertionError(
+                    f"Snapshot v3 вернул HTTP {snapshot_response.status}."
+                )
+            snapshot = snapshot_response.json()
+            records = snapshot.get("records")
+            if not isinstance(records, list) or not records:
+                raise AssertionError(
+                    "Runtime-files smoke должен получить хотя бы одну рабочую запись."
+                )
+            expected_count = len(records)
+
             status_response = page.request.get(
                 f"{base_url}/events/api/v2/runtime-status"
             )
@@ -38,10 +53,16 @@ def main() -> None:
             status = status_response.json()
             event_mirror = status.get("eventMirror", {})
             database_backup = status.get("databaseBackup", {})
-            if event_mirror.get("recordCount") != 2:
-                raise AssertionError("Excel-копия не содержит две тестовые записи.")
-            if database_backup.get("eventCount") != 2:
-                raise AssertionError("Резервная копия не содержит две тестовые записи.")
+            if event_mirror.get("recordCount") != expected_count:
+                raise AssertionError(
+                    "Excel-копия не совпадает с числом рабочих записей: "
+                    f"{event_mirror.get('recordCount')!r} != {expected_count}."
+                )
+            if database_backup.get("eventCount") != expected_count:
+                raise AssertionError(
+                    "Резервная копия не совпадает с числом рабочих записей: "
+                    f"{database_backup.get('eventCount')!r} != {expected_count}."
+                )
             if not event_mirror.get("downloadAvailable"):
                 raise AssertionError("Excel-копия недоступна для скачивания.")
             if not database_backup.get("downloadAvailable"):
