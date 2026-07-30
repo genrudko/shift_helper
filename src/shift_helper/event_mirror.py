@@ -1,63 +1,55 @@
-"""Atomic derived .xlsx mirror for the operational event journal."""
+"""Atomic derived .xlsx mirror for the approved ЖС journal form."""
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from datetime import datetime
-from decimal import Decimal
+from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from .domain import EVENT_TYPE_CHOICES
 from .models import Event
 
 EVENT_MIRROR_FILENAME = "Журнал событий.xlsx"
-EVENT_MIRROR_SHEET = "Журнал событий"
+EVENT_MIRROR_SHEET = "ЖС"
 EVENT_MIRROR_META_SHEET = "_shift_helper_meta"
-EVENT_MIRROR_SCHEMA_VERSION = 1
+EVENT_MIRROR_SCHEMA_VERSION = 2
 _WRITE_LOCK = Lock()
-_EVENT_TYPE_LABELS = dict(EVENT_TYPE_CHOICES)
+_DELETED_STATUS = "deleted"
 
 _HEADERS: tuple[str, ...] = (
-    "№",
-    "Дата",
-    "Время",
-    "Оборудование",
-    "Тип события",
-    "Описание",
+    "Дата останова",
+    "Время останова",
+    "№ ВЭУ",
+    "Описание события",
     "Причина",
-    "Принятые меры",
+    "Действия персонала",
     "Исполнитель",
-    "Код ошибки",
-    "Ограничение",
-    "P ремонт, МВт",
-    "Состояние",
-    "Окончание",
-    "В утренний рапорт",
+    "Дата пуска",
+    "Время пуска",
+    "Простой",
+    "Кто внёс запись",
+    "Потери",
 )
 _COLUMN_WIDTHS: tuple[float, ...] = (
-    7,
-    13,
-    10,
-    22,
-    22,
-    42,
+    14,
+    11,
+    15,
+    44,
     34,
-    36,
+    38,
     24,
-    16,
-    15,
-    17,
-    15,
-    20,
-    18,
+    14,
+    11,
+    14,
+    24,
+    14,
 )
 
 
@@ -81,39 +73,77 @@ class EventMirrorWriteError(RuntimeError):
         self.__cause__ = cause
 
 
-def _decimal_value(value: Decimal | None) -> float | None:
-    return float(value) if value is not None else None
+def _format_actor(actor: object) -> str:
+    if actor is None or str(actor) in {"system", "migration"}:
+        return ""
+    value = str(actor)
+    if value == "local":
+        return "Локальное рабочее место"
+    if value.startswith("lan:"):
+        parts = value.split(":")
+        if len(parts) >= 3 and parts[1]:
+            return parts[1]
+    return value
 
 
-def _event_row(event: Event, visual_index: int) -> list[object]:
+def _authors(session: Session, events: list[Event]) -> dict[int, str]:
+    if not events:
+        return {}
+    event_ids = [event.id for event in events]
+    rows = session.execute(
+        text(
+            """
+            SELECT event_id, actor, action, id
+            FROM event_audit
+            WHERE event_id IN :event_ids
+              AND action IN ('create', 'baseline')
+            ORDER BY event_id,
+                     CASE action WHEN 'create' THEN 0 ELSE 1 END,
+                     id
+            """
+        ).bindparams(event_ids=tuple(event_ids))
+    ).mappings()
+    result: dict[int, str] = {}
+    for row in rows:
+        event_id = int(row["event_id"])
+        result.setdefault(event_id, _format_actor(row["actor"]))
+    return result
+
+
+def _event_row(event: Event, author: str) -> list[object]:
+    downtime: timedelta | None = None
+    if event.end_at is not None:
+        downtime = max(event.end_at - event.start_at, timedelta(0))
     return [
-        visual_index,
         event.start_at.date(),
         event.start_at.time().replace(second=0, microsecond=0),
         event.asset_label,
-        _EVENT_TYPE_LABELS.get(event.event_type, event.event_type),
         event.description,
         event.reason,
         event.actions,
         event.performer,
-        event.error_codes,
-        _decimal_value(event.rotor_limit),
-        _decimal_value(event.repair_power_mw),
-        "Открыто" if event.status == "open" else "Завершено",
-        event.end_at,
-        "Да" if event.include_in_report else "Нет",
+        event.end_at.date() if event.end_at else None,
+        event.end_at.time().replace(second=0, microsecond=0) if event.end_at else None,
+        downtime,
+        author,
+        None,
     ]
 
 
-def _style_workbook(workbook: Workbook, events: list[Event], generated_at: datetime) -> None:
+def _style_workbook(
+    workbook: Workbook,
+    events: list[Event],
+    authors: dict[int, str],
+    generated_at: datetime,
+) -> None:
     sheet = workbook.active
     if sheet is None:
         raise RuntimeError("Не удалось создать лист зеркала журнала событий.")
     sheet.title = EVENT_MIRROR_SHEET
     sheet.append(list(_HEADERS))
 
-    for visual_index, event in enumerate(events, start=1):
-        sheet.append(_event_row(event, visual_index))
+    for event in events:
+        sheet.append(_event_row(event, authors.get(event.id, "")))
 
     header_fill = PatternFill("solid", fgColor="D9E5F6")
     header_font = Font(name="Arial", size=10, bold=True, color="172033")
@@ -126,41 +156,37 @@ def _style_workbook(workbook: Workbook, events: list[Event], generated_at: datet
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         cell.border = body_border
-    sheet.row_dimensions[1].height = 30
+    sheet.row_dimensions[1].height = 34
 
     for row_index in range(2, sheet.max_row + 1):
-        sheet.row_dimensions[row_index].height = 24
-        status_cell = sheet.cell(row=row_index, column=13)
-        if status_cell.value == "Завершено":
-            status_cell.fill = PatternFill("solid", fgColor="DCFCE7")
-        else:
-            status_cell.fill = PatternFill("solid", fgColor="FEF3C7")
-
+        sheet.row_dimensions[row_index].height = 30
         for column_index in range(1, len(_HEADERS) + 1):
             cell = sheet.cell(row=row_index, column=column_index)
             cell.font = body_font
             cell.border = body_border
             cell.alignment = Alignment(vertical="top", wrap_text=True)
 
-        for column_index in (1, 2, 3, 11, 12, 13, 14, 15):
+        for column_index in (1, 2, 3, 8, 9, 10, 12):
             sheet.cell(row=row_index, column=column_index).alignment = Alignment(
                 horizontal="center",
                 vertical="top",
                 wrap_text=True,
             )
 
-        sheet.cell(row=row_index, column=2).number_format = "dd.mm.yyyy"
-        sheet.cell(row=row_index, column=3).number_format = "hh:mm"
-        sheet.cell(row=row_index, column=11).number_format = "0.00"
+        sheet.cell(row=row_index, column=1).number_format = "dd.mm.yyyy"
+        sheet.cell(row=row_index, column=2).number_format = "hh:mm"
+        sheet.cell(row=row_index, column=8).number_format = "dd.mm.yyyy"
+        sheet.cell(row=row_index, column=9).number_format = "hh:mm"
+        sheet.cell(row=row_index, column=10).number_format = "[h]:mm"
         sheet.cell(row=row_index, column=12).number_format = "0.00"
-        sheet.cell(row=row_index, column=14).number_format = "dd.mm.yyyy hh:mm"
 
     for column_index, width in enumerate(_COLUMN_WIDTHS, start=1):
-        sheet.column_dimensions[sheet.cell(row=1, column=column_index).column_letter].width = width
+        letter = sheet.cell(row=1, column=column_index).column_letter
+        sheet.column_dimensions[letter].width = width
 
     last_row = max(1, sheet.max_row)
     sheet.freeze_panes = "D2"
-    sheet.auto_filter.ref = f"A1:O{last_row}"
+    sheet.auto_filter.ref = f"A1:L{last_row}"
     sheet.print_title_rows = "1:1"
     sheet.sheet_properties.pageSetUpPr.fitToPage = True
     sheet.page_setup.orientation = "landscape"
@@ -192,7 +218,7 @@ def _style_workbook(workbook: Workbook, events: list[Event], generated_at: datet
 
 
 def refresh_event_journal_mirror(engine: Engine, exports_directory: Path) -> EventMirrorResult:
-    """Rebuild and atomically publish the event-journal compatibility mirror."""
+    """Rebuild and atomically publish the approved-form journal mirror."""
 
     exports_directory.mkdir(parents=True, exist_ok=True)
     target = exports_directory / EVENT_MIRROR_FILENAME
@@ -200,17 +226,22 @@ def refresh_event_journal_mirror(engine: Engine, exports_directory: Path) -> Eve
     generated_at = datetime.now().replace(microsecond=0)
 
     with _WRITE_LOCK:
-        statement = select(Event).order_by(Event.start_at.asc(), Event.id.asc())
+        statement = (
+            select(Event)
+            .where(Event.status != _DELETED_STATUS)
+            .order_by(Event.start_at.asc(), Event.id.asc())
+        )
         with Session(engine) as session:
             events = list(session.scalars(statement))
+            authors = _authors(session, events)
             workbook = Workbook()
-            _style_workbook(workbook, events, generated_at)
+            _style_workbook(workbook, events, authors, generated_at)
             workbook.save(pending)
 
         verifier = load_workbook(pending, read_only=True, data_only=False)
         try:
             if EVENT_MIRROR_SHEET not in verifier.sheetnames:
-                raise RuntimeError("Проверка зеркала не нашла основной лист журнала событий.")
+                raise RuntimeError("Проверка зеркала не нашла основной лист ЖС.")
             if EVENT_MIRROR_META_SHEET not in verifier.sheetnames:
                 raise RuntimeError("Проверка зеркала не нашла лист служебных метаданных.")
         finally:
