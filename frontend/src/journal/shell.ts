@@ -1,6 +1,5 @@
 export type EditorControls = {
   readonly selection: HTMLElement;
-  readonly close: HTMLButtonElement;
 };
 
 export type ShellElements = {
@@ -20,7 +19,7 @@ export function renderShell(root: HTMLElement): ShellElements {
       <header class="shift-helper-v2__header">
         <div class="shift-helper-v2__title">
           <strong>Журнал событий</strong>
-          <span>Оперативные записи смены</span>
+          <span>Рабочая форма листа «ЖС»</span>
         </div>
         <span class="shift-helper-v2__status" role="status">Загрузка данных…</span>
       </header>
@@ -29,14 +28,8 @@ export function renderShell(root: HTMLElement): ShellElements {
           Выберите строку
         </span>
         <span class="shift-helper-v2__editing-hint">
-          Ввод и изменение выполняются непосредственно в ячейках таблицы
+          Запись завершается заполнением даты и времени пуска в той же строке
         </span>
-        <button
-          class="shift-helper-v2__close"
-          data-testid="journal-close"
-          type="button"
-          disabled
-        >Завершить событие</button>
       </div>
       <div id="univer-sheet" class="shift-helper-v2__sheet"></div>
     </section>
@@ -47,7 +40,6 @@ export function renderShell(root: HTMLElement): ShellElements {
     status: requireElement<HTMLElement>(root, '.shift-helper-v2__status'),
     controls: {
       selection: requireElement<HTMLElement>(root, '[data-testid="journal-selection"]'),
-      close: requireElement<HTMLButtonElement>(root, '[data-testid="journal-close"]'),
     },
   };
 }
