@@ -23,6 +23,8 @@ import type {
 const MAX_ROWS = 200;
 const DELETE_KEY_CODE = 46;
 const DELETE_SHORTCUT_PRIORITY = 10_000;
+const ROW_HEADER_WIDTH = 48;
+const GRID_HEADER_HEIGHT = 80;
 const DRAFT_ID_PREFIX = 'draft:';
 const DRAFT_CLEAR_EVENT = 'shift-helper:draft-clear';
 const ROW_DELETE_KEY_EVENT = 'shift-helper:row-delete-key';
@@ -57,11 +59,29 @@ type ShortcutServiceFacade = {
 
 type RowDeleteKeyDetail = {
   handled: boolean;
+  wholeRowIntent: boolean;
 };
 
 export function installJournalDeleteCapture(): void {
   const html = document.documentElement;
   if (html.dataset.rowDeleteCaptureInstalled === 'true') return;
+
+  window.addEventListener(
+    'pointerdown',
+    (event) => {
+      const sheet = document.querySelector<HTMLElement>('#univer-sheet');
+      const rect = sheet?.getBoundingClientRect();
+      const rowHeaderIntent = Boolean(
+        rect &&
+        event.clientX >= rect.left &&
+        event.clientX < rect.left + ROW_HEADER_WIDTH &&
+        event.clientY >= rect.top + GRID_HEADER_HEIGHT &&
+        event.clientY <= rect.bottom
+      );
+      html.dataset.rowDeleteHeaderIntent = rowHeaderIntent ? 'true' : 'false';
+    },
+    true
+  );
 
   window.addEventListener(
     'keydown',
@@ -70,11 +90,15 @@ export function installJournalDeleteCapture(): void {
       if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
 
       html.dataset.rowDeleteCaptureSeen = 'true';
-      const detail: RowDeleteKeyDetail = { handled: false };
+      const detail: RowDeleteKeyDetail = {
+        handled: false,
+        wholeRowIntent: html.dataset.rowDeleteHeaderIntent === 'true',
+      };
       window.dispatchEvent(new CustomEvent(ROW_DELETE_KEY_EVENT, { detail }));
       if (!detail.handled) return;
 
       html.dataset.rowDeleteCaptureHandled = 'true';
+      html.dataset.rowDeleteHeaderIntent = 'false';
       event.preventDefault();
       event.stopImmediatePropagation();
     },
@@ -365,13 +389,19 @@ export function startJournalClearSelection(
     }
     const wholeRows = Boolean(
       range &&
-      range.startColumn === 0 &&
-      range.columnCount >= DISPLAY_COLUMNS.length
+      (request.detail.wholeRowIntent ||
+        (range.startColumn === 0 && range.columnCount >= DISPLAY_COLUMNS.length))
     );
-    if (!wholeRows) return;
+    if (!range || !wholeRows) return;
 
     request.detail.handled = true;
-    executeClear(ranges);
+    const rowRange: ResolvedRange = {
+      startRow: range.startRow,
+      startColumn: 0,
+      rowCount: range.rowCount,
+      columnCount: DISPLAY_COLUMNS.length,
+    };
+    executeClear([rowRange]);
   });
 
   document.addEventListener(
