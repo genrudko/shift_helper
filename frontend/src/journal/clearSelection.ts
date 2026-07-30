@@ -2,12 +2,11 @@ import { SheetsSelectionsService } from '@univerjs/sheets';
 
 import './clearSelection.css';
 
-import { deleteRecords, patchRecordsBatch } from './api';
+import { deleteRecords, loadSnapshot, patchRecordsBatch } from './api';
 import {
   DISPLAY_COLUMNS,
   HEADER_ROW_INDEX,
   RECORD_ID_COLUMN,
-  REVISION_COLUMN,
   getCellBinding,
 } from './buildWorkbook';
 import type {
@@ -149,6 +148,16 @@ function clearDraftCells(
   return rows;
 }
 
+async function currentRevisions(recordIds: readonly number[]): Promise<Map<number, number>> {
+  const requested = new Set(recordIds);
+  const snapshot = await loadSnapshot();
+  return new Map(
+    snapshot.records
+      .filter((record) => requested.has(record.id))
+      .map((record) => [record.id, record.revision])
+  );
+}
+
 export function startJournalClearSelection(
   univerAPI: any,
   status: HTMLElement
@@ -168,32 +177,36 @@ export function startJournalClearSelection(
   };
 
   const deleteRows = async (worksheet: any, range: ResolvedRange): Promise<void> => {
-    const saved: JournalDeleteOperation[] = [];
+    const recordIds: number[] = [];
     const drafts: DraftClearRow[] = [];
     for (let offset = 0; offset < range.rowCount; offset += 1) {
       const row = range.startRow + offset;
       const identity = worksheet.getRange(row, RECORD_ID_COLUMN).getValue();
       const recordId = positiveInteger(identity);
-      const revision = positiveInteger(worksheet.getRange(row, REVISION_COLUMN).getValue());
-      if (recordId !== null && revision !== null) {
-        saved.push({ recordId, revision });
-      } else if (isDraft(identity)) {
-        drafts.push({ row, fields: [], deleteRow: true });
-      }
+      if (recordId !== null) recordIds.push(recordId);
+      else if (isDraft(identity)) drafts.push({ row, fields: [], deleteRow: true });
     }
-    if (saved.length === 0 && drafts.length === 0) {
+    if (recordIds.length === 0 && drafts.length === 0) {
       show('Выбранные строки уже пусты.');
       return;
     }
-    dispatchDraftClear(drafts);
-    if (saved.length === 0) {
+    if (recordIds.length === 0) {
+      dispatchDraftClear(drafts);
       show('Черновые строки очищены.');
       return;
     }
+
     busy = true;
-    show(saved.length === 1 ? 'Удаление строки…' : `Удаление строк: ${saved.length}…`);
+    show(recordIds.length === 1 ? 'Удаление строки…' : `Удаление строк: ${recordIds.length}…`);
     try {
-      await deleteRecords({ operations: saved });
+      const revisions = await currentRevisions(recordIds);
+      const operations: JournalDeleteOperation[] = recordIds.map((recordId) => {
+        const revision = revisions.get(recordId);
+        if (revision === undefined) throw new Error(`Запись №${recordId} уже отсутствует.`);
+        return { recordId, revision };
+      });
+      await deleteRecords({ operations });
+      dispatchDraftClear(drafts);
       window.location.reload();
     } catch (error) {
       busy = false;
@@ -211,25 +224,17 @@ export function startJournalClearSelection(
       return;
     }
 
-    const operations: JournalBatchOperation[] = [];
+    const recordIds: number[] = [];
     let hasDraft = false;
     for (let rowOffset = 0; rowOffset < range.rowCount; rowOffset += 1) {
       const row = range.startRow + rowOffset;
       const identity = worksheet.getRange(row, RECORD_ID_COLUMN).getValue();
       const recordId = positiveInteger(identity);
-      const revision = positiveInteger(worksheet.getRange(row, REVISION_COLUMN).getValue());
-      if (recordId !== null && revision !== null) {
-        const changes: JournalBatchOperation['changes'] = {};
-        fields.forEach((field) => {
-          changes[field] = field === 'assetLabel' || field === 'description' ? '' : null;
-        });
-        operations.push({ recordId, revision, changes });
-      } else if (isDraft(identity)) {
-        hasDraft = true;
-      }
+      if (recordId !== null) recordIds.push(recordId);
+      else if (isDraft(identity)) hasDraft = true;
     }
 
-    if (hasDraft && operations.length > 0) {
+    if (hasDraft && recordIds.length > 0) {
       show('Нельзя одной операцией очищать сохранённые строки и черновики.', true);
       return;
     }
@@ -238,18 +243,28 @@ export function startJournalClearSelection(
       show('Выбранные ячейки черновика очищены.');
       return;
     }
-    if (operations.length === 0) {
+    if (recordIds.length === 0) {
       show('Выбранные ячейки уже пусты.');
       return;
     }
 
     busy = true;
     show(
-      operations.length === 1
+      recordIds.length === 1
         ? 'Очистка выбранных ячеек…'
-        : `Очистка диапазона: ${operations.length} строк…`
+        : `Очистка диапазона: ${recordIds.length} строк…`
     );
     try {
+      const revisions = await currentRevisions(recordIds);
+      const operations: JournalBatchOperation[] = recordIds.map((recordId) => {
+        const revision = revisions.get(recordId);
+        if (revision === undefined) throw new Error(`Запись №${recordId} уже отсутствует.`);
+        const changes: JournalBatchOperation['changes'] = {};
+        fields.forEach((field) => {
+          changes[field] = field === 'assetLabel' || field === 'description' ? '' : null;
+        });
+        return { recordId, revision, changes };
+      });
       await patchRecordsBatch({ operations });
       window.location.reload();
     } catch (error) {
@@ -268,9 +283,7 @@ export function startJournalClearSelection(
       return;
     }
     const range = resolveRange(ranges[0]);
-    if (range) {
-      document.documentElement.dataset.clearResolvedRange = JSON.stringify(range);
-    }
+    if (range) document.documentElement.dataset.clearResolvedRange = JSON.stringify(range);
     if (!range || range.rowCount < 1 || range.columnCount < 1) {
       show('Выбран некорректный диапазон.', true);
       return;
