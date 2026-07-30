@@ -58,12 +58,7 @@ def _presentation(page: Page, base_url: str) -> dict[str, object]:
     return response.json()
 
 
-def _wait_for_record(
-    page: Page,
-    base_url: str,
-    predicate,
-    failure_message: str,
-) -> dict[str, object]:
+def _wait_for_record(page: Page, base_url: str, predicate, failure_message: str) -> dict[str, object]:
     for _attempt in range(150):
         records = _snapshot(page, base_url).get("records", [])
         if isinstance(records, list):
@@ -133,10 +128,7 @@ def main() -> None:
             locale="ru-RU",
             timezone_id="Europe/Moscow",
         )
-        context.grant_permissions(
-            ["clipboard-read", "clipboard-write"],
-            origin=base_url,
-        )
+        context.grant_permissions(["clipboard-read", "clipboard-write"], origin=base_url)
         page = context.new_page()
         page_errors: list[str] = []
         console_errors: list[str] = []
@@ -214,8 +206,6 @@ def main() -> None:
                 state="visible", timeout=5_000
             )
 
-            # Row 3 starts completely blank. The first edit creates a client
-            # draft in row 3 itself; no special next-row adapter is involved.
             _edit_cell(page, date_x, row_three_y, "29.07.2026")
             page.locator('[data-testid="journal-selection"]').filter(
                 has_text="Черновик · строка 3"
@@ -246,6 +236,10 @@ def main() -> None:
             )
             if created.get("eventTypeLabel") != "Пуск":
                 raise AssertionError(f"Русская метка типа не восстановлена: {created!r}")
+
+            page.locator(".shift-helper-v2__status").filter(
+                has_text="изменения сохраняются автоматически"
+            ).wait_for(state="visible", timeout=10_000)
 
             batch_text = (
                 f"{BATCH_FIRST_DESCRIPTION}\t{BATCH_FIRST_REASON}\n"
