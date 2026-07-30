@@ -60,6 +60,7 @@ jobs:
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           python scripts/wait_for_health.py 17944
           python scripts/ui_smoke_primary_entrypoint.py
+          python scripts/ui_smoke_editing_contract.py
           python scripts/ui_smoke_univer_v2.py
           python scripts/ui_smoke_command_safety.py
           python scripts/ui_smoke_runtime_files.py
