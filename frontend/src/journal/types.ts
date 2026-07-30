@@ -47,7 +47,7 @@ export type JournalPatchField =
   | 'includeInReport'
   | 'rotorLimit';
 
-export type JournalPatchValue = string | null | boolean;
+export type JournalPatchValue = string | null | boolean | undefined;
 
 export interface JournalPatchRequest {
   revision: number;
