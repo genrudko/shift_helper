@@ -215,7 +215,11 @@ export async function patchRecord(
 export async function createRecord(
   payload: JournalCreateRequest
 ): Promise<JournalCreateResponse> {
-  const result = await mutationRequest<JournalCreateResponse>(RECORD_ENDPOINT, payload);
+  const { endAt: _pendingEndAt, ...values } = payload.values;
+  const result = await mutationRequest<JournalCreateResponse>(RECORD_ENDPOINT, {
+    clientId: payload.clientId,
+    values,
+  });
   if (
     result.schemaVersion !== 2 ||
     result.clientId !== payload.clientId ||
