@@ -9,7 +9,7 @@
 <body>
     <header class="app-header">
         <div class="app-header__inner">
-            <a class="brand" href="{{ url_for('index') }}">
+            <a class="brand" href="{{ url_for('events.journal_v2') }}">
                 <span class="brand__mark">SH</span>
                 <span>
                     <strong>Shift-Helper</strong>
@@ -17,8 +17,7 @@
                 </span>
             </a>
             <nav class="main-nav" aria-label="Основная навигация">
-                <a href="{{ url_for('index') }}" {% if request.endpoint == 'index' %}aria-current="page"{% endif %}>Главная</a>
-                <a href="{{ url_for('events.list_events') }}" {% if request.blueprint == 'events' %}aria-current="page"{% endif %}>Журнал событий</a>
+                <a href="{{ url_for('events.journal_v2') }}" aria-current="page">Журнал событий</a>
             </nav>
         </div>
     </header>

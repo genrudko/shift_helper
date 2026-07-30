@@ -66,7 +66,7 @@ jobs:
           --collect-all shift_helper
           packaging/shift_helper_entry.py
 
-      - name: Smoke-test packaged Windows executable
+      - name: Smoke-test packaged Windows executable and primary UI
         shell: pwsh
         run: |
           $env:SHIFT_HELPER_PORT = "17943"
@@ -77,6 +77,7 @@ jobs:
             -RedirectStandardError "shift-helper-windows.err.log"
           try {
             python scripts/wait_for_health.py 17943
+            python scripts/verify_primary_runtime.py 17943
           }
           finally {
             if (-not $process.HasExited) {
@@ -153,7 +154,7 @@ jobs:
           --collect-all shift_helper
           packaging/shift_helper_entry.py
 
-      - name: Smoke-test packaged Linux executable
+      - name: Smoke-test packaged Linux executable and primary UI
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -162,6 +163,7 @@ jobs:
           app_pid=$!
           trap 'kill "$app_pid" 2>/dev/null || true' EXIT
           python scripts/wait_for_health.py 17943
+          python scripts/verify_primary_runtime.py 17943
           kill "$app_pid" 2>/dev/null || true
           wait "$app_pid" 2>/dev/null || true
           trap - EXIT

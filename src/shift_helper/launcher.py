@@ -15,11 +15,18 @@ from .security import MINIMUM_LAN_TOKEN_LENGTH, is_loopback_bind_host
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 17843
+PRIMARY_APPLICATION_PATH = "/events/v2"
 
 
 def application_url(host: str, port: int) -> str:
     display_host = f"[{host}]" if ":" in host and not host.startswith("[") else host
     return f"http://{display_host}:{port}"
+
+
+def primary_application_url(host: str, port: int) -> str:
+    """Return the only user-facing runtime entry point."""
+
+    return f"{application_url(host, port)}{PRIMARY_APPLICATION_PATH}"
 
 
 def browser_host(bind_host: str) -> str:
@@ -63,7 +70,7 @@ def main() -> None:
         )
 
     local_host = browser_host(host)
-    local_url = application_url(local_host, port)
+    local_url = primary_application_url(local_host, port)
     probe_token = lan_token if local_host == host and lan_mode else None
     if is_shift_helper_running(local_host, port, probe_token):
         open_application(local_url)

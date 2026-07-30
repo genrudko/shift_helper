@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, request, session, url_for
 
 from .backup import DatabaseBackupError, create_database_backup
 from .database import initialize_database
@@ -24,6 +24,12 @@ from .events import events_blueprint
 from .paths import build_runtime_paths, ensure_runtime_directories
 from .runtime_files import runtime_files_blueprint
 from .security import configure_lan_security, load_or_create_session_secret
+
+_LEGACY_EVENT_UI_ENDPOINTS = {
+    "events.list_events",
+    "events.create_event",
+    "events.edit_event",
+}
 
 
 def create_app(
@@ -82,6 +88,21 @@ def create_app(
     app.register_blueprint(event_presentation_blueprint)
     app.register_blueprint(event_operations_blueprint)
     app.register_blueprint(runtime_files_blueprint)
+
+    @app.before_request
+    def redirect_legacy_event_ui():
+        """Keep every ordinary browser GET on the sole Univer journal runtime."""
+
+        if request.method != "GET" or request.endpoint not in _LEGACY_EVENT_UI_ENDPOINTS:
+            return None
+
+        # Legacy POST handlers remain as an internal compatibility path for old tests
+        # and data migrations. Their immediate redirect may consume one flash on the
+        # classic result page, but no ordinary user GET can enter that UI.
+        if request.endpoint == "events.list_events" and session.get("_flashes"):
+            return None
+
+        return redirect(url_for("events.journal_v2"))
 
     def refresh_event_mirror() -> None:
         try:
@@ -153,12 +174,8 @@ def create_app(
         return response
 
     @app.get("/")
-    def index() -> str:
-        return render_template(
-            "index.html",
-            database_path=runtime_paths.database,
-            data_root=runtime_paths.root,
-        )
+    def index():
+        return redirect(url_for("events.journal_v2"))
 
     @app.get("/health")
     def health():

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Главная — Shift-Helper{% endblock %}
+{% block title %}Shift-Helper{% endblock %}
 
 {% block content %}
 <section class="hero hero--compact">
@@ -10,10 +10,10 @@
 </section>
 
 <section class="module-grid" aria-label="Рабочие модули">
-    <a class="module-card module-card--active" href="{{ url_for('events.list_events') }}">
+    <a class="module-card module-card--active" href="{{ url_for('events.journal_v2') }}">
         <span class="status-label">Рабочий модуль</span>
         <strong>Журнал событий</strong>
-        <p>Остановы, ограничения, диспетчерские команды, пуски и восстановление режима.</p>
+        <p>Excel-подобный журнал на Univer Sheets с локальной базой SQLite.</p>
         <span class="module-card__action">Открыть журнал →</span>
     </a>
     <article class="module-card module-card--planned">
