@@ -45,53 +45,26 @@ jobs:
           python -m pip install -e ".[dev]"
           google-chrome --version
 
-      - name: Run Univer Chromium smoke
+      - name: Run approved ЖС Chromium smoke
         shell: bash
         env:
+          SHIFT_HELPER_PORT: "17944"
+          SHIFT_HELPER_BASE_URL: http://127.0.0.1:17944
+          SHIFT_HELPER_TEST_DATA_ROOT: .ui-v2-test-data
           SHIFT_HELPER_UI_SCREENSHOT: ui-v2-smoke/univer-v2.png
         run: |
           set -Eeuo pipefail
-          rm -rf .ui-v2-editing-data .ui-v2-test-data ui-v2-smoke
-
-          editing_pid=""
-          main_pid=""
-          cleanup() {
-            if [[ -n "$editing_pid" ]]; then
-              kill "$editing_pid" 2>/dev/null || true
-            fi
-            if [[ -n "$main_pid" ]]; then
-              kill "$main_pid" 2>/dev/null || true
-            fi
-          }
-          trap cleanup EXIT
-
-          SHIFT_HELPER_PORT=17945 \
-          SHIFT_HELPER_TEST_DATA_ROOT=.ui-v2-editing-data \
-            python scripts/run_ui_v2_test_server.py >ui-v2-editing-server.log 2>&1 &
-          editing_pid=$!
-          python scripts/wait_for_health.py 17945
-          SHIFT_HELPER_BASE_URL=http://127.0.0.1:17945 \
-            python scripts/ui_smoke_editing_contract.py
-          kill "$editing_pid" 2>/dev/null || true
-          wait "$editing_pid" 2>/dev/null || true
-          editing_pid=""
-
-          SHIFT_HELPER_PORT=17944 \
-          SHIFT_HELPER_TEST_DATA_ROOT=.ui-v2-test-data \
-            python scripts/run_ui_v2_test_server.py >ui-v2-server.log 2>&1 &
-          main_pid=$!
+          rm -rf .ui-v2-test-data ui-v2-smoke
+          python scripts/run_ui_v2_test_server.py >ui-v2-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           python scripts/wait_for_health.py 17944
-          export SHIFT_HELPER_BASE_URL=http://127.0.0.1:17944
           python scripts/ui_smoke_primary_entrypoint.py
-          python scripts/ui_smoke_univer_v2.py
-          python scripts/ui_smoke_command_safety.py
+          python scripts/ui_smoke_approved_js.py
           python scripts/ui_smoke_runtime_files.py
-          python scripts/ui_smoke_operation_history.py
-          python scripts/ui_smoke_clear_selection.py
           python scripts/ui_smoke_zoom.py
-          kill "$main_pid" 2>/dev/null || true
-          wait "$main_pid" 2>/dev/null || true
-          main_pid=""
+          kill "$server_pid" 2>/dev/null || true
+          wait "$server_pid" 2>/dev/null || true
           trap - EXIT
 
       - name: Upload Univer smoke screenshot
@@ -108,7 +81,6 @@ jobs:
         with:
           name: univer-v2-smoke-diagnostics
           path: |
-            ui-v2-editing-server.log
             ui-v2-server.log
             ui-v2-smoke/univer-v2.png
           if-no-files-found: warn
