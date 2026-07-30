@@ -156,8 +156,9 @@ export function startJournalEditingContract(
   univerAPI.addEvent(univerAPI.Event.SheetEditEnded, ({ row, column, worksheet }: any) => {
     queueMarker(worksheet);
     if (!worksheet || !SPECIAL_COLUMNS.has(column) || !hasIdentity(worksheet, row)) return;
-    const previous = pending?.worksheet === worksheet && pending.row === row && pending.column === column
-      ? pending.previousValue
+    const currentPending = pending;
+    const previous = currentPending && currentPending.worksheet === worksheet && currentPending.row === row && currentPending.column === column
+      ? currentPending.previousValue
       : worksheet.getRange(row, column).getValue();
     pending = null;
     const value = worksheet.getRange(row, column).getValue();
