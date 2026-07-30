@@ -104,6 +104,10 @@ def main() -> None:
             if _records(page, base_url) != []:
                 raise AssertionError("Editing contract smoke должен начинаться с пустой базы.")
 
+            initial_date = page.locator('[data-testid="journal-date"]').input_value()
+            initial_time = page.locator('[data-testid="journal-time"]').input_value()
+            initial_type = page.locator('[data-testid="journal-event-type"]').input_value()
+
             sheet_box = page.locator("#univer-sheet").bounding_box()
             if sheet_box is None:
                 raise AssertionError("Не удалось определить геометрию контейнера Univer.")
@@ -130,27 +134,23 @@ def main() -> None:
             if _records(page, base_url) != []:
                 raise AssertionError("Ввод в пустой строке создал запись в SQLite.")
 
-            # Invalid values must be reverted after Univer commits the editor,
-            # not remain visible until some later record creation redraws the row.
+            # Invalid values must be restored after Univer commits its editor.
             _edit_cell(page, date_x, row_two_y, "!")
             _assert_status(page, "Дата не сохранена")
-            if page.locator('[data-testid="journal-date"]').input_value() != "30.07.2026":
+            if page.locator('[data-testid="journal-date"]').input_value() != initial_date:
                 raise AssertionError("Невалидная дата изменила доменную модель draft.")
 
             _edit_cell(page, time_x, row_two_y, "!")
             _assert_status(page, "Время не сохранено")
-            if page.locator('[data-testid="journal-time"]').input_value() != "11:00":
-                # The exact minute depends on server start; compare the sheet
-                # contract below through a valid replacement instead.
-                pass
+            if page.locator('[data-testid="journal-time"]').input_value() != initial_time:
+                raise AssertionError("Невалидное время изменило доменную модель draft.")
 
             _edit_cell(page, type_x, row_two_y, "sd")
             _assert_status(page, "Тип события не сохранён")
-            if page.locator('[data-testid="journal-event-type"]').input_value() != "other":
+            if page.locator('[data-testid="journal-event-type"]').input_value() != initial_type:
                 raise AssertionError("Невалидный тип изменил доменную модель draft.")
 
             _edit_cell(page, date_x, row_two_y, DIRECT_DATE)
-            page.locator('[data-testid="journal-date"]').wait_for(state="visible")
             if page.locator('[data-testid="journal-date"]').input_value() != DIRECT_DATE:
                 raise AssertionError("Прямая дата не синхронизировалась с редактором строки.")
 
