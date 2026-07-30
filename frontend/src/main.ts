@@ -7,7 +7,10 @@ import './styles.css';
 
 import { loadPresentation, loadSnapshot } from './journal/api';
 import { buildWorkbookData, DISPLAY_COLUMNS } from './journal/buildWorkbook';
-import { startJournalClearSelection } from './journal/clearSelection';
+import {
+  installJournalDeleteCapture,
+  startJournalClearSelection,
+} from './journal/clearSelection';
 import {
   JOURNAL_MENU_CONFIG,
   startJournalCommandSafety,
@@ -34,6 +37,7 @@ async function start(): Promise<void> {
   const { status, controls } = renderShell(root);
   startRuntimeFileControls();
   startOperationHistoryControls();
+  installJournalDeleteCapture();
 
   try {
     const [snapshot, presentation] = await Promise.all([
