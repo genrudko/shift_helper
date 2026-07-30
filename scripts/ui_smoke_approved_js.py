@@ -50,6 +50,10 @@ def _delete_diagnostics(page: Page) -> dict[str, object]:
         "keyTarget": html.get_attribute("data-clear-key-target"),
         "rangeCount": html.get_attribute("data-clear-range-count"),
         "resolvedRange": html.get_attribute("data-clear-resolved-range"),
+        "activeElement": page.evaluate(
+            "document.activeElement ? document.activeElement.tagName + '.' + "
+            "document.activeElement.className : 'none'"
+        ),
         "status": status.text_content() if status.count() else None,
     }
 
@@ -116,7 +120,10 @@ def _select_persisted_row(page: Page, column: int = 4) -> tuple[float, float]:
         page.wait_for_timeout(25)
         text = selection.text_content() or ""
         if "Запись №1" in text:
-            return x, float(y)
+            row_header_x = box["x"] + 24
+            page.mouse.click(row_header_x, y)
+            page.wait_for_timeout(100)
+            return row_header_x, float(y)
     raise AssertionError(
         "Не удалось выбрать сохранённую строку через рабочую область Univer. "
         f"Последний контекст: {selection.text_content()!r}"
@@ -229,7 +236,6 @@ def main() -> None:
             _wait_for_reload(page, clear_origin)
 
             _select_persisted_row(page)
-            page.keyboard.press("Shift+Space")
             delete_origin = _runtime_origin(page)
             page.keyboard.press("Delete")
             _wait_for_records(
