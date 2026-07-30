@@ -2,29 +2,26 @@ import { SheetsSelectionsService } from '@univerjs/sheets';
 
 import './clearSelection.css';
 
-import { patchRecordsBatch } from './api';
+import { deleteRecords, patchRecordsBatch } from './api';
 import {
+  DISPLAY_COLUMNS,
   HEADER_ROW_INDEX,
   RECORD_ID_COLUMN,
   REVISION_COLUMN,
-  getEditableField,
+  getCellBinding,
 } from './buildWorkbook';
 import type {
-  EditableJournalField,
   JournalBatchOperation,
+  JournalDeleteOperation,
+  JournalPatchField,
 } from './types';
 
-const MAX_CLEAR_ROWS = 200;
+const MAX_ROWS = 200;
+const DRAFT_ID_PREFIX = 'draft:';
+const DRAFT_CLEAR_EVENT = 'shift-helper:draft-clear';
 const CLEAR_COMMANDS = new Set([
   'sheet.command.clear-selection-content',
   'sheet.command.clear-selection-all',
-]);
-const CLEARABLE_FIELDS = new Set<EditableJournalField>([
-  'reason',
-  'actions',
-  'performer',
-  'errorCodes',
-  'rotorLimit',
 ]);
 
 type ResolvedRange = {
@@ -34,25 +31,25 @@ type ResolvedRange = {
   columnCount: number;
 };
 
+type DraftClearRow = {
+  row: number;
+  fields: JournalPatchField[];
+  deleteRow?: boolean;
+};
+
 function positiveInteger(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
-    return value;
-  }
-  if (typeof value === 'string' && /^\d+$/.test(value)) {
-    const parsed = Number(value);
-    return parsed > 0 ? parsed : null;
-  }
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
+  if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
   return null;
 }
 
-function displayValue(value: unknown): string {
-  return value === null || value === undefined ? '' : String(value);
+function isDraft(value: unknown): boolean {
+  return typeof value === 'string' && value.startsWith(DRAFT_ID_PREFIX);
 }
 
 function resolveRange(value: unknown): ResolvedRange | null {
   if (!value || typeof value !== 'object') return null;
   const candidate = value as Record<string, unknown>;
-
   if (
     typeof candidate.getRow === 'function' &&
     typeof candidate.getColumn === 'function' &&
@@ -66,7 +63,6 @@ function resolveRange(value: unknown): ResolvedRange | null {
       columnCount: Number((candidate.getNumColumns as () => unknown)()),
     };
   }
-
   const startRow = Number(candidate.startRow);
   const endRow = Number(candidate.endRow);
   const startColumn = Number(candidate.startColumn);
@@ -90,191 +86,203 @@ function resolveRange(value: unknown): ResolvedRange | null {
 }
 
 function commandRanges(univerAPI: any, event: any): unknown[] {
-  const explicitRanges = event?.params?.ranges;
-  if (Array.isArray(explicitRanges) && explicitRanges.length > 0) {
-    return explicitRanges;
-  }
-
+  const explicit = event?.params?.ranges;
+  if (Array.isArray(explicit) && explicit.length > 0) return explicit;
   try {
-    const injector = univerAPI?._injector;
-    const selectionService = injector?.get?.(SheetsSelectionsService) as
+    const service = univerAPI?._injector?.get?.(SheetsSelectionsService) as
       | SheetsSelectionsService
       | undefined;
-    const selections = selectionService?.getCurrentSelections?.();
+    const selections = service?.getCurrentSelections?.();
     if (Array.isArray(selections) && selections.length > 0) {
       return selections.map((selection) => selection.range);
     }
   } catch {
-    // Fall through to the public facade as a compatibility fallback.
+    // Public facade fallback below.
   }
-
   const worksheet = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.();
   const activeRange = worksheet?.getSelection?.()?.getActiveRange?.();
   return activeRange ? [activeRange] : [];
+}
+
+function clearFields(startColumn: number, columnCount: number): JournalPatchField[] | null {
+  const fields = new Set<JournalPatchField>();
+  for (let offset = 0; offset < columnCount; offset += 1) {
+    const binding = getCellBinding(startColumn + offset);
+    if (!binding || binding.kind === 'readonly') return null;
+    if (binding.kind === 'startDate' || binding.kind === 'startTime') return null;
+    if (binding.kind === 'endDate' || binding.kind === 'endTime') {
+      fields.add('endAt');
+    } else {
+      fields.add(binding.field);
+    }
+  }
+  return [...fields];
+}
+
+function clearDraftCells(
+  worksheet: any,
+  range: ResolvedRange,
+  fields: JournalPatchField[]
+): DraftClearRow[] {
+  const rows: DraftClearRow[] = [];
+  for (let rowOffset = 0; rowOffset < range.rowCount; rowOffset += 1) {
+    const row = range.startRow + rowOffset;
+    const identity = worksheet.getRange(row, RECORD_ID_COLUMN).getValue();
+    if (!isDraft(identity)) continue;
+    for (let columnOffset = 0; columnOffset < range.columnCount; columnOffset += 1) {
+      const column = range.startColumn + columnOffset;
+      const binding = getCellBinding(column);
+      if (binding?.kind === 'endDate' || binding?.kind === 'endTime') {
+        worksheet.getRange(row, 7).setValue('');
+        worksheet.getRange(row, 8).setValue('');
+      } else {
+        worksheet.getRange(row, column).setValue('');
+      }
+    }
+    rows.push({ row, fields });
+  }
+  return rows;
 }
 
 export function startJournalClearSelection(
   univerAPI: any,
   status: HTMLElement
 ): void {
-  let clearing = false;
-  const html = document.documentElement;
+  let busy = false;
 
-  const setStatus = (
-    state: 'saving' | 'error',
-    message: string
-  ): void => {
-    status.dataset.clearState = state;
-    status.classList.toggle('shift-helper-v2__status--error', state === 'error');
+  const show = (message: string, error = false): void => {
+    status.dataset.clearState = error ? 'error' : 'saving';
+    status.classList.toggle('shift-helper-v2__status--error', error);
     status.textContent = message;
   };
 
-  const clearResolvedRange = async (
-    worksheet: any,
-    range: ResolvedRange | null
-  ): Promise<void> => {
-    if (clearing) return;
-    if (!worksheet || !range) {
-      setStatus('error', 'Не удалось определить диапазон для очистки.');
-      return;
-    }
+  const dispatchDraftClear = (rows: DraftClearRow[]): void => {
+    if (rows.length === 0) return;
+    window.dispatchEvent(
+      new CustomEvent(DRAFT_CLEAR_EVENT, { detail: { rows } })
+    );
+  };
 
-    const { startRow, startColumn, rowCount, columnCount } = range;
-    html.dataset.clearResolvedRange = JSON.stringify(range);
-    if (
-      !Number.isInteger(startRow) ||
-      !Number.isInteger(startColumn) ||
-      !Number.isInteger(rowCount) ||
-      !Number.isInteger(columnCount) ||
-      rowCount < 1 ||
-      columnCount < 1
-    ) {
-      setStatus('error', 'Выбран некорректный диапазон. Данные не изменены.');
+  const deleteRows = async (worksheet: any, range: ResolvedRange): Promise<void> => {
+    const saved: JournalDeleteOperation[] = [];
+    const drafts: DraftClearRow[] = [];
+    for (let offset = 0; offset < range.rowCount; offset += 1) {
+      const row = range.startRow + offset;
+      const identity = worksheet.getRange(row, RECORD_ID_COLUMN).getValue();
+      const recordId = positiveInteger(identity);
+      const revision = positiveInteger(worksheet.getRange(row, REVISION_COLUMN).getValue());
+      if (recordId !== null && revision !== null) {
+        saved.push({ recordId, revision });
+      } else if (isDraft(identity)) {
+        drafts.push({ row, fields: [], deleteRow: true });
+      }
+    }
+    if (saved.length === 0 && drafts.length === 0) {
+      show('Выбранные строки уже пусты.', false);
       return;
     }
-    if (startRow === HEADER_ROW_INDEX || startRow < 1) {
-      setStatus('error', 'Заголовок журнала очищать нельзя. Данные не изменены.');
+    dispatchDraftClear(drafts);
+    if (saved.length === 0) {
+      show('Черновые строки очищены.', false);
       return;
     }
-    if (rowCount > MAX_CLEAR_ROWS) {
-      setStatus(
-        'error',
-        `За одну операцию можно очистить не более ${MAX_CLEAR_ROWS} строк.`
+    busy = true;
+    show(saved.length === 1 ? 'Удаление строки…' : `Удаление строк: ${saved.length}…`);
+    try {
+      await deleteRecords({ operations: saved });
+      window.location.reload();
+    } catch (error) {
+      busy = false;
+      show(`Строки не удалены: ${error instanceof Error ? error.message : String(error)}`, true);
+    }
+  };
+
+  const clearCells = async (worksheet: any, range: ResolvedRange): Promise<void> => {
+    const fields = clearFields(range.startColumn, range.columnCount);
+    if (fields === null) {
+      show(
+        'Диапазон содержит дату/время останова или вычисляемую графу. Эти ячейки не очищены.',
+        true
       );
       return;
-    }
-
-    const columns: Array<{ index: number; field: EditableJournalField }> = [];
-    for (let offset = 0; offset < columnCount; offset += 1) {
-      const columnIndex = startColumn + offset;
-      const field = getEditableField(columnIndex);
-      if (field === null || !CLEARABLE_FIELDS.has(field)) {
-        setStatus(
-          'error',
-          'Диапазон содержит обязательную или защищённую колонку. Данные не изменены.'
-        );
-        return;
-      }
-      columns.push({ index: columnIndex, field });
     }
 
     const operations: JournalBatchOperation[] = [];
-    for (let offset = 0; offset < rowCount; offset += 1) {
-      const row = startRow + offset;
-      const recordId = positiveInteger(
-        worksheet.getRange(row, RECORD_ID_COLUMN).getValue()
-      );
-      const revision = positiveInteger(
-        worksheet.getRange(row, REVISION_COLUMN).getValue()
-      );
-      if (recordId === null || revision === null) {
-        setStatus(
-          'error',
-          'Очистка поддерживается только для сохранённых строк. Данные не изменены.'
-        );
-        return;
-      }
-
-      const changes: Partial<Record<EditableJournalField, string | null>> = {};
-      columns.forEach(({ index, field }) => {
-        const current = displayValue(worksheet.getRange(row, index).getValue());
-        if (current !== '') changes[field] = '';
-      });
-      if (Object.keys(changes).length > 0) {
+    let hasDraft = false;
+    for (let rowOffset = 0; rowOffset < range.rowCount; rowOffset += 1) {
+      const row = range.startRow + rowOffset;
+      const identity = worksheet.getRange(row, RECORD_ID_COLUMN).getValue();
+      const recordId = positiveInteger(identity);
+      const revision = positiveInteger(worksheet.getRange(row, REVISION_COLUMN).getValue());
+      if (recordId !== null && revision !== null) {
+        const changes: JournalBatchOperation['changes'] = {};
+        fields.forEach((field) => {
+          changes[field] = field === 'assetLabel' || field === 'description' ? '' : null;
+        });
         operations.push({ recordId, revision, changes });
+      } else if (isDraft(identity)) {
+        hasDraft = true;
       }
     }
 
-    html.dataset.clearOperationCount = String(operations.length);
+    const draftRows = clearDraftCells(worksheet, range, fields);
+    dispatchDraftClear(draftRows);
     if (operations.length === 0) {
-      status.dataset.clearState = 'idle';
-      status.classList.remove('shift-helper-v2__status--error');
-      status.textContent = 'Выбранные ячейки уже пусты.';
+      show(hasDraft ? 'Выбранные ячейки черновика очищены.' : 'Выбранные ячейки уже пусты.');
+      return;
+    }
+    if (hasDraft) {
+      show('Нельзя одной операцией очищать сохранённые строки и черновики.', true);
       return;
     }
 
-    clearing = true;
-    setStatus(
-      'saving',
+    busy = true;
+    show(
       operations.length === 1
         ? 'Очистка выбранных ячеек…'
         : `Очистка диапазона: ${operations.length} строк…`
     );
     try {
       await patchRecordsBatch({ operations });
-      html.dataset.clearBatchResult = 'success';
       window.location.reload();
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      html.dataset.clearBatchResult = `error:${message}`;
-      clearing = false;
-      setStatus('error', `Диапазон не очищен: ${message}`);
+      busy = false;
+      show(`Ячейки не очищены: ${error instanceof Error ? error.message : String(error)}`, true);
     }
   };
 
-  document.addEventListener(
-    'keydown',
-    (event) => {
-      html.dataset.clearLastKey = event.key;
-      html.dataset.clearLastKeyTarget =
-        event.target instanceof Element ? event.target.tagName : 'unknown';
-    },
-    true
-  );
-
-  univerAPI.addEvent(univerAPI.Event.SelectionChanged, (event: any) => {
-    try {
-      html.dataset.clearLastSelection = JSON.stringify(event.selections ?? null);
-    } catch {
-      html.dataset.clearLastSelection = 'unserializable';
-    }
-  });
-
   univerAPI.addEvent(univerAPI.Event.BeforeCommandExecute, (event: any) => {
-    html.dataset.clearLastCommand = String(event.id ?? 'unknown');
     if (!CLEAR_COMMANDS.has(event.id)) return;
-
+    event.cancel = true;
+    if (busy) return;
     const worksheet = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.();
     const ranges = commandRanges(univerAPI, event);
-    html.dataset.clearCommandRangeCount = String(ranges.length);
-    if (ranges.length !== 1) {
-      event.cancel = true;
-      html.dataset.clearIntercepted = 'true';
-      setStatus(
-        'error',
-        ranges.length === 0
-          ? 'Не удалось определить диапазон для очистки.'
-          : 'Очистка нескольких несмежных диапазонов пока недоступна.'
-      );
+    if (!worksheet || ranges.length !== 1) {
+      show('Не удалось однозначно определить выбранный диапазон.', true);
+      return;
+    }
+    const range = resolveRange(ranges[0]);
+    if (!range || range.rowCount < 1 || range.columnCount < 1) {
+      show('Выбран некорректный диапазон.', true);
+      return;
+    }
+    if (range.startRow <= HEADER_ROW_INDEX) {
+      show('Заголовок журнала удалить нельзя.', true);
+      return;
+    }
+    if (range.rowCount > MAX_ROWS) {
+      show(`За одну операцию допускается не более ${MAX_ROWS} строк.`, true);
       return;
     }
 
-    const range = resolveRange(ranges[0]);
-    html.dataset.clearSelectionResolvedBeforeCancel = String(Boolean(range));
-    event.cancel = true;
-    html.dataset.clearIntercepted = 'true';
-    void clearResolvedRange(worksheet, range);
+    const wholeRows =
+      range.startColumn === 0 && range.columnCount >= DISPLAY_COLUMNS.length;
+    if (wholeRows) {
+      void deleteRows(worksheet, range);
+    } else {
+      void clearCells(worksheet, range);
+    }
   });
 
-  html.dataset.clearSelection = 'active';
+  document.documentElement.dataset.clearSelection = 'approved-js';
 }
