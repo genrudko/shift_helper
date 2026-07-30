@@ -4,69 +4,107 @@ import { LocaleType } from '@univerjs/presets';
 import type {
   EditableJournalField,
   JournalDraftSnapshot,
+  JournalEventSnapshot,
   JournalRowSnapshot,
   JournalSnapshot,
 } from './types';
 
 export type CellValue = string | number;
 
+export type JournalCellBinding =
+  | { readonly kind: 'date' }
+  | { readonly kind: 'time' }
+  | { readonly kind: 'eventType' }
+  | { readonly kind: 'includeInReport' }
+  | { readonly kind: 'text'; readonly field: EditableJournalField };
+
 type JournalColumn = {
   readonly title: string;
   readonly width: number;
-  readonly field?: EditableJournalField;
+  readonly binding?: JournalCellBinding;
   readonly value: (record: JournalRowSnapshot, visualIndex: number) => CellValue;
 };
 
 export const HEADER_ROW_INDEX = 0;
 
+function isDraft(record: JournalRowSnapshot): record is JournalDraftSnapshot {
+  return 'clientId' in record;
+}
+
+function savedRecordNumber(record: JournalRowSnapshot, visualIndex: number): CellValue {
+  if (isDraft(record)) return '＋';
+  return 'id' in record ? (record as JournalEventSnapshot).id : visualIndex + 1;
+}
+
 export const DISPLAY_COLUMNS: readonly JournalColumn[] = [
-  { title: '№', width: 56, value: (_record, index) => index + 1 },
-  { title: 'Дата', width: 92, value: (record) => formatDate(record.startAt) },
-  { title: 'Время', width: 72, value: (record) => formatTime(record.startAt) },
+  { title: '№', width: 56, value: savedRecordNumber },
+  {
+    title: 'Дата',
+    width: 92,
+    binding: { kind: 'date' },
+    value: (record) => formatDate(record.startAt),
+  },
+  {
+    title: 'Время',
+    width: 72,
+    binding: { kind: 'time' },
+    value: (record) => formatTime(record.startAt),
+  },
   {
     title: 'Оборудование',
     width: 150,
-    field: 'assetLabel',
+    binding: { kind: 'text', field: 'assetLabel' },
     value: (record) => record.assetLabel,
   },
-  { title: 'Тип события', width: 150, value: (record) => record.eventTypeLabel },
+  {
+    title: 'Тип события',
+    width: 150,
+    binding: { kind: 'eventType' },
+    value: (record) => record.eventTypeLabel,
+  },
   {
     title: 'Описание',
     width: 300,
-    field: 'description',
+    binding: { kind: 'text', field: 'description' },
     value: (record) => record.description,
   },
   {
     title: 'Причина',
     width: 240,
-    field: 'reason',
+    binding: { kind: 'text', field: 'reason' },
     value: (record) => record.reason ?? '',
   },
   {
     title: 'Принятые меры',
     width: 260,
-    field: 'actions',
+    binding: { kind: 'text', field: 'actions' },
     value: (record) => record.actions ?? '',
   },
   {
     title: 'Исполнитель',
     width: 170,
-    field: 'performer',
+    binding: { kind: 'text', field: 'performer' },
     value: (record) => record.performer ?? '',
   },
   {
     title: 'Код ошибки',
     width: 110,
-    field: 'errorCodes',
+    binding: { kind: 'text', field: 'errorCodes' },
     value: (record) => record.errorCodes ?? '',
   },
   {
     title: 'Ограничение',
     width: 110,
-    field: 'rotorLimit',
+    binding: { kind: 'text', field: 'rotorLimit' },
     value: (record) => formatDecimal(record.rotorLimit),
   },
   { title: 'P ремонт, МВт', width: 120, value: (record) => formatDecimal(record.repairPowerMw) },
+  {
+    title: 'В рапорт',
+    width: 92,
+    binding: { kind: 'includeInReport' },
+    value: (record) => (record.includeInReport ? 'Да' : 'Нет'),
+  },
   {
     title: 'Состояние',
     width: 110,
@@ -81,13 +119,16 @@ const COLUMN_COUNT = DISPLAY_COLUMNS.length + 2;
 const HEADER_STYLE_ID = 'journal-header';
 const BODY_STYLE_ID = 'journal-body';
 
-const EDITABLE_FIELDS_BY_COLUMN = new Map<number, EditableJournalField>(
-  DISPLAY_COLUMNS.flatMap((column, columnIndex) =>
-    column.field ? ([[columnIndex, column.field]] as const) : []
-  )
-);
+export function getCellBinding(columnIndex: number): JournalCellBinding | null {
+  return DISPLAY_COLUMNS[columnIndex]?.binding ?? null;
+}
 
-function formatDate(value: string): string {
+export function getEditableField(columnIndex: number): EditableJournalField | null {
+  const binding = getCellBinding(columnIndex);
+  return binding?.kind === 'text' ? binding.field : null;
+}
+
+export function formatDate(value: string): string {
   const [datePart] = value.split('T');
   const parts = datePart?.split('-');
   if (!parts || parts.length !== 3) return value;
@@ -95,7 +136,7 @@ function formatDate(value: string): string {
   return `${day}.${month}.${year}`;
 }
 
-function formatTime(value: string): string {
+export function formatTime(value: string): string {
   const timePart = value.split('T')[1];
   return timePart?.slice(0, 5) ?? '';
 }
@@ -107,10 +148,6 @@ function formatDateTime(value: string | null): string {
 
 function formatDecimal(value: string | null): string {
   return value?.replace('.', ',') ?? '';
-}
-
-export function getEditableField(columnIndex: number): EditableJournalField | null {
-  return EDITABLE_FIELDS_BY_COLUMN.get(columnIndex) ?? null;
 }
 
 export function getDisplayValue(
@@ -135,10 +172,7 @@ function buildDisplayRow(record: JournalRowSnapshot, visualIndex: number): Recor
   return row;
 }
 
-function buildCellData(
-  snapshot: JournalSnapshot,
-  draft: JournalDraftSnapshot
-): Record<number, Record<number, object>> {
+function buildCellData(snapshot: JournalSnapshot): Record<number, Record<number, object>> {
   const cellData: Record<number, Record<number, object>> = {
     [HEADER_ROW_INDEX]: {},
   };
@@ -159,13 +193,6 @@ function buildCellData(
     cellData[rowIndex] = row;
   });
 
-  const draftVisualIndex = snapshot.records.length;
-  const draftRowIndex = draftVisualIndex + 1;
-  const draftRow = buildDisplayRow(draft, draftVisualIndex);
-  draftRow[RECORD_ID_COLUMN] = { v: draft.clientId, t: 1 };
-  draftRow[REVISION_COLUMN] = { v: '', t: 1 };
-  cellData[draftRowIndex] = draftRow;
-
   return cellData;
 }
 
@@ -181,12 +208,9 @@ function buildColumnData(): Record<number, { w: number; hd: 0 | 1 }> {
   return columnData;
 }
 
-export function buildWorkbookData(
-  snapshot: JournalSnapshot,
-  draft: JournalDraftSnapshot
-): IWorkbookData {
+export function buildWorkbookData(snapshot: JournalSnapshot): IWorkbookData {
   const sheetId = 'event-journal-v2-sheet';
-  const visibleRows = snapshot.records.length + 2;
+  const visibleRows = snapshot.records.length + 1;
 
   return {
     id: 'shift-helper-event-journal-v2',
@@ -216,7 +240,7 @@ export function buildWorkbookData(
         name: 'Журнал событий',
         tabColor: '#2563EB',
         hidden: 0,
-        rowCount: Math.max(visibleRows + 200, 500),
+        rowCount: Math.max(visibleRows + 500, 500),
         columnCount: COLUMN_COUNT,
         zoomRatio: 1,
         freeze: {
@@ -230,7 +254,7 @@ export function buildWorkbookData(
         defaultColumnWidth: 100,
         defaultRowHeight: 32,
         mergeData: [],
-        cellData: buildCellData(snapshot, draft),
+        cellData: buildCellData(snapshot),
         rowData: {
           [HEADER_ROW_INDEX]: { h: 36 },
         },
