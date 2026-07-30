@@ -8,6 +8,7 @@ const TIME_COLUMN = 2;
 const TYPE_COLUMN = 4;
 const SPECIAL_COLUMNS = new Set([DATE_COLUMN, TIME_COLUMN, TYPE_COLUMN]);
 const MAX_SCAN_ROW = 600;
+const MARKER_RETRY_DELAYS = [0, 50, 200, 500] as const;
 
 type Worksheet = any;
 type UniverApi = any;
@@ -46,6 +47,11 @@ function markDraft(worksheet: Worksheet): number | null {
   return row;
 }
 
+function formatDisplayDate(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : iso;
+}
+
 function parseDate(value: unknown): string | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * 86_400_000);
@@ -59,7 +65,13 @@ function parseDate(value: unknown): string | null {
   const day = Number(iso?.[3] ?? display?.[1]);
   if (!year || !month || !day) return null;
   const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
   return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
@@ -74,9 +86,18 @@ function parseTime(value: unknown): string | null {
   return `${String(Number(match[1])).padStart(2, '0')}:${match[2]}`;
 }
 
-function resolveType(value: unknown, eventTypes: readonly JournalEventTypeOption[]): JournalEventTypeOption | null {
+function resolveType(
+  value: unknown,
+  eventTypes: readonly JournalEventTypeOption[]
+): JournalEventTypeOption | null {
   const normalized = String(value ?? '').trim().toLocaleLowerCase('ru-RU');
-  return eventTypes.find((item) => item.value.toLocaleLowerCase('ru-RU') === normalized || item.label.toLocaleLowerCase('ru-RU') === normalized) ?? null;
+  return (
+    eventTypes.find(
+      (item) =>
+        item.value.toLocaleLowerCase('ru-RU') === normalized ||
+        item.label.toLocaleLowerCase('ru-RU') === normalized
+    ) ?? null
+  );
 }
 
 function setStatus(status: HTMLElement, message: string, error = false): void {
@@ -92,20 +113,31 @@ function clearStatus(status: HTMLElement): void {
   status.textContent = 'Строка выбрана · изменения сохраняются автоматически';
 }
 
-function selectDraft(univerAPI: UniverApi, worksheet: Worksheet, clickedRow: number, column: number, status: HTMLElement): void {
+function explainInactiveRow(worksheet: Worksheet, row: number, status: HTMLElement): void {
   const draftRow = findDraftRow(worksheet);
   if (draftRow === null) {
     setStatus(status, 'Нет активной строки для новой записи.', true);
     return;
   }
-  const targetColumn = Math.max(0, Math.min(column, DISPLAY_COLUMNS.length - 1));
-  worksheet.getRange(draftRow, targetColumn).activate?.();
-  univerAPI.fireEvent(univerAPI.Event.CellClicked, { row: draftRow, column: targetColumn, worksheet });
-  setStatus(status, `Строка ${clickedRow + 1} пока не активна. Продолжайте новую запись в строке ${draftRow + 1}.`, true);
+  setStatus(
+    status,
+    `Строка ${row + 1} не является строкой новой записи. Используйте строку ${draftRow + 1} со знаком ＋.`,
+    true
+  );
 }
 
 function change(control: HTMLInputElement | HTMLSelectElement): void {
   control.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function canonicalPreviousValue(
+  column: number,
+  controls: EditorControls,
+  eventTypes: readonly JournalEventTypeOption[]
+): unknown {
+  if (column === DATE_COLUMN) return formatDisplayDate(controls.date.value);
+  if (column === TIME_COLUMN) return controls.time.value;
+  return eventTypes.find((item) => item.value === controls.eventType.value)?.label ?? '';
 }
 
 export function startJournalEditingContract(
@@ -117,104 +149,171 @@ export function startJournalEditingContract(
   let pending: PendingEdit | null = null;
   let marking = false;
   let initialized = false;
+  let lastDraftRow: number | null = null;
 
-  const queueMarker = (worksheet: Worksheet | null = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.() ?? null): void => {
+  const synchronizeDraft = (
+    worksheet: Worksheet | null =
+      univerAPI.getActiveWorkbook?.()?.getActiveSheet?.() ?? null
+  ): void => {
     if (!worksheet || marking) return;
     marking = true;
-    window.setTimeout(() => {
-      try {
-        const draftRow = markDraft(worksheet);
-        if (draftRow !== null && !initialized) {
-          initialized = true;
-          worksheet.getRange(draftRow, 3).activate?.();
-          univerAPI.fireEvent(univerAPI.Event.CellClicked, { row: draftRow, column: 3, worksheet });
-          setStatus(status, `Загружено записей: ${draftRow - 1} · Новая запись: заполните строку ${draftRow + 1}. Дата, время и тип редактируются прямо в таблице.`);
-        }
-      } finally {
-        marking = false;
+    try {
+      const draftRow = markDraft(worksheet);
+      if (draftRow === null) return;
+
+      if (!initialized) {
+        initialized = true;
+        lastDraftRow = draftRow;
+        worksheet.getRange(draftRow, 3).activate?.();
+        univerAPI.fireEvent(univerAPI.Event.CellClicked, {
+          row: draftRow,
+          column: 3,
+          worksheet,
+        });
+        setStatus(
+          status,
+          `Загружено записей: ${draftRow - 1} · Новая запись: заполните строку ${draftRow + 1}.`
+        );
+        return;
       }
-    }, 0);
+
+      if (lastDraftRow !== draftRow) {
+        lastDraftRow = draftRow;
+        const current = worksheet.getSelection?.()?.getCurrentCell?.();
+        if (current?.actualRow === draftRow) {
+          univerAPI.fireEvent(univerAPI.Event.CellClicked, {
+            row: draftRow,
+            column: current.actualColumn,
+            worksheet,
+          });
+          setStatus(
+            status,
+            `Запись сохранена · новая запись вводится в строке ${draftRow + 1} со знаком ＋.`
+          );
+        }
+      }
+    } finally {
+      marking = false;
+    }
+  };
+
+  const scheduleDraftSynchronization = (worksheet?: Worksheet): void => {
+    MARKER_RETRY_DELAYS.forEach((delay) => {
+      window.setTimeout(() => synchronizeDraft(worksheet ?? null), delay);
+    });
   };
 
   univerAPI.addEvent(univerAPI.Event.BeforeSheetEditStart, (params: any) => {
     const { row, column, worksheet } = params;
     if (!worksheet || row === HEADER_ROW_INDEX) return;
     if (!hasIdentity(worksheet, row)) {
+      pending = null;
       params.cancel = true;
-      selectDraft(univerAPI, worksheet, row, column, status);
+      explainInactiveRow(worksheet, row, status);
       return;
     }
     if (!SPECIAL_COLUMNS.has(column)) {
+      pending = null;
       clearStatus(status);
       return;
     }
-    pending = { worksheet, row, column, previousValue: worksheet.getRange(row, column).getValue() };
+    pending = {
+      worksheet,
+      row,
+      column,
+      previousValue: canonicalPreviousValue(column, controls, eventTypes),
+    };
     params.cancel = false;
     clearStatus(status);
   });
 
   univerAPI.addEvent(univerAPI.Event.SheetEditEnded, ({ row, column, worksheet }: any) => {
-    queueMarker(worksheet);
+    scheduleDraftSynchronization(worksheet);
     if (!worksheet || !SPECIAL_COLUMNS.has(column) || !hasIdentity(worksheet, row)) return;
+
     const currentPending = pending;
-    const previous = currentPending && currentPending.worksheet === worksheet && currentPending.row === row && currentPending.column === column
-      ? currentPending.previousValue
-      : worksheet.getRange(row, column).getValue();
+    const previous =
+      currentPending &&
+      currentPending.worksheet === worksheet &&
+      currentPending.row === row &&
+      currentPending.column === column
+        ? currentPending.previousValue
+        : canonicalPreviousValue(column, controls, eventTypes);
     pending = null;
     const value = worksheet.getRange(row, column).getValue();
+
+    // Enter can move the visible selection before the controller processes the
+    // domain update. Synchronize controller context with the row that was edited,
+    // but never move the actual spreadsheet selection.
     univerAPI.fireEvent(univerAPI.Event.CellClicked, { row, column, worksheet });
 
     if (column === DATE_COLUMN) {
       const date = parseDate(value);
       if (!date) {
-        worksheet.getRange(row, column).setValue(previous);
+        window.setTimeout(() => worksheet.getRange(row, column).setValue(previous), 0);
         setStatus(status, 'Дата не сохранена. Используйте формат ДД.ММ.ГГГГ.', true);
         return;
       }
       controls.date.value = date;
       change(controls.date);
+      window.setTimeout(
+        () => worksheet.getRange(row, column).setValue(formatDisplayDate(date)),
+        0
+      );
       return;
     }
+
     if (column === TIME_COLUMN) {
       const time = parseTime(value);
       if (!time) {
-        worksheet.getRange(row, column).setValue(previous);
+        window.setTimeout(() => worksheet.getRange(row, column).setValue(previous), 0);
         setStatus(status, 'Время не сохранено. Используйте формат ЧЧ:ММ.', true);
         return;
       }
       controls.time.value = time;
       change(controls.time);
+      window.setTimeout(() => worksheet.getRange(row, column).setValue(time), 0);
       return;
     }
+
     const eventType = resolveType(value, eventTypes);
     if (!eventType) {
-      worksheet.getRange(row, column).setValue(previous);
-      setStatus(status, `Тип события не сохранён. Допустимые значения: ${eventTypes.map((item) => item.label).join(', ')}.`, true);
+      window.setTimeout(() => worksheet.getRange(row, column).setValue(previous), 0);
+      setStatus(
+        status,
+        `Тип события не сохранён. Допустимые значения: ${eventTypes
+          .map((item) => item.label)
+          .join(', ')}.`,
+        true
+      );
       return;
     }
     controls.eventType.value = eventType.value;
     change(controls.eventType);
+    window.setTimeout(() => worksheet.getRange(row, column).setValue(eventType.label), 0);
   });
 
-  univerAPI.addEvent(univerAPI.Event.CellClicked, ({ row, column, worksheet }: any) => {
+  univerAPI.addEvent(univerAPI.Event.CellClicked, ({ row, worksheet }: any) => {
     if (!worksheet || row === HEADER_ROW_INDEX) return;
-    queueMarker(worksheet);
-    if (!hasIdentity(worksheet, row)) selectDraft(univerAPI, worksheet, row, column, status);
+    scheduleDraftSynchronization(worksheet);
+    if (!hasIdentity(worksheet, row)) explainInactiveRow(worksheet, row, status);
     else clearStatus(status);
   });
 
   univerAPI.addEvent(univerAPI.Event.SelectionChanged, ({ worksheet }: any) => {
     if (!worksheet) return;
-    queueMarker(worksheet);
+    scheduleDraftSynchronization(worksheet);
     const current = worksheet.getSelection?.()?.getCurrentCell?.();
-    if (current && current.actualRow !== HEADER_ROW_INDEX && !hasIdentity(worksheet, current.actualRow)) {
-      selectDraft(univerAPI, worksheet, current.actualRow, current.actualColumn, status);
+    if (!current || current.actualRow === HEADER_ROW_INDEX) return;
+    if (!hasIdentity(worksheet, current.actualRow)) {
+      explainInactiveRow(worksheet, current.actualRow, status);
     }
   });
 
-  [controls.date, controls.time, controls.eventType, controls.includeInReport].forEach((control) =>
-    control.addEventListener('change', () => queueMarker())
+  [controls.date, controls.time, controls.eventType, controls.includeInReport].forEach(
+    (control) => control.addEventListener('change', () => scheduleDraftSynchronization())
   );
-  queueMarker();
+
+  scheduleDraftSynchronization();
   document.documentElement.dataset.editingContract = 'active';
 }
