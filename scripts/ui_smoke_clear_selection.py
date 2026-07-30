@@ -150,6 +150,9 @@ def main() -> None:
             if int(cleared[1].get("revision", 0)) <= int(before[1].get("revision", 0)):
                 raise AssertionError("Очистка не повысила ревизию второй записи.")
 
+            _wait_for_working_canvas(page)
+            undo_reason_x, _description_x, undo_row_two_y = _sheet_coordinates(page)
+            page.mouse.click(undo_reason_x, undo_row_two_y)
             page.keyboard.press("Control+Z")
             restored = _wait_for_reasons(
                 page,
