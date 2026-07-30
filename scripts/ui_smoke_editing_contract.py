@@ -65,6 +65,16 @@ def _assert_status(page: Page, text: str) -> None:
     ).wait_for(state="visible", timeout=5_000)
 
 
+def _wait_for_control_value(page: Page, selector: str, expected: str) -> None:
+    page.locator(selector).wait_for(state="visible", timeout=5_000)
+    for _attempt in range(50):
+        if page.locator(selector).input_value() == expected:
+            return
+        page.wait_for_timeout(100)
+    actual = page.locator(selector).input_value()
+    raise AssertionError(f"Значение {selector} не восстановилось: {actual!r} != {expected!r}")
+
+
 def main() -> None:
     base_url = os.environ.get("SHIFT_HELPER_BASE_URL", "http://127.0.0.1:17945")
 
@@ -122,8 +132,6 @@ def main() -> None:
             type_x = sheet_box["x"] + 490
             description_x = sheet_box["x"] + 690
 
-            # The old adapter moved the selection from this blank row to the
-            # draft asynchronously, so the next keystroke corrupted another cell.
             page.mouse.dblclick(asset_x, row_six_y)
             page.keyboard.insert_text("LEAK-FROM-ROW-6")
             page.keyboard.press("Enter")
@@ -134,33 +142,26 @@ def main() -> None:
             if _records(page, base_url) != []:
                 raise AssertionError("Ввод в пустой строке создал запись в SQLite.")
 
-            # Invalid values must be restored after Univer commits its editor.
             _edit_cell(page, date_x, row_two_y, "!")
             _assert_status(page, "Дата не сохранена")
-            if page.locator('[data-testid="journal-date"]').input_value() != initial_date:
-                raise AssertionError("Невалидная дата изменила доменную модель draft.")
+            _wait_for_control_value(page, '[data-testid="journal-date"]', initial_date)
 
             _edit_cell(page, time_x, row_two_y, "!")
             _assert_status(page, "Время не сохранено")
-            if page.locator('[data-testid="journal-time"]').input_value() != initial_time:
-                raise AssertionError("Невалидное время изменило доменную модель draft.")
+            _wait_for_control_value(page, '[data-testid="journal-time"]', initial_time)
 
             _edit_cell(page, type_x, row_two_y, "sd")
             _assert_status(page, "Тип события не сохранён")
-            if page.locator('[data-testid="journal-event-type"]').input_value() != initial_type:
-                raise AssertionError("Невалидный тип изменил доменную модель draft.")
+            _wait_for_control_value(page, '[data-testid="journal-event-type"]', initial_type)
 
             _edit_cell(page, date_x, row_two_y, DIRECT_DATE)
-            if page.locator('[data-testid="journal-date"]').input_value() != DIRECT_DATE:
-                raise AssertionError("Прямая дата не синхронизировалась с редактором строки.")
+            _wait_for_control_value(page, '[data-testid="journal-date"]', DIRECT_DATE)
 
             _edit_cell(page, time_x, row_two_y, DIRECT_TIME)
-            if page.locator('[data-testid="journal-time"]').input_value() != DIRECT_TIME:
-                raise AssertionError("Прямое время не синхронизировалось с редактором строки.")
+            _wait_for_control_value(page, '[data-testid="journal-time"]', DIRECT_TIME)
 
             _edit_cell(page, type_x, row_two_y, DIRECT_TYPE)
-            if page.locator('[data-testid="journal-event-type"]').input_value() != "startup":
-                raise AssertionError("Прямой тип события не синхронизировался с доменной моделью.")
+            _wait_for_control_value(page, '[data-testid="journal-event-type"]', "startup")
 
             _edit_cell(page, description_x, row_two_y, FIRST_DESCRIPTION)
             _edit_cell(page, asset_x, row_two_y, FIRST_ASSET)
