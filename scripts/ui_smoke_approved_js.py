@@ -202,7 +202,9 @@ def main() -> None:
 
             box = _wait_for_canvas(page)
             row_two_y = box["y"] + 173
-            page.mouse.click(box["x"] + 20, row_two_y)
+            reason_x = _cell_x(box["x"], 4)
+            page.mouse.click(reason_x, row_two_y)
+            page.keyboard.press("Shift+Space")
             page.keyboard.press("Delete")
             _wait_for_records(
                 page,
