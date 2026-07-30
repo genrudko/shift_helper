@@ -11,9 +11,11 @@ def test_health_and_runtime_database(tmp_path: Path) -> None:
     assert health_response.status_code == 200
     assert health_response.get_json()["status"] == "ok"
 
-    index_response = client.get("/")
+    index_response = client.get("/", follow_redirects=True)
     assert index_response.status_code == 200
-    assert b"Shift-Helper" in index_response.data
+    assert index_response.request.path == "/events/v2"
+    assert b'id="app"' in index_response.data
+    assert b"/static/univer-v2/journal-v2.js" in index_response.data
 
     assert (tmp_path / "data" / "shift_helper.sqlite3").is_file()
     assert (tmp_path / "exports").is_dir()
