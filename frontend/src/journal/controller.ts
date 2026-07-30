@@ -3,14 +3,13 @@ import {
   HEADER_ROW_INDEX,
   RECORD_ID_COLUMN,
   REVISION_COLUMN,
+  applyDraftToWorkbookRow,
   getCellBinding,
   getDisplayValue,
-  getEditableField,
   type JournalCellBinding,
 } from './buildWorkbook';
 import {
   JournalApiError,
-  closeRecord,
   createRecord,
   patchRecord,
   patchRecordsBatch,
@@ -22,28 +21,25 @@ import type {
   JournalCreateRequest,
   JournalDraftSnapshot,
   JournalEventSnapshot,
-  JournalEventTypeOption,
+  JournalPatchField,
   JournalPatchRequest,
   JournalSnapshot,
 } from './types';
 
 const DRAFT_ID_PREFIX = 'draft:';
+const DRAFT_CLEAR_EVENT = 'shift-helper:draft-clear';
 let draftSequence = 0;
 
 type WorksheetFacade = any;
 type UniverApi = any;
-type ActiveRow = {
-  readonly worksheet: WorksheetFacade;
-  readonly row: number;
-  readonly identity: number | string | null;
+type EndParts = { date: string; time: string };
+type DraftClearDetail = {
+  readonly rows: Array<{
+    readonly row: number;
+    readonly fields: JournalPatchField[];
+    readonly deleteRow?: boolean;
+  }>;
 };
-type ParsedEdit =
-  | {
-      readonly ok: true;
-      readonly draft: JournalDraftSnapshot;
-      readonly changes: JournalPatchRequest['changes'];
-    }
-  | { readonly ok: false; readonly message: string };
 
 function numericCellValue(value: unknown): number | null {
   if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
@@ -55,33 +51,28 @@ function draftCellValue(value: unknown): string | null {
   return typeof value === 'string' && value.startsWith(DRAFT_ID_PREFIX) ? value : null;
 }
 
-function editableCellValue(value: unknown): string {
+function cellText(value: unknown): string {
   return value === null || value === undefined ? '' : String(value);
 }
 
+function pad(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
 function localMinuteIso(date = new Date()): string {
-  const pad = (value: number): string => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
     date.getHours()
   )}:${pad(date.getMinutes())}`;
 }
 
-function createDraft(eventTypes: readonly JournalEventTypeOption[]): JournalDraftSnapshot {
+function createDraft(): JournalDraftSnapshot {
   draftSequence += 1;
-  const randomPart = Math.random().toString(36).slice(2, 10);
-  const defaultType =
-    eventTypes.find((option) => option.value === 'other') ??
-    eventTypes[0] ??
-    ({ value: 'other', label: 'Другое' } satisfies JournalEventTypeOption);
   return {
-    clientId: `${DRAFT_ID_PREFIX}${Date.now().toString(36)}-${draftSequence.toString(
-      36
-    )}-${randomPart}`,
+    clientId: `${DRAFT_ID_PREFIX}${Date.now().toString(36)}-${draftSequence.toString(36)}`,
     startAt: localMinuteIso(),
     endAt: null,
     assetLabel: '',
-    eventType: defaultType.value,
-    eventTypeLabel: defaultType.label,
+    eventType: 'other',
     description: '',
     reason: null,
     actions: null,
@@ -91,64 +82,24 @@ function createDraft(eventTypes: readonly JournalEventTypeOption[]): JournalDraf
     repairPowerMw: null,
     status: 'open',
     includeInReport: true,
+    enteredBy: '',
+    downtimeMinutes: null,
+    losses: null,
   };
 }
 
-function asDraft(record: JournalEventSnapshot): JournalDraftSnapshot {
-  return { ...record, clientId: `${DRAFT_ID_PREFIX}record-${record.id}` };
-}
-
-function emptyToNull(value: string | null): string | null {
-  return value?.trim() ? value : null;
-}
-
-function draftCreateRequest(draft: JournalDraftSnapshot): JournalCreateRequest {
-  return {
-    clientId: draft.clientId,
-    values: {
-      startAt: draft.startAt,
-      assetLabel: draft.assetLabel,
-      eventType: draft.eventType,
-      description: draft.description,
-      reason: emptyToNull(draft.reason),
-      actions: emptyToNull(draft.actions),
-      performer: emptyToNull(draft.performer),
-      errorCodes: emptyToNull(draft.errorCodes),
-      rotorLimit: emptyToNull(draft.rotorLimit),
-      includeInReport: draft.includeInReport,
-    },
-  };
-}
-
-function draftIsComplete(draft: JournalDraftSnapshot): boolean {
-  return Boolean(draft.assetLabel.trim() && draft.description.trim());
-}
-
-function splitStartAt(startAt: string): { date: string; time: string } {
-  const [date = '', rawTime = ''] = startAt.split('T');
+function splitIso(value: string | null): EndParts {
+  if (!value) return { date: '', time: '' };
+  const [date = '', rawTime = ''] = value.split('T');
   return { date, time: rawTime.slice(0, 5) };
 }
 
-function combineStartAt(date: string, time: string): string | null {
+function combineIso(date: string, time: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return null;
   return `${date}T${time}`;
 }
 
-function parseDate(value: unknown): string | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * 86_400_000);
-    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(
-      2,
-      '0'
-    )}-${String(date.getUTCDate()).padStart(2, '0')}`;
-  }
-  const text = String(value ?? '').trim();
-  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-  const display = /^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$/.exec(text);
-  const year = Number(iso?.[1] ?? display?.[3]);
-  const month = Number(iso?.[2] ?? display?.[2]);
-  const day = Number(iso?.[3] ?? display?.[1]);
-  if (!year || !month || !day) return null;
+function validDate(year: number, month: number, day: number): string | null {
   const date = new Date(Date.UTC(year, month - 1, day));
   if (
     date.getUTCFullYear() !== year ||
@@ -157,117 +108,82 @@ function parseDate(value: unknown): string | null {
   ) {
     return null;
   }
-  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(
-    day
-  ).padStart(2, '0')}`;
+  return `${String(year).padStart(4, '0')}-${pad(month)}-${pad(day)}`;
 }
 
-function parseTime(value: unknown): string | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    const fraction = ((value % 1) + 1) % 1;
-    const minutes = Math.round(fraction * 1440) % 1440;
-    return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(
-      minutes % 60
-    ).padStart(2, '0')}`;
+function parseDate(value: unknown, current: string, above: unknown): string | null {
+  const text = cellText(value).trim();
+  const now = new Date();
+  if (text === '!') return validDate(now.getFullYear(), now.getMonth() + 1, now.getDate());
+  if (text === '.') return parseDate(above, current, '');
+  const increment = /^\+(-?\d+)$/.exec(text);
+  if (increment) {
+    const base = /^\d{4}-\d{2}-\d{2}$/.test(current) ? new Date(`${current}T00:00:00`) : now;
+    base.setDate(base.getDate() + Number(increment[1]));
+    return validDate(base.getFullYear(), base.getMonth() + 1, base.getDate());
   }
-  const match = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(String(value ?? '').trim());
-  if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return null;
-  return `${String(Number(match[1])).padStart(2, '0')}:${match[2]}`;
-}
-
-function parseReportFlag(value: unknown): boolean | null {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'number') {
-    if (value === 1) return true;
-    if (value === 0) return false;
+  if (/^\d{4}$/.test(text)) {
+    return validDate(now.getFullYear(), Number(text.slice(2, 4)), Number(text.slice(0, 2)));
   }
-  const normalized = String(value ?? '').trim().toLocaleLowerCase('ru-RU');
-  if (['да', 'yes', 'true', '1', '+'].includes(normalized)) return true;
-  if (['нет', 'no', 'false', '0', '-'].includes(normalized)) return false;
+  if (/^\d{6}$/.test(text)) {
+    return validDate(2000 + Number(text.slice(4, 6)), Number(text.slice(2, 4)), Number(text.slice(0, 2)));
+  }
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
+  const display = /^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$/.exec(text);
+  if (iso) return validDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+  if (display) return validDate(Number(display[3]), Number(display[2]), Number(display[1]));
   return null;
 }
 
-function resolveEventType(
-  value: unknown,
-  eventTypes: readonly JournalEventTypeOption[]
-): JournalEventTypeOption | null {
-  const normalized = String(value ?? '').trim().toLocaleLowerCase('ru-RU');
-  return (
-    eventTypes.find(
-      (item) =>
-        item.value.toLocaleLowerCase('ru-RU') === normalized ||
-        item.label.toLocaleLowerCase('ru-RU') === normalized
-    ) ?? null
-  );
+function parseTime(value: unknown, current: string, above: unknown): string | null {
+  const text = cellText(value).trim();
+  const now = new Date();
+  if (text === '!') return `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  if (text === '.') return parseTime(above, current, '');
+  const increment = /^\+(-?\d+)$/.exec(text);
+  if (increment) {
+    const match = /^(\d{2}):(\d{2})$/.exec(current);
+    const baseMinutes = match ? Number(match[1]) * 60 + Number(match[2]) : now.getHours() * 60 + now.getMinutes();
+    const total = ((baseMinutes + Number(increment[1])) % 1440 + 1440) % 1440;
+    return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+  }
+  if (/^\d{3,4}$/.test(text)) {
+    const digits = text.padStart(4, '0');
+    const hour = Number(digits.slice(0, 2));
+    const minute = Number(digits.slice(2, 4));
+    return hour <= 23 && minute <= 59 ? `${pad(hour)}:${pad(minute)}` : null;
+  }
+  const match = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(text);
+  if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return null;
+  return `${pad(Number(match[1]))}:${match[2]}`;
 }
 
-function normalizeTextField(field: EditableJournalField, value: string): string | null {
-  if (field === 'assetLabel' || field === 'description') return value;
-  return value.trim() ? value : null;
+function normalizeText(field: EditableJournalField, value: unknown): string | null {
+  const text = cellText(value);
+  return field === 'assetLabel' || field === 'description' ? text : text.trim() || null;
 }
 
-function parseEdit(
-  model: JournalDraftSnapshot,
-  binding: JournalCellBinding,
-  value: unknown,
-  eventTypes: readonly JournalEventTypeOption[]
-): ParsedEdit {
-  if (binding.kind === 'text') {
-    const normalized = normalizeTextField(binding.field, editableCellValue(value));
-    return {
-      ok: true,
-      draft: { ...model, [binding.field]: normalized } as JournalDraftSnapshot,
-      changes: { [binding.field]: normalized },
-    };
-  }
-  if (binding.kind === 'date') {
-    const date = parseDate(value);
-    if (!date) return { ok: false, message: 'Дата не сохранена. Используйте формат ДД.ММ.ГГГГ.' };
-    const startAt = combineStartAt(date, splitStartAt(model.startAt).time);
-    if (!startAt) return { ok: false, message: 'Дата не сохранена: некорректное время строки.' };
-    return { ok: true, draft: { ...model, startAt }, changes: { startAt } };
-  }
-  if (binding.kind === 'time') {
-    const time = parseTime(value);
-    if (!time) return { ok: false, message: 'Время не сохранено. Используйте формат ЧЧ:ММ.' };
-    const startAt = combineStartAt(splitStartAt(model.startAt).date, time);
-    if (!startAt) return { ok: false, message: 'Время не сохранено: некорректная дата строки.' };
-    return { ok: true, draft: { ...model, startAt }, changes: { startAt } };
-  }
-  if (binding.kind === 'eventType') {
-    const eventType = resolveEventType(value, eventTypes);
-    if (!eventType) {
-      return {
-        ok: false,
-        message: `Тип события не сохранён. Допустимые значения: ${eventTypes
-          .map((item) => item.label)
-          .join(', ')}.`,
-      };
-    }
-    return {
-      ok: true,
-      draft: { ...model, eventType: eventType.value, eventTypeLabel: eventType.label },
-      changes: { eventType: eventType.value },
-    };
-  }
-  const includeInReport = parseReportFlag(value);
-  if (includeInReport === null) {
-    return { ok: false, message: 'Поле «В рапорт» принимает только «Да» или «Нет».' };
-  }
+function draftComplete(draft: JournalDraftSnapshot): boolean {
+  return Boolean(draft.assetLabel.trim() && draft.description.trim());
+}
+
+function createPayload(draft: JournalDraftSnapshot): JournalCreateRequest {
   return {
-    ok: true,
-    draft: { ...model, includeInReport },
-    changes: { includeInReport },
+    clientId: draft.clientId,
+    values: {
+      startAt: draft.startAt,
+      endAt: draft.endAt,
+      assetLabel: draft.assetLabel,
+      eventType: draft.eventType,
+      description: draft.description,
+      reason: draft.reason,
+      actions: draft.actions,
+      performer: draft.performer,
+      errorCodes: draft.errorCodes,
+      rotorLimit: draft.rotorLimit,
+      includeInReport: draft.includeInReport,
+    },
   };
-}
-
-function parseClipboardMatrix(text: string): string[][] {
-  const normalized = text.replace(/\r\n?/g, '\n');
-  const withoutFinalNewline = normalized.endsWith('\n')
-    ? normalized.slice(0, -1)
-    : normalized;
-  if (!withoutFinalNewline) return [];
-  return withoutFinalNewline.split('\n').map((row) => row.split('\t'));
 }
 
 export function startJournalController(
@@ -280,9 +196,8 @@ export function startJournalController(
   const draftsById = new Map<string, JournalDraftSnapshot>();
   const saveQueues = new Map<string, Promise<void>>();
   const creatingDrafts = new Set<string>();
-  const maximumScanRow = Math.max(snapshot.records.length + 600, 800);
+  const endParts = new Map<string, EndParts>();
   let pendingSaveCount = 0;
-  let activeRow: ActiveRow | null = null;
   let batchInProgress = false;
 
   const setReadyStatus = (): void => {
@@ -291,21 +206,21 @@ export function startJournalController(
       recordsById.size
     )} · изменения сохраняются автоматически`;
   };
-  const setSavingStatus = (message = 'Сохранение изменения…'): void => {
-    status.classList.remove('shift-helper-v2__status--error');
-    status.textContent = pendingSaveCount > 1 ? `Сохранение изменений: ${pendingSaveCount}…` : message;
-  };
-  const setDraftStatus = (row: number): void => {
-    status.classList.remove('shift-helper-v2__status--error');
-    status.textContent = `Черновик в строке ${row + 1}: для создания записи заполните оборудование и описание`;
-  };
-  const setErrorStatus = (message: string): void => {
+  const setError = (message: string): void => {
     status.classList.add('shift-helper-v2__status--error');
     status.textContent = message;
   };
-  const finishPendingOperation = (): void => {
+  const setDraftStatus = (row: number): void => {
+    status.classList.remove('shift-helper-v2__status--error');
+    status.textContent = `Черновик в строке ${row + 1}: заполните № ВЭУ и описание события`;
+  };
+  const setSaving = (message = 'Сохранение изменения…'): void => {
+    status.classList.remove('shift-helper-v2__status--error');
+    status.textContent = pendingSaveCount > 1 ? `Сохранение изменений: ${pendingSaveCount}…` : message;
+  };
+  const finishPending = (): void => {
     pendingSaveCount = Math.max(0, pendingSaveCount - 1);
-    if (pendingSaveCount > 0) setSavingStatus();
+    if (pendingSaveCount > 0) setSaving();
     else if (!status.classList.contains('shift-helper-v2__status--error')) setReadyStatus();
   };
 
@@ -313,220 +228,223 @@ export function startJournalController(
     const value = worksheet.getRange(row, RECORD_ID_COLUMN).getValue();
     return numericCellValue(value) ?? draftCellValue(value);
   };
-  const findRecordRow = (worksheet: WorksheetFacade, recordId: number): number | null => {
-    for (let row = 1; row < maximumScanRow; row += 1) {
-      if (numericCellValue(worksheet.getRange(row, RECORD_ID_COLUMN).getValue()) === recordId) return row;
-    }
-    return null;
-  };
-  const findDraftRow = (worksheet: WorksheetFacade, draftId: string): number | null => {
-    for (let row = 1; row < maximumScanRow; row += 1) {
-      if (draftCellValue(worksheet.getRange(row, RECORD_ID_COLUMN).getValue()) === draftId) return row;
-    }
-    return null;
-  };
-  const applyRecordToRow = (
-    worksheet: WorksheetFacade,
-    row: number,
-    record: JournalEventSnapshot
-  ): void => {
+
+  const applyRecord = (worksheet: WorksheetFacade, row: number, record: JournalEventSnapshot): void => {
     DISPLAY_COLUMNS.forEach((_column, column) => {
-      worksheet.getRange(row, column).setValue(getDisplayValue(record, column, row - 1));
+      worksheet.getRange(row, column).setValue(getDisplayValue(record, column));
     });
     worksheet.getRange(row, RECORD_ID_COLUMN).setValue(record.id);
     worksheet.getRange(row, REVISION_COLUMN).setValue(record.revision);
   };
-  const applyDraftToRow = (
-    worksheet: WorksheetFacade,
-    row: number,
-    draft: JournalDraftSnapshot
-  ): void => {
-    DISPLAY_COLUMNS.forEach((_column, column) => {
-      worksheet.getRange(row, column).setValue(getDisplayValue(draft, column, row - 1));
-    });
-    worksheet.getRange(row, RECORD_ID_COLUMN).setValue(draft.clientId);
-    worksheet.getRange(row, REVISION_COLUMN).setValue('');
-  };
-  const scheduleRowRender = (
-    worksheet: WorksheetFacade,
-    row: number,
-    model: JournalEventSnapshot | JournalDraftSnapshot
-  ): void => {
-    window.setTimeout(() => {
-      if ('id' in model) applyRecordToRow(worksheet, row, model);
-      else applyDraftToRow(worksheet, row, model);
-    }, 0);
-  };
-  const scheduleCellRender = (
-    worksheet: WorksheetFacade,
-    row: number,
-    column: number,
-    model: JournalEventSnapshot | JournalDraftSnapshot
-  ): void => {
-    window.setTimeout(() => {
-      worksheet.getRange(row, column).setValue(getDisplayValue(model, column, row - 1));
-    }, 0);
-  };
-  const restoreRecord = (worksheet: WorksheetFacade, record: JournalEventSnapshot): void => {
-    const row = findRecordRow(worksheet, record.id);
-    if (row !== null) scheduleRowRender(worksheet, row, record);
-  };
 
-  const syncSelectionContext = (worksheet: WorksheetFacade, row: number): void => {
-    if (row === HEADER_ROW_INDEX) {
-      activeRow = null;
-      controls.selection.textContent = 'Заголовок таблицы';
-      controls.close.disabled = true;
-      controls.close.textContent = 'Завершить событие';
-      return;
-    }
-    const identity = rowIdentity(worksheet, row);
-    activeRow = { worksheet, row, identity };
-    if (typeof identity === 'number') {
-      const record = recordsById.get(identity);
-      controls.selection.textContent = record ? `Событие №${record.id}` : `Строка ${row + 1}`;
-      controls.close.disabled = batchInProgress || !record || record.status === 'closed';
-      controls.close.textContent = record?.status === 'closed' ? 'Событие завершено' : 'Завершить событие';
-    } else if (typeof identity === 'string') {
-      controls.selection.textContent = `Черновик · строка ${row + 1}`;
-      controls.close.disabled = true;
-      controls.close.textContent = 'Завершить событие';
-    } else {
-      controls.selection.textContent = `Пустая строка ${row + 1} · начните ввод в нужной ячейке`;
-      controls.close.disabled = true;
-      controls.close.textContent = 'Завершить событие';
+  const clearWorkbookRow = (worksheet: WorksheetFacade, row: number): void => {
+    for (let column = 0; column <= REVISION_COLUMN; column += 1) {
+      worksheet.getRange(row, column).setValue('');
     }
   };
 
-  const queueMatchesActiveRow = (queueKey: string): boolean => {
-    if (!activeRow) return false;
-    return typeof activeRow.identity === 'number'
-      ? queueKey === `record:${activeRow.identity}`
-      : queueKey === activeRow.identity;
+  const materializeDraft = (worksheet: WorksheetFacade, row: number): JournalDraftSnapshot => {
+    const existingIdentity = rowIdentity(worksheet, row);
+    if (typeof existingIdentity === 'string') return draftsById.get(existingIdentity) ?? createDraft();
+    const draft = createDraft();
+    draftsById.set(draft.clientId, draft);
+    endParts.set(draft.clientId, { date: '', time: '' });
+    applyDraftToWorkbookRow(worksheet, row, draft);
+    return draft;
   };
-  const enqueueSave = (queueKey: string, task: () => Promise<void>): void => {
-    const previous = saveQueues.get(queueKey) ?? Promise.resolve();
+
+  const enqueue = (key: string, task: () => Promise<void>): void => {
+    const previous = saveQueues.get(key) ?? Promise.resolve();
     const next = previous
       .catch(() => undefined)
       .then(task)
       .finally(() => {
-        if (saveQueues.get(queueKey) === next) {
-          saveQueues.delete(queueKey);
-          if (queueMatchesActiveRow(queueKey) && activeRow) {
-            syncSelectionContext(activeRow.worksheet, activeRow.row);
-          }
-          if (pendingSaveCount === 0 && !status.classList.contains('shift-helper-v2__status--error')) {
-            setReadyStatus();
-          }
-        }
+        if (saveQueues.get(key) === next) saveQueues.delete(key);
       });
-    saveQueues.set(queueKey, next);
-  };
-  const handleRecordError = (
-    worksheet: WorksheetFacade,
-    current: JournalEventSnapshot,
-    error: unknown,
-    prefix: string
-  ): void => {
-    if (error instanceof JournalApiError && error.current) {
-      recordsById.set(current.id, error.current);
-      restoreRecord(worksheet, error.current);
-      setErrorStatus(`Конфликт сохранения: ${error.message}`);
-      return;
-    }
-    restoreRecord(worksheet, current);
-    setErrorStatus(`${prefix}: ${error instanceof Error ? error.message : String(error)}`);
+    saveQueues.set(key, next);
   };
 
   const enqueueRecordPatch = (
     recordId: number,
     worksheet: WorksheetFacade,
+    row: number,
     buildChanges: (current: JournalEventSnapshot) => JournalPatchRequest['changes']
   ): void => {
-    enqueueSave(`record:${recordId}`, async () => {
+    enqueue(`record:${recordId}`, async () => {
       const current = recordsById.get(recordId);
       if (!current) return;
       const changes = buildChanges(current);
       if (Object.keys(changes).length === 0) return;
       pendingSaveCount += 1;
-      setSavingStatus();
+      setSaving();
       try {
         const updated = await patchRecord(recordId, { revision: current.revision, changes });
         recordsById.set(recordId, updated);
-        restoreRecord(worksheet, updated);
+        endParts.set(String(recordId), splitIso(updated.endAt));
+        applyRecord(worksheet, row, updated);
       } catch (error) {
-        handleRecordError(worksheet, current, error, 'Изменение не сохранено');
+        if (error instanceof JournalApiError && error.current) {
+          recordsById.set(recordId, error.current);
+          applyRecord(worksheet, row, error.current);
+        } else {
+          applyRecord(worksheet, row, current);
+        }
+        setError(error instanceof Error ? error.message : String(error));
       } finally {
-        finishPendingOperation();
-      }
-    });
-  };
-  const enqueueRecordClose = (recordId: number, worksheet: WorksheetFacade): void => {
-    enqueueSave(`record:${recordId}`, async () => {
-      const current = recordsById.get(recordId);
-      if (!current || current.status === 'closed') return;
-      pendingSaveCount += 1;
-      setSavingStatus();
-      try {
-        const updated = await closeRecord(recordId, { revision: current.revision });
-        recordsById.set(recordId, updated);
-        restoreRecord(worksheet, updated);
-      } catch (error) {
-        handleRecordError(worksheet, current, error, 'Событие не завершено');
-      } finally {
-        finishPendingOperation();
+        finishPending();
       }
     });
   };
 
-  const materializeDraft = (worksheet: WorksheetFacade, row: number): JournalDraftSnapshot => {
-    const identity = rowIdentity(worksheet, row);
-    if (typeof identity === 'string') {
-      const existing = draftsById.get(identity);
-      if (existing) return existing;
-    }
-    const draft = createDraft(snapshot.eventTypes);
-    draftsById.set(draft.clientId, draft);
-    applyDraftToRow(worksheet, row, draft);
-    activeRow = { worksheet, row, identity: draft.clientId };
-    controls.selection.textContent = `Черновик · строка ${row + 1}`;
-    controls.close.disabled = true;
-    setDraftStatus(row);
-    return draft;
-  };
-  const maybeCreateDraft = (draftId: string, worksheet: WorksheetFacade): void => {
+  const maybeCreateDraft = (
+    draftId: string,
+    worksheet: WorksheetFacade,
+    row: number
+  ): void => {
     const draft = draftsById.get(draftId);
-    if (!draft || !draftIsComplete(draft)) {
-      const row = findDraftRow(worksheet, draftId);
-      if (row !== null) setDraftStatus(row);
+    if (!draft || !draftComplete(draft)) {
+      setDraftStatus(row);
       return;
     }
     if (creatingDrafts.has(draftId) || batchInProgress) return;
     creatingDrafts.add(draftId);
-    enqueueSave(draftId, async () => {
+    enqueue(draftId, async () => {
       pendingSaveCount += 1;
-      setSavingStatus('Создание записи…');
+      setSaving('Создание записи…');
       try {
-        const currentDraft = draftsById.get(draftId);
-        if (!currentDraft || !draftIsComplete(currentDraft)) return;
-        const created = await createRecord(draftCreateRequest(currentDraft));
-        const row = findDraftRow(worksheet, draftId);
+        const current = draftsById.get(draftId);
+        if (!current || !draftComplete(current)) return;
+        const created = await createRecord(createPayload(current));
         draftsById.delete(draftId);
+        endParts.delete(draftId);
         recordsById.set(created.record.id, created.record);
-        if (row !== null) {
-          applyRecordToRow(worksheet, row, created.record);
-          if (activeRow?.identity === draftId) {
-            activeRow = { worksheet, row, identity: created.record.id };
-            syncSelectionContext(worksheet, row);
-          }
-        }
+        endParts.set(String(created.record.id), splitIso(created.record.endAt));
+        applyRecord(worksheet, row, created.record);
       } catch (error) {
-        setErrorStatus(`Новая запись не сохранена: ${error instanceof Error ? error.message : String(error)}`);
+        setError(`Новая запись не сохранена: ${error instanceof Error ? error.message : String(error)}`);
       } finally {
         creatingDrafts.delete(draftId);
-        finishPendingOperation();
+        finishPending();
       }
     });
+  };
+
+  const updateDraft = (
+    draftId: string,
+    worksheet: WorksheetFacade,
+    row: number,
+    update: (draft: JournalDraftSnapshot) => JournalDraftSnapshot
+  ): void => {
+    const current = draftsById.get(draftId);
+    if (!current) return;
+    const updated = update(current);
+    draftsById.set(draftId, updated);
+    maybeCreateDraft(draftId, worksheet, row);
+  };
+
+  const editModel = (
+    worksheet: WorksheetFacade,
+    row: number,
+    column: number,
+    binding: JournalCellBinding,
+    value: unknown
+  ): void => {
+    const identity = rowIdentity(worksheet, row);
+    if (identity === null) return;
+    const record = typeof identity === 'number' ? recordsById.get(identity) : undefined;
+    const draft = typeof identity === 'string' ? draftsById.get(identity) : undefined;
+    const model = record ?? draft;
+    if (!model) return;
+
+    if (binding.kind === 'text') {
+      const normalized = normalizeText(binding.field, value);
+      if (typeof identity === 'number') {
+        enqueueRecordPatch(identity, worksheet, row, (current) => ({
+          [binding.field]: normalized === getDisplayValue(current, column) ? undefined : normalized,
+        }));
+      } else {
+        updateDraft(identity, worksheet, row, (current) => ({
+          ...current,
+          [binding.field]: normalized,
+        }) as JournalDraftSnapshot);
+      }
+      return;
+    }
+
+    const key = String(identity);
+    if (binding.kind === 'startDate' || binding.kind === 'startTime') {
+      const currentParts = splitIso(model.startAt);
+      const above = row > 1 ? worksheet.getRange(row - 1, column).getValue() : '';
+      const parsed = binding.kind === 'startDate'
+        ? parseDate(value, currentParts.date, above)
+        : parseTime(value, currentParts.time, above);
+      if (!parsed) {
+        worksheet.getRange(row, column).setValue(getDisplayValue(model, column));
+        setError(
+          binding.kind === 'startDate'
+            ? 'Дата останова не сохранена. Используйте ДД.ММ.ГГГГ, 2707, !, . или +N.'
+            : 'Время останова не сохранено. Используйте ЧЧ:ММ, 830, !, . или +N.'
+        );
+        return;
+      }
+      const startAt = binding.kind === 'startDate'
+        ? combineIso(parsed, currentParts.time)
+        : combineIso(currentParts.date, parsed);
+      if (!startAt) return;
+      if (typeof identity === 'number') {
+        enqueueRecordPatch(identity, worksheet, row, () => ({ startAt }));
+      } else {
+        worksheet.getRange(row, column).setValue(
+          binding.kind === 'startDate'
+            ? `${parsed.slice(8, 10)}.${parsed.slice(5, 7)}.${parsed.slice(0, 4)}`
+            : parsed
+        );
+        updateDraft(identity, worksheet, row, (current) => ({ ...current, startAt }));
+      }
+      return;
+    }
+
+    if (binding.kind === 'endDate' || binding.kind === 'endTime') {
+      const existing = endParts.get(key) ?? splitIso(model.endAt);
+      const above = row > 1 ? worksheet.getRange(row - 1, column).getValue() : '';
+      const raw = cellText(value).trim();
+      if (!raw) {
+        endParts.set(key, { date: '', time: '' });
+        if (typeof identity === 'number') {
+          enqueueRecordPatch(identity, worksheet, row, () => ({ endAt: null }));
+        } else {
+          updateDraft(identity, worksheet, row, (current) => ({ ...current, endAt: null }));
+        }
+        return;
+      }
+      const parsed = binding.kind === 'endDate'
+        ? parseDate(value, existing.date || splitIso(model.startAt).date, above)
+        : parseTime(value, existing.time, above);
+      if (!parsed) {
+        worksheet.getRange(row, column).setValue(getDisplayValue(model, column));
+        setError(
+          binding.kind === 'endDate'
+            ? 'Дата пуска не сохранена. Используйте ДД.ММ.ГГГГ, 2707, !, . или +N.'
+            : 'Время пуска не сохранено. Используйте ЧЧ:ММ, 830, !, . или +N.'
+        );
+        return;
+      }
+      const nextParts = binding.kind === 'endDate'
+        ? { ...existing, date: parsed }
+        : { ...existing, time: parsed };
+      endParts.set(key, nextParts);
+      const endAt = combineIso(nextParts.date, nextParts.time);
+      if (!endAt) {
+        status.classList.remove('shift-helper-v2__status--error');
+        status.textContent = 'Для завершения события заполните и дату, и время пуска.';
+        return;
+      }
+      if (typeof identity === 'number') {
+        enqueueRecordPatch(identity, worksheet, row, () => ({ endAt }));
+      } else {
+        updateDraft(identity, worksheet, row, (current) => ({ ...current, endAt }));
+      }
+    }
   };
 
   const applyBatchPaste = async (
@@ -536,168 +454,137 @@ export function startJournalController(
     text: string
   ): Promise<void> => {
     if (batchInProgress || saveQueues.size > 0 || creatingDrafts.size > 0) {
-      setErrorStatus('Дождитесь завершения текущего сохранения перед пакетной вставкой.');
+      setError('Дождитесь завершения текущего сохранения перед пакетной вставкой.');
       return;
     }
-    const matrix = parseClipboardMatrix(text);
-    if (matrix.length === 0) return;
+    const matrix = text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n').map((line) => line.split('\t'));
+    if (!matrix[0]?.length) return;
     if (matrix.length > 200) {
-      setErrorStatus('За одну пакетную вставку допускается не более 200 строк.');
+      setError('За одну пакетную вставку допускается не более 200 строк.');
       return;
     }
+
     const operations: JournalBatchOperation[] = [];
     for (let rowOffset = 0; rowOffset < matrix.length; rowOffset += 1) {
       const row = startRow + rowOffset;
       const recordId = numericCellValue(worksheet.getRange(row, RECORD_ID_COLUMN).getValue());
-      if (recordId === null) {
-        setErrorStatus('Транзакционная вставка диапазона поддерживается только для сохранённых строк.');
+      const revision = numericCellValue(worksheet.getRange(row, REVISION_COLUMN).getValue());
+      if (recordId === null || revision === null) {
+        setError('Пакетная вставка поддерживается только для сохранённых строк.');
         return;
       }
-      const record = recordsById.get(recordId);
-      if (!record) {
-        setErrorStatus(`Не найдена сохранённая запись для строки ${row + 1}.`);
-        return;
-      }
-      const changes: Partial<Record<EditableJournalField, string | null>> = {};
+      const changes: JournalPatchRequest['changes'] = {};
       const values = matrix[rowOffset] ?? [];
       for (let columnOffset = 0; columnOffset < values.length; columnOffset += 1) {
         const column = startColumn + columnOffset;
-        const field = getEditableField(column);
-        if (field === null) {
-          setErrorStatus('Диапазон вставки содержит специальную или защищённую колонку. Операция отменена.');
+        const binding = getCellBinding(column);
+        if (!binding || binding.kind !== 'text') {
+          setError('Пакетная вставка сейчас разрешена только в текстовые графы формы.');
           return;
         }
-        const value = values[columnOffset] ?? '';
-        if (value !== String(getDisplayValue(record, column, row - 1))) {
-          changes[field] = normalizeTextField(field, value);
-        }
+        changes[binding.field] = normalizeText(binding.field, values[columnOffset]);
       }
-      if (Object.keys(changes).length > 0) {
-        operations.push({ recordId, revision: record.revision, changes });
-      }
+      operations.push({ recordId, revision, changes });
     }
-    if (operations.length === 0) {
-      setReadyStatus();
-      return;
-    }
+
     batchInProgress = true;
     pendingSaveCount += 1;
-    controls.close.disabled = true;
-    setSavingStatus(`Пакетное сохранение: ${operations.length} строк…`);
+    setSaving(`Пакетное сохранение: ${operations.length} строк…`);
     try {
       const updated = await patchRecordsBatch({ operations });
-      updated.forEach((record) => {
-        recordsById.set(record.id, record);
-        restoreRecord(worksheet, record);
-      });
+      updated.forEach((record) => recordsById.set(record.id, record));
+      window.location.reload();
     } catch (error) {
-      if (error instanceof JournalApiError && error.current) {
-        recordsById.set(error.current.id, error.current);
-        restoreRecord(worksheet, error.current);
-      }
-      setErrorStatus(`Пакетная вставка отменена: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
+      setError(`Пакетная вставка отменена: ${error instanceof Error ? error.message : String(error)}`);
       batchInProgress = false;
-      if (activeRow) syncSelectionContext(activeRow.worksheet, activeRow.row);
-      finishPendingOperation();
+      finishPending();
     }
   };
-
-  controls.close.addEventListener('click', () => {
-    if (!activeRow || typeof activeRow.identity !== 'number' || batchInProgress) return;
-    const record = recordsById.get(activeRow.identity);
-    if (record?.status === 'open') enqueueRecordClose(record.id, activeRow.worksheet);
-  });
 
   univerAPI.addEvent(univerAPI.Event.BeforeSheetEditStart, (params: any) => {
     const { row, column, worksheet } = params;
     const binding = getCellBinding(column);
-    if (!worksheet || batchInProgress || row === HEADER_ROW_INDEX || binding === null) {
+    if (
+      batchInProgress ||
+      row === HEADER_ROW_INDEX ||
+      !binding ||
+      binding.kind === 'readonly'
+    ) {
       params.cancel = true;
-      if (worksheet && row !== HEADER_ROW_INDEX && binding === null) {
-        setErrorStatus('Эта колонка вычисляется автоматически или защищена от редактирования.');
-      }
+      if (binding?.kind === 'readonly') setError('Эта графа рассчитывается автоматически.');
       return;
     }
-    const identity = rowIdentity(worksheet, row);
-    if (typeof identity === 'string' && creatingDrafts.has(identity)) {
-      params.cancel = true;
-      setErrorStatus('Дождитесь создания записи из этой строки.');
-      return;
-    }
-    if (identity === null) materializeDraft(worksheet, row);
-    else syncSelectionContext(worksheet, row);
+    if (rowIdentity(worksheet, row) === null) materializeDraft(worksheet, row);
   });
 
   univerAPI.addEvent(univerAPI.Event.SheetEditEnded, ({ row, column, worksheet }: any) => {
-    if (!worksheet || batchInProgress) return;
     const binding = getCellBinding(column);
-    if (binding === null) return;
-    const identity = rowIdentity(worksheet, row);
-    const rawValue = worksheet.getRange(row, column).getValue();
-
-    if (typeof identity === 'number') {
-      const current = recordsById.get(identity);
-      if (!current) return;
-      const immediate = parseEdit(asDraft(current), binding, rawValue, snapshot.eventTypes);
-      if (!immediate.ok) {
-        scheduleCellRender(worksheet, row, column, current);
-        setErrorStatus(immediate.message);
-        return;
-      }
-      enqueueRecordPatch(identity, worksheet, (latest) => {
-        const recalculated = parseEdit(asDraft(latest), binding, rawValue, snapshot.eventTypes);
-        return recalculated.ok ? recalculated.changes : {};
-      });
-      return;
-    }
-
-    if (typeof identity !== 'string') return;
-    const currentDraft = draftsById.get(identity);
-    if (!currentDraft) return;
-    const parsed = parseEdit(currentDraft, binding, rawValue, snapshot.eventTypes);
-    if (!parsed.ok) {
-      scheduleCellRender(worksheet, row, column, currentDraft);
-      setErrorStatus(parsed.message);
-      return;
-    }
-    draftsById.set(identity, parsed.draft);
-    if (binding.kind !== 'text') {
-      scheduleCellRender(worksheet, row, column, parsed.draft);
-    }
-    if (activeRow?.row === row) syncSelectionContext(worksheet, row);
-    maybeCreateDraft(identity, worksheet);
+    if (!worksheet || !binding || binding.kind === 'readonly' || batchInProgress) return;
+    editModel(worksheet, row, column, binding, worksheet.getRange(row, column).getValue());
   });
 
   univerAPI.addEvent(univerAPI.Event.BeforeClipboardPaste, (params: any) => {
     const text = typeof params.text === 'string' ? params.text : '';
     if (!text) return;
     const worksheet = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.();
-    const activeRange = worksheet?.getSelection?.()?.getActiveRange?.();
-    const startRow = activeRange?.getRow?.();
-    const startColumn = activeRange?.getColumn?.();
-    if (!worksheet || typeof startRow !== 'number' || typeof startColumn !== 'number') return;
+    const current = worksheet?.getSelection?.()?.getCurrentCell?.();
+    if (!worksheet || !current) return;
     params.cancel = true;
-    if (startRow === HEADER_ROW_INDEX) {
-      setErrorStatus('Вставка в заголовок запрещена.');
-      return;
-    }
-    void applyBatchPaste(worksheet, startRow, startColumn, text);
-  });
-  univerAPI.addEvent(univerAPI.Event.SelectionChanged, ({ worksheet }: any) => {
-    const cell = worksheet?.getSelection?.()?.getCurrentCell?.();
-    if (worksheet && cell) syncSelectionContext(worksheet, cell.actualRow);
-  });
-  univerAPI.addEvent(univerAPI.Event.CellClicked, ({ row, worksheet }: any) => {
-    if (worksheet) syncSelectionContext(worksheet, row);
+    void applyBatchPaste(worksheet, current.actualRow, current.actualColumn, text);
   });
 
+  const syncSelection = (worksheet: WorksheetFacade, row: number): void => {
+    if (row === HEADER_ROW_INDEX) {
+      controls.selection.textContent = 'Заголовок журнала';
+      return;
+    }
+    const identity = rowIdentity(worksheet, row);
+    controls.selection.textContent = typeof identity === 'number'
+      ? `Запись №${identity} · строка ${row + 1}`
+      : typeof identity === 'string'
+        ? `Черновик · строка ${row + 1}`
+        : `Пустая рабочая строка ${row + 1}`;
+  };
+
+  univerAPI.addEvent(univerAPI.Event.SelectionChanged, ({ worksheet }: any) => {
+    const current = worksheet?.getSelection?.()?.getCurrentCell?.();
+    if (worksheet && current) syncSelection(worksheet, current.actualRow);
+  });
+  univerAPI.addEvent(univerAPI.Event.CellClicked, ({ row, worksheet }: any) => {
+    if (worksheet) syncSelection(worksheet, row);
+  });
+
+  window.addEventListener(DRAFT_CLEAR_EVENT, (event) => {
+    const detail = (event as CustomEvent<DraftClearDetail>).detail;
+    const worksheet = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.();
+    if (!worksheet || !detail?.rows) return;
+    detail.rows.forEach(({ row, fields, deleteRow }) => {
+      const draftId = draftCellValue(worksheet.getRange(row, RECORD_ID_COLUMN).getValue());
+      if (!draftId) return;
+      if (deleteRow) {
+        draftsById.delete(draftId);
+        endParts.delete(draftId);
+        clearWorkbookRow(worksheet, row);
+        return;
+      }
+      const current = draftsById.get(draftId);
+      if (!current) return;
+      let updated = { ...current };
+      fields.forEach((field) => {
+        if (field === 'endAt') {
+          updated.endAt = null;
+          endParts.set(draftId, { date: '', time: '' });
+        } else if (field === 'startAt') {
+          return;
+        } else if (field in updated) {
+          (updated as Record<string, unknown>)[field] =
+            field === 'assetLabel' || field === 'description' ? '' : null;
+        }
+      });
+      draftsById.set(draftId, updated);
+    });
+  });
+
+  document.documentElement.dataset.editingModel = 'approved-js-row';
   setReadyStatus();
-  const worksheet = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.();
-  if (worksheet) {
-    const firstBlankRow = snapshot.records.length + 1;
-    worksheet.getRange(firstBlankRow, 3).activate?.();
-    syncSelectionContext(worksheet, firstBlankRow);
-  }
-  document.documentElement.dataset.editingModel = 'native-row';
 }
