@@ -58,7 +58,12 @@ def _presentation(page: Page, base_url: str) -> dict[str, object]:
     return response.json()
 
 
-def _wait_for_record(page: Page, base_url: str, predicate, failure_message: str) -> dict[str, object]:
+def _wait_for_record(
+    page: Page,
+    base_url: str,
+    predicate,
+    failure_message: str,
+) -> dict[str, object]:
     for _attempt in range(150):
         records = _snapshot(page, base_url).get("records", [])
         if isinstance(records, list):
@@ -150,7 +155,9 @@ def main() -> None:
             page.locator(".shift-helper-v2__status").filter(
                 has_text="Загружено записей: 1"
             ).wait_for(state="visible", timeout=30_000)
-            page.locator(".shift-helper-v2__error").wait_for(state="detached", timeout=5_000)
+            page.locator(".shift-helper-v2__error").wait_for(
+                state="detached", timeout=5_000
+            )
             _wait_for_working_canvas(page)
 
             sheet_box = page.locator("#univer-sheet").bounding_box()
@@ -183,7 +190,9 @@ def main() -> None:
                 "Прямое редактирование сохранённой строки не прошло optimistic PATCH API.",
             )
             if int(edited.get("revision", 0)) < 5:
-                raise AssertionError(f"Ревизия строки не выросла после прямых правок: {edited!r}")
+                raise AssertionError(
+                    f"Ревизия строки не выросла после прямых правок: {edited!r}"
+                )
 
             page.mouse.click(description_x, row_two_y)
             page.locator('[data-testid="journal-selection"]').filter(
@@ -216,8 +225,13 @@ def main() -> None:
             _edit_cell(page, asset_x, row_three_y, CREATED_ASSET)
             page.wait_for_timeout(300)
             records_before_description = _snapshot(page, base_url).get("records", [])
-            if not isinstance(records_before_description, list) or len(records_before_description) != 1:
-                raise AssertionError("Неполный черновик преждевременно создал SQLite-запись.")
+            if (
+                not isinstance(records_before_description, list)
+                or len(records_before_description) != 1
+            ):
+                raise AssertionError(
+                    "Неполный черновик преждевременно создал SQLite-запись."
+                )
             _edit_cell(page, description_x, row_three_y, CREATED_DESCRIPTION)
 
             created = _wait_for_record(
@@ -271,9 +285,9 @@ def main() -> None:
             page.mouse.click(description_x, row_two_y)
             page.keyboard.press("Control+B")
             _wait_for_presentation_style(page, base_url)
-            page.locator('.shift-helper-v2__status[data-presentation-state="saved"]').wait_for(
-                state="visible", timeout=10_000
-            )
+            page.locator(
+                '.shift-helper-v2__status[data-presentation-state="saved"]'
+            ).wait_for(state="visible", timeout=10_000)
 
             page.screenshot(path=str(screenshot_path), full_page=True)
             if page_errors:
