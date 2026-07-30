@@ -96,6 +96,24 @@ def _wait_for_reload(page: Page) -> None:
     _wait_for_canvas(page)
 
 
+def _select_persisted_row(page: Page, column: int = 4) -> tuple[float, float]:
+    box = _wait_for_canvas(page)
+    x = _cell_x(box["x"], column)
+    selection = page.locator('[data-testid="journal-selection"]')
+    start_y = int(box["y"] + 100)
+    end_y = int(min(box["y"] + 420, box["y"] + box["height"] - 20))
+    for y in range(start_y, end_y, 6):
+        page.mouse.click(x, y)
+        page.wait_for_timeout(25)
+        text = selection.text_content() or ""
+        if "Запись №1" in text:
+            return x, float(y)
+    raise AssertionError(
+        "Не удалось выбрать сохранённую строку через рабочую область Univer. "
+        f"Последний контекст: {selection.text_content()!r}"
+    )
+
+
 def main() -> None:
     base_url = os.environ.get("SHIFT_HELPER_BASE_URL", "http://127.0.0.1:17944")
     screenshot_path = Path(
@@ -200,10 +218,7 @@ def main() -> None:
             )
             _wait_for_reload(page)
 
-            box = _wait_for_canvas(page)
-            row_two_y = box["y"] + 173
-            reason_x = _cell_x(box["x"], 4)
-            page.mouse.click(reason_x, row_two_y)
+            _select_persisted_row(page)
             page.keyboard.press("Shift+Space")
             page.keyboard.press("Delete")
             _wait_for_records(
