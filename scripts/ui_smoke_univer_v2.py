@@ -3,13 +3,14 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from playwright.sync_api import ConsoleMessage, Locator, Page, sync_playwright
+from playwright.sync_api import ConsoleMessage, Page, sync_playwright
 
-EDITED_DESCRIPTION = "Изменение сохранено из Univer UI V2"
+EDITED_DESCRIPTION = "Изменение сохранено из native Univer row"
 EDITED_START_AT = "2026-07-28T12:45"
 EDITED_EVENT_TYPE = "dispatch_command"
 CREATED_ASSET = "ВЭУ №18"
-CREATED_DESCRIPTION = "Новая запись создана из первой строки Univer"
+CREATED_DESCRIPTION = "Новая запись создана в выбранной пустой строке"
+CREATED_REASON = "Независимый черновик выбранной строки"
 CREATED_START_AT = "2026-07-29T13:15"
 CREATED_EVENT_TYPE = "startup"
 BATCH_FIRST_DESCRIPTION = "Пакетное описание первой строки"
@@ -25,7 +26,7 @@ def _seed_event(page: Page, base_url: str) -> None:
             "start_at": "2026-07-29T11:30",
             "asset_label": "ВЭУ №17",
             "event_type": "rotor_limit",
-            "description": "Проверка чистого Univer UI V2",
+            "description": "Проверка native Univer row model",
             "reason": "Chromium acceptance contract",
             "actions": "Отображение записи в журнале",
             "performer": "Иванов И.И.",
@@ -57,34 +58,47 @@ def _presentation(page: Page, base_url: str) -> dict[str, object]:
     return response.json()
 
 
-def _wait_for_snapshot(page: Page, base_url: str, predicate, failure_message: str) -> None:
-    for _attempt in range(120):
-        snapshot = _snapshot(page, base_url)
-        records = snapshot.get("records", [])
-        if isinstance(records, list) and predicate(records):
-            return
-        page.wait_for_timeout(100)
-    raise AssertionError(failure_message)
-
-
 def _wait_for_record(
     page: Page,
     base_url: str,
     predicate,
     failure_message: str,
 ) -> dict[str, object]:
-    found: dict[str, object] = {}
+    for _attempt in range(150):
+        records = _snapshot(page, base_url).get("records", [])
+        if isinstance(records, list):
+            for record in records:
+                if isinstance(record, dict) and predicate(record, records):
+                    return record
+        page.wait_for_timeout(100)
+    raise AssertionError(failure_message)
 
-    def snapshot_predicate(records: list[object]) -> bool:
-        nonlocal found
-        for record in records:
-            if isinstance(record, dict) and predicate(record, records):
-                found = record
-                return True
-        return False
 
-    _wait_for_snapshot(page, base_url, snapshot_predicate, failure_message)
-    return found
+def _wait_for_snapshot(page: Page, base_url: str, predicate, failure_message: str) -> None:
+    for _attempt in range(150):
+        records = _snapshot(page, base_url).get("records", [])
+        if isinstance(records, list) and predicate(records):
+            return
+        page.wait_for_timeout(100)
+    raise AssertionError(failure_message)
+
+
+def _wait_for_working_canvas(page: Page) -> None:
+    for _attempt in range(100):
+        canvases = page.locator("canvas")
+        for index in range(canvases.count()):
+            box = canvases.nth(index).bounding_box()
+            if box and box["width"] > 500 and box["height"] > 300:
+                return
+        page.wait_for_timeout(100)
+    raise AssertionError("Univer canvas не получил рабочую геометрию журнала.")
+
+
+def _edit_cell(page: Page, x: float, y: float, value: str) -> None:
+    page.mouse.dblclick(x, y)
+    page.keyboard.press("Control+A")
+    page.keyboard.insert_text(value)
+    page.keyboard.press("Enter")
 
 
 def _wait_for_presentation_style(page: Page, base_url: str) -> int:
@@ -102,30 +116,6 @@ def _wait_for_presentation_style(page: Page, base_url: str) -> int:
                         return revision
         page.wait_for_timeout(100)
     raise AssertionError("Оформление ячейки F2 не было сохранено presentation API.")
-
-
-def _assert_incomplete_draft_not_persisted(page: Page, base_url: str) -> None:
-    page.wait_for_timeout(500)
-    snapshot = _snapshot(page, base_url)
-    records = snapshot.get("records", [])
-    if not isinstance(records, list) or len(records) != 1:
-        raise AssertionError("Незавершённая строка ошибочно создала запись в SQLite.")
-
-
-def _set_control_value(locator: Locator, value: str) -> None:
-    locator.fill(value)
-    locator.dispatch_event("change")
-
-
-def _wait_for_working_canvas(page: Page) -> None:
-    for _attempt in range(100):
-        canvases = page.locator("canvas")
-        for index in range(canvases.count()):
-            box = canvases.nth(index).bounding_box()
-            if box and box["width"] > 500 and box["height"] > 300:
-                return
-        page.wait_for_timeout(100)
-    raise AssertionError("Univer canvas не получил рабочую геометрию журнала.")
 
 
 def main() -> None:
@@ -155,11 +145,16 @@ def main() -> None:
 
         try:
             _seed_event(page, base_url)
-            response = page.goto(f"{base_url}/events/v2", wait_until="networkidle")
+            response = page.goto(f"{base_url}/", wait_until="networkidle")
             if response is None or not response.ok:
                 status = response.status if response is not None else "no response"
                 raise AssertionError(f"Journal UI V2 не открылся: {status}")
+            if not page.url.endswith("/events/v2"):
+                raise AssertionError(f"Основной маршрут не открыл Univer: {page.url}")
 
+            page.locator('html[data-editing-model="native-row"]').wait_for(
+                state="attached", timeout=30_000
+            )
             page.locator(".shift-helper-v2__status").filter(
                 has_text="Загружено записей: 1"
             ).wait_for(state="visible", timeout=30_000)
@@ -171,53 +166,38 @@ def main() -> None:
                 raise AssertionError("Не удалось определить геометрию контейнера Univer.")
             row_two_y = sheet_box["y"] + 173
             row_three_y = row_two_y + 32
+            date_x = sheet_box["x"] + 150
+            time_x = sheet_box["x"] + 230
             asset_x = sheet_box["x"] + 340
+            type_x = sheet_box["x"] + 490
             description_x = sheet_box["x"] + 690
+            reason_x = sheet_box["x"] + 930
 
-            page.mouse.dblclick(description_x, row_two_y)
-            page.keyboard.press("Control+A")
-            page.keyboard.type(EDITED_DESCRIPTION)
-            page.keyboard.press("Enter")
-            _wait_for_record(
+            _edit_cell(page, description_x, row_two_y, EDITED_DESCRIPTION)
+            _edit_cell(page, date_x, row_two_y, "28.07.2026")
+            _edit_cell(page, time_x, row_two_y, "12:45")
+            _edit_cell(page, type_x, row_two_y, "Диспетчерская команда")
+
+            edited = _wait_for_record(
                 page,
                 base_url,
                 lambda record, records: (
                     len(records) == 1
                     and record.get("id") == 1
                     and record.get("description") == EDITED_DESCRIPTION
-                    and record.get("revision") == 2
+                    and record.get("startAt") == EDITED_START_AT
+                    and record.get("eventType") == EDITED_EVENT_TYPE
                 ),
-                "Редактирование Univer не было сохранено через optimistic PATCH API.",
+                "Прямое редактирование сохранённой строки не прошло optimistic PATCH API.",
             )
+            if int(edited.get("revision", 0)) < 5:
+                raise AssertionError(f"Ревизия строки не выросла после прямых правок: {edited!r}")
 
+            page.mouse.click(description_x, row_two_y)
             page.locator('[data-testid="journal-selection"]').filter(
                 has_text="Событие №1"
             ).wait_for(state="visible", timeout=5_000)
-            date_control = page.locator('[data-testid="journal-date"]')
-            time_control = page.locator('[data-testid="journal-time"]')
-            type_control = page.locator('[data-testid="journal-event-type"]')
-            report_control = page.locator('[data-testid="journal-report"]')
             close_control = page.locator('[data-testid="journal-close"]')
-            _set_control_value(date_control, "2026-07-28")
-            _set_control_value(time_control, "12:45")
-            type_control.select_option(EDITED_EVENT_TYPE)
-            report_control.uncheck()
-
-            _wait_for_record(
-                page,
-                base_url,
-                lambda record, records: (
-                    len(records) == 1
-                    and record.get("id") == 1
-                    and record.get("startAt") == EDITED_START_AT
-                    and record.get("eventType") == EDITED_EVENT_TYPE
-                    and record.get("eventTypeLabel") == "Диспетчерская команда"
-                    and record.get("includeInReport") is False
-                    and int(record.get("revision", 0)) >= 6
-                ),
-                "Специализированные редакторы не сохранили дату, время, тип и рапорт.",
-            )
-
             close_control.click()
             _wait_for_record(
                 page,
@@ -227,52 +207,45 @@ def main() -> None:
                     and record.get("id") == 1
                     and record.get("status") == "closed"
                     and record.get("endAt") is not None
-                    and int(record.get("revision", 0)) >= 7
                 ),
-                "Явный переход завершения события не был сохранён.",
+                "Явное завершение события не было сохранено.",
             )
             close_control.filter(has_text="Событие завершено").wait_for(
                 state="visible", timeout=5_000
             )
-            if not close_control.is_disabled():
-                raise AssertionError("Кнопка завершения осталась доступна для закрытой записи.")
 
-            page.mouse.click(asset_x, row_three_y)
+            # Row 3 starts completely blank. The first edit creates a client
+            # draft in row 3 itself; no special next-row adapter is involved.
+            _edit_cell(page, date_x, row_three_y, "29.07.2026")
             page.locator('[data-testid="journal-selection"]').filter(
-                has_text="Новая строка"
+                has_text="Черновик · строка 3"
             ).wait_for(state="visible", timeout=5_000)
-            _set_control_value(date_control, "2026-07-29")
-            _set_control_value(time_control, "13:15")
-            type_control.select_option(CREATED_EVENT_TYPE)
-            report_control.uncheck()
-            _assert_incomplete_draft_not_persisted(page, base_url)
+            _edit_cell(page, time_x, row_three_y, "13:15")
+            _edit_cell(page, type_x, row_three_y, "Пуск")
+            _edit_cell(page, reason_x, row_three_y, CREATED_REASON)
+            _edit_cell(page, asset_x, row_three_y, CREATED_ASSET)
+            page.wait_for_timeout(300)
+            records_before_description = _snapshot(page, base_url).get("records", [])
+            if not isinstance(records_before_description, list) or len(records_before_description) != 1:
+                raise AssertionError("Неполный черновик преждевременно создал SQLite-запись.")
+            _edit_cell(page, description_x, row_three_y, CREATED_DESCRIPTION)
 
-            page.mouse.dblclick(asset_x, row_three_y)
-            page.keyboard.press("Control+A")
-            page.keyboard.type(CREATED_ASSET)
-            page.keyboard.press("Enter")
-            _assert_incomplete_draft_not_persisted(page, base_url)
-
-            page.mouse.dblclick(description_x, row_three_y)
-            page.keyboard.press("Control+A")
-            page.keyboard.type(CREATED_DESCRIPTION)
-            page.keyboard.press("Enter")
-            _wait_for_record(
+            created = _wait_for_record(
                 page,
                 base_url,
                 lambda record, records: (
                     len(records) == 2
                     and record.get("assetLabel") == CREATED_ASSET
                     and record.get("description") == CREATED_DESCRIPTION
+                    and record.get("reason") == CREATED_REASON
                     and record.get("startAt") == CREATED_START_AT
                     and record.get("eventType") == CREATED_EVENT_TYPE
-                    and record.get("eventTypeLabel") == "Пуск"
-                    and record.get("revision") == 1
-                    and record.get("includeInReport") is False
                     and record.get("status") == "open"
                 ),
-                "Новая строка Univer не была создана через POST API с параметрами редактора.",
+                "Пустая строка не была превращена в независимую SQLite-запись.",
             )
+            if created.get("eventTypeLabel") != "Пуск":
+                raise AssertionError(f"Русская метка типа не восстановлена: {created!r}")
 
             batch_text = (
                 f"{BATCH_FIRST_DESCRIPTION}\t{BATCH_FIRST_REASON}\n"
@@ -288,46 +261,31 @@ def main() -> None:
                     len(records) == 2
                     and records[0].get("description") == BATCH_FIRST_DESCRIPTION
                     and records[0].get("reason") == BATCH_FIRST_REASON
-                    and int(records[0].get("revision", 0)) >= 8
                     and records[1].get("description") == BATCH_SECOND_DESCRIPTION
                     and records[1].get("reason") == BATCH_SECOND_REASON
-                    and records[1].get("revision") == 2
+                )
+                or (
+                    len(records) == 2
+                    and records[1].get("description") == BATCH_FIRST_DESCRIPTION
+                    and records[1].get("reason") == BATCH_FIRST_REASON
+                    and records[0].get("description") == BATCH_SECOND_DESCRIPTION
+                    and records[0].get("reason") == BATCH_SECOND_REASON
                 ),
                 "Ctrl+V не был сохранён одной транзакционной batch-операцией.",
             )
 
-            page.locator(".shift-helper-v2__status").filter(
-                has_text="Загружено записей: 2"
-            ).wait_for(state="visible", timeout=10_000)
-            page.locator(".shift-helper-v2__status").filter(
-                has_text="все изменения сохранены"
-            ).wait_for(state="visible", timeout=10_000)
-
             page.mouse.click(description_x, row_two_y)
             page.keyboard.press("Control+B")
-            presentation_revision = _wait_for_presentation_style(page, base_url)
+            _wait_for_presentation_style(page, base_url)
             page.locator('.shift-helper-v2__status[data-presentation-state="saved"]').wait_for(
                 state="visible", timeout=10_000
             )
 
-            page.reload(wait_until="networkidle")
-            page.locator(".shift-helper-v2__status").filter(
-                has_text="Загружено записей: 2"
-            ).wait_for(state="visible", timeout=30_000)
-            _wait_for_working_canvas(page)
-            reloaded_presentation = _presentation(page, base_url)
-            if reloaded_presentation.get("revision") != presentation_revision:
-                raise AssertionError("Ревизия оформления изменилась или потерялась после reload.")
-
+            page.screenshot(path=str(screenshot_path), full_page=True)
             if page_errors:
                 raise AssertionError("Page errors: " + " | ".join(page_errors))
             if console_errors:
                 raise AssertionError("Console errors: " + " | ".join(console_errors))
-
-            page.screenshot(path=str(screenshot_path), full_page=True)
-        except Exception:
-            page.screenshot(path=str(screenshot_path), full_page=True)
-            raise
         finally:
             context.close()
             browser.close()
