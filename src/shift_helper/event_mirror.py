@@ -89,24 +89,24 @@ def _format_actor(actor: object) -> str:
 def _authors(session: Session, events: list[Event]) -> dict[int, str]:
     if not events:
         return {}
-    event_ids = [event.id for event in events]
+    event_ids = {event.id for event in events}
     rows = session.execute(
         text(
             """
             SELECT event_id, actor, action, id
             FROM event_audit
-            WHERE event_id IN :event_ids
-              AND action IN ('create', 'baseline')
+            WHERE action IN ('create', 'baseline')
             ORDER BY event_id,
                      CASE action WHEN 'create' THEN 0 ELSE 1 END,
                      id
             """
-        ).bindparams(event_ids=tuple(event_ids))
+        )
     ).mappings()
     result: dict[int, str] = {}
     for row in rows:
         event_id = int(row["event_id"])
-        result.setdefault(event_id, _format_actor(row["actor"]))
+        if event_id in event_ids:
+            result.setdefault(event_id, _format_actor(row["actor"]))
     return result
 
 
