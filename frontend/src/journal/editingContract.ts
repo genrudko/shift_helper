@@ -8,7 +8,7 @@ const TIME_COLUMN = 2;
 const TYPE_COLUMN = 4;
 const SPECIAL_COLUMNS = new Set([DATE_COLUMN, TIME_COLUMN, TYPE_COLUMN]);
 const MAX_SCAN_ROW = 600;
-const MARKER_RETRY_DELAYS = [0, 50, 200, 500] as const;
+const MARKER_RETRY_DELAYS = [0, 50, 200, 500, 1000, 2000] as const;
 
 type Worksheet = any;
 type UniverApi = any;
@@ -199,7 +199,10 @@ export function startJournalEditingContract(
 
   const scheduleDraftSynchronization = (worksheet?: Worksheet): void => {
     MARKER_RETRY_DELAYS.forEach((delay) => {
-      window.setTimeout(() => synchronizeDraft(worksheet ?? null), delay);
+      window.setTimeout(() => {
+        if (worksheet) synchronizeDraft(worksheet);
+        else synchronizeDraft();
+      }, delay);
     });
   };
 
