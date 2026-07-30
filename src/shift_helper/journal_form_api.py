@@ -1,6 +1,6 @@
 """Approved ЖС-form API for the Univer journal runtime.
 
-The v2 API remains available for compatibility tests.  The working UI uses this
+The v2 API remains available for compatibility tests. The working UI uses this
 contract because it exposes the original journal columns and reversible row
 removal without leaking technical fields into the sheet.
 """
@@ -139,7 +139,7 @@ def _event_snapshot(session: Session, event: Event) -> dict[str, object]:
         "enteredBy": _event_author(session, event.id),
         "downtimeMinutes": _downtime_minutes(event),
         # The original workbook loss formula has not yet been recovered with
-        # enough certainty to reproduce it.  Keep the approved column visible,
+        # enough certainty to reproduce it. Keep the approved column visible,
         # but do not invent a business value.
         "losses": None,
     }
@@ -171,7 +171,8 @@ def _prepare_patch(event: Event, changes: Mapping[str, Any]) -> dict[str, object
                 values[model_field] = None
             elif isinstance(raw_value, str):
                 values[model_field] = (
-                    raw_value if api_field in {"assetLabel", "description"}
+                    raw_value
+                    if api_field in {"assetLabel", "description"}
                     else raw_value.strip() or None
                 )
             else:
@@ -347,7 +348,13 @@ def patch_batch() -> tuple[Response, int] | Response:
                 event_id = _positive_integer(operation.get("recordId"))
                 revision = _positive_integer(operation.get("revision"))
                 changes = operation.get("changes")
-                if event_id is None or revision is None or not isinstance(changes, dict) or not changes:
+                invalid_operation = (
+                    event_id is None
+                    or revision is None
+                    or not isinstance(changes, dict)
+                    or not changes
+                )
+                if invalid_operation:
                     return _api_error(
                         "invalid_operation",
                         "Некорректная пакетная операция.",
@@ -418,7 +425,11 @@ def delete_rows() -> tuple[Response, int] | Response:
         with Session(_database_engine()) as session:
             for index, operation in enumerate(operations):
                 if not isinstance(operation, dict):
-                    return _api_error("invalid_operation", "Некорректная операция удаления.", status=400)
+                    return _api_error(
+                        "invalid_operation",
+                        "Некорректная операция удаления.",
+                        status=400,
+                    )
                 event_id = _positive_integer(operation.get("recordId"))
                 revision = _positive_integer(operation.get("revision"))
                 if event_id is None or revision is None:
