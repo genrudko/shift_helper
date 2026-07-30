@@ -118,7 +118,9 @@ function parseDate(value: unknown, current: string, above: unknown): string | nu
   if (text === '.') return parseDate(above, current, '');
   const increment = /^\+(-?\d+)$/.exec(text);
   if (increment) {
-    const base = /^\d{4}-\d{2}-\d{2}$/.test(current) ? new Date(`${current}T00:00:00`) : now;
+    const base = /^\d{4}-\d{2}-\d{2}$/.test(current)
+      ? new Date(`${current}T00:00:00`)
+      : now;
     base.setDate(base.getDate() + Number(increment[1]));
     return validDate(base.getFullYear(), base.getMonth() + 1, base.getDate());
   }
@@ -126,7 +128,11 @@ function parseDate(value: unknown, current: string, above: unknown): string | nu
     return validDate(now.getFullYear(), Number(text.slice(2, 4)), Number(text.slice(0, 2)));
   }
   if (/^\d{6}$/.test(text)) {
-    return validDate(2000 + Number(text.slice(4, 6)), Number(text.slice(2, 4)), Number(text.slice(0, 2)));
+    return validDate(
+      2000 + Number(text.slice(4, 6)),
+      Number(text.slice(2, 4)),
+      Number(text.slice(0, 2))
+    );
   }
   const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
   const display = /^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$/.exec(text);
@@ -143,7 +149,9 @@ function parseTime(value: unknown, current: string, above: unknown): string | nu
   const increment = /^\+(-?\d+)$/.exec(text);
   if (increment) {
     const match = /^(\d{2}):(\d{2})$/.exec(current);
-    const baseMinutes = match ? Number(match[1]) * 60 + Number(match[2]) : now.getHours() * 60 + now.getMinutes();
+    const baseMinutes = match
+      ? Number(match[1]) * 60 + Number(match[2])
+      : now.getHours() * 60 + now.getMinutes();
     const total = ((baseMinutes + Number(increment[1])) % 1440 + 1440) % 1440;
     return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
   }
@@ -186,6 +194,21 @@ function createPayload(draft: JournalDraftSnapshot): JournalCreateRequest {
   };
 }
 
+function reconciliationChanges(
+  record: JournalEventSnapshot,
+  draft: JournalDraftSnapshot
+): JournalPatchRequest['changes'] {
+  const changes: JournalPatchRequest['changes'] = {};
+  if (record.startAt !== draft.startAt) changes.startAt = draft.startAt;
+  if (record.endAt !== draft.endAt) changes.endAt = draft.endAt;
+  if (record.assetLabel !== draft.assetLabel) changes.assetLabel = draft.assetLabel;
+  if (record.description !== draft.description) changes.description = draft.description;
+  if (record.reason !== draft.reason) changes.reason = draft.reason;
+  if (record.actions !== draft.actions) changes.actions = draft.actions;
+  if (record.performer !== draft.performer) changes.performer = draft.performer;
+  return changes;
+}
+
 export function startJournalController(
   univerAPI: UniverApi,
   snapshot: JournalSnapshot,
@@ -206,18 +229,24 @@ export function startJournalController(
       recordsById.size
     )} · изменения сохраняются автоматически`;
   };
+
   const setError = (message: string): void => {
     status.classList.add('shift-helper-v2__status--error');
     status.textContent = message;
   };
+
   const setDraftStatus = (row: number): void => {
     status.classList.remove('shift-helper-v2__status--error');
     status.textContent = `Черновик в строке ${row + 1}: заполните № ВЭУ и описание события`;
   };
+
   const setSaving = (message = 'Сохранение изменения…'): void => {
     status.classList.remove('shift-helper-v2__status--error');
-    status.textContent = pendingSaveCount > 1 ? `Сохранение изменений: ${pendingSaveCount}…` : message;
+    status.textContent = pendingSaveCount > 1
+      ? `Сохранение изменений: ${pendingSaveCount}…`
+      : message;
   };
+
   const finishPending = (): void => {
     pendingSaveCount = Math.max(0, pendingSaveCount - 1);
     if (pendingSaveCount > 0) setSaving();
@@ -229,7 +258,11 @@ export function startJournalController(
     return numericCellValue(value) ?? draftCellValue(value);
   };
 
-  const applyRecord = (worksheet: WorksheetFacade, row: number, record: JournalEventSnapshot): void => {
+  const applyRecord = (
+    worksheet: WorksheetFacade,
+    row: number,
+    record: JournalEventSnapshot
+  ): void => {
     DISPLAY_COLUMNS.forEach((_column, column) => {
       worksheet.getRange(row, column).setValue(getDisplayValue(record, column));
     });
@@ -243,9 +276,14 @@ export function startJournalController(
     }
   };
 
-  const materializeDraft = (worksheet: WorksheetFacade, row: number): JournalDraftSnapshot => {
+  const materializeDraft = (
+    worksheet: WorksheetFacade,
+    row: number
+  ): JournalDraftSnapshot => {
     const existingIdentity = rowIdentity(worksheet, row);
-    if (typeof existingIdentity === 'string') return draftsById.get(existingIdentity) ?? createDraft();
+    if (typeof existingIdentity === 'string') {
+      return draftsById.get(existingIdentity) ?? createDraft();
+    }
     const draft = createDraft();
     draftsById.set(draft.clientId, draft);
     endParts.set(draft.clientId, { date: '', time: '' });
@@ -278,7 +316,10 @@ export function startJournalController(
       pendingSaveCount += 1;
       setSaving();
       try {
-        const updated = await patchRecord(recordId, { revision: current.revision, changes });
+        const updated = await patchRecord(recordId, {
+          revision: current.revision,
+          changes,
+        });
         recordsById.set(recordId, updated);
         endParts.set(String(recordId), splitIso(updated.endAt));
         applyRecord(worksheet, row, updated);
@@ -312,16 +353,30 @@ export function startJournalController(
       pendingSaveCount += 1;
       setSaving('Создание записи…');
       try {
-        const current = draftsById.get(draftId);
-        if (!current || !draftComplete(current)) return;
-        const created = await createRecord(createPayload(current));
+        const submitted = draftsById.get(draftId);
+        if (!submitted || !draftComplete(submitted)) return;
+        const created = await createRecord(createPayload(submitted));
+        let synchronized = created.record;
+
+        while (true) {
+          const latest = draftsById.get(draftId) ?? submitted;
+          const changes = reconciliationChanges(synchronized, latest);
+          if (Object.keys(changes).length === 0) break;
+          synchronized = await patchRecord(synchronized.id, {
+            revision: synchronized.revision,
+            changes,
+          });
+        }
+
         draftsById.delete(draftId);
         endParts.delete(draftId);
-        recordsById.set(created.record.id, created.record);
-        endParts.set(String(created.record.id), splitIso(created.record.endAt));
-        applyRecord(worksheet, row, created.record);
+        recordsById.set(synchronized.id, synchronized);
+        endParts.set(String(synchronized.id), splitIso(synchronized.endAt));
+        applyRecord(worksheet, row, synchronized);
       } catch (error) {
-        setError(`Новая запись не сохранена: ${error instanceof Error ? error.message : String(error)}`);
+        setError(
+          `Новая запись не сохранена: ${error instanceof Error ? error.message : String(error)}`
+        );
       } finally {
         creatingDrafts.delete(draftId);
         finishPending();
@@ -337,9 +392,128 @@ export function startJournalController(
   ): void => {
     const current = draftsById.get(draftId);
     if (!current) return;
-    const updated = update(current);
-    draftsById.set(draftId, updated);
+    draftsById.set(draftId, update(current));
     maybeCreateDraft(draftId, worksheet, row);
+  };
+
+  const editText = (
+    identity: number | string,
+    worksheet: WorksheetFacade,
+    row: number,
+    column: number,
+    field: EditableJournalField,
+    value: unknown
+  ): void => {
+    const normalized = normalizeText(field, value);
+    if (typeof identity === 'number') {
+      enqueueRecordPatch(identity, worksheet, row, (current) => {
+        if (normalized === getDisplayValue(current, column)) return {};
+        return { [field]: normalized };
+      });
+      return;
+    }
+    updateDraft(identity, worksheet, row, (current) => ({
+      ...current,
+      [field]: normalized,
+    }) as JournalDraftSnapshot);
+  };
+
+  const editStartPart = (
+    identity: number | string,
+    model: JournalEventSnapshot | JournalDraftSnapshot,
+    worksheet: WorksheetFacade,
+    row: number,
+    column: number,
+    binding: Extract<JournalCellBinding, { kind: 'startDate' | 'startTime' }>,
+    value: unknown
+  ): void => {
+    const parts = splitIso(model.startAt);
+    const above = row > 1 ? worksheet.getRange(row - 1, column).getValue() : '';
+    const parsed = binding.kind === 'startDate'
+      ? parseDate(value, parts.date, above)
+      : parseTime(value, parts.time, above);
+    if (!parsed) {
+      worksheet.getRange(row, column).setValue(getDisplayValue(model, column));
+      setError(
+        binding.kind === 'startDate'
+          ? 'Дата останова не сохранена. Используйте ДД.ММ.ГГГГ, 2707, !, . или +N.'
+          : 'Время останова не сохранено. Используйте ЧЧ:ММ, 830, !, . или +N.'
+      );
+      return;
+    }
+    const startAt = binding.kind === 'startDate'
+      ? combineIso(parsed, parts.time)
+      : combineIso(parts.date, parsed);
+    if (!startAt) return;
+    if (typeof identity === 'number') {
+      enqueueRecordPatch(identity, worksheet, row, (current) =>
+        current.startAt === startAt ? {} : { startAt }
+      );
+      return;
+    }
+    worksheet.getRange(row, column).setValue(
+      binding.kind === 'startDate'
+        ? `${parsed.slice(8, 10)}.${parsed.slice(5, 7)}.${parsed.slice(0, 4)}`
+        : parsed
+    );
+    updateDraft(identity, worksheet, row, (current) => ({ ...current, startAt }));
+  };
+
+  const editEndPart = (
+    identity: number | string,
+    model: JournalEventSnapshot | JournalDraftSnapshot,
+    worksheet: WorksheetFacade,
+    row: number,
+    column: number,
+    binding: Extract<JournalCellBinding, { kind: 'endDate' | 'endTime' }>,
+    value: unknown
+  ): void => {
+    const key = String(identity);
+    const existing = endParts.get(key) ?? splitIso(model.endAt);
+    const above = row > 1 ? worksheet.getRange(row - 1, column).getValue() : '';
+    const raw = cellText(value).trim();
+    if (!raw) {
+      endParts.set(key, { date: '', time: '' });
+      if (typeof identity === 'number') {
+        enqueueRecordPatch(identity, worksheet, row, (current) =>
+          current.endAt === null ? {} : { endAt: null }
+        );
+      } else {
+        updateDraft(identity, worksheet, row, (current) => ({ ...current, endAt: null }));
+      }
+      return;
+    }
+
+    const parsed = binding.kind === 'endDate'
+      ? parseDate(value, existing.date || splitIso(model.startAt).date, above)
+      : parseTime(value, existing.time, above);
+    if (!parsed) {
+      worksheet.getRange(row, column).setValue(getDisplayValue(model, column));
+      setError(
+        binding.kind === 'endDate'
+          ? 'Дата пуска не сохранена. Используйте ДД.ММ.ГГГГ, 2707, !, . или +N.'
+          : 'Время пуска не сохранено. Используйте ЧЧ:ММ, 830, !, . или +N.'
+      );
+      return;
+    }
+
+    const nextParts = binding.kind === 'endDate'
+      ? { ...existing, date: parsed }
+      : { ...existing, time: parsed };
+    endParts.set(key, nextParts);
+    const endAt = combineIso(nextParts.date, nextParts.time);
+    if (!endAt) {
+      status.classList.remove('shift-helper-v2__status--error');
+      status.textContent = 'Для завершения события заполните и дату, и время пуска.';
+      return;
+    }
+    if (typeof identity === 'number') {
+      enqueueRecordPatch(identity, worksheet, row, (current) =>
+        current.endAt === endAt ? {} : { endAt }
+      );
+    } else {
+      updateDraft(identity, worksheet, row, (current) => ({ ...current, endAt }));
+    }
   };
 
   const editModel = (
@@ -351,99 +525,17 @@ export function startJournalController(
   ): void => {
     const identity = rowIdentity(worksheet, row);
     if (identity === null) return;
-    const record = typeof identity === 'number' ? recordsById.get(identity) : undefined;
-    const draft = typeof identity === 'string' ? draftsById.get(identity) : undefined;
-    const model = record ?? draft;
-    if (!model) return;
+    const model = typeof identity === 'number'
+      ? recordsById.get(identity)
+      : draftsById.get(identity);
+    if (!model || binding.kind === 'readonly') return;
 
     if (binding.kind === 'text') {
-      const normalized = normalizeText(binding.field, value);
-      if (typeof identity === 'number') {
-        enqueueRecordPatch(identity, worksheet, row, (current) => ({
-          [binding.field]: normalized === getDisplayValue(current, column) ? undefined : normalized,
-        }));
-      } else {
-        updateDraft(identity, worksheet, row, (current) => ({
-          ...current,
-          [binding.field]: normalized,
-        }) as JournalDraftSnapshot);
-      }
-      return;
-    }
-
-    const key = String(identity);
-    if (binding.kind === 'startDate' || binding.kind === 'startTime') {
-      const currentParts = splitIso(model.startAt);
-      const above = row > 1 ? worksheet.getRange(row - 1, column).getValue() : '';
-      const parsed = binding.kind === 'startDate'
-        ? parseDate(value, currentParts.date, above)
-        : parseTime(value, currentParts.time, above);
-      if (!parsed) {
-        worksheet.getRange(row, column).setValue(getDisplayValue(model, column));
-        setError(
-          binding.kind === 'startDate'
-            ? 'Дата останова не сохранена. Используйте ДД.ММ.ГГГГ, 2707, !, . или +N.'
-            : 'Время останова не сохранено. Используйте ЧЧ:ММ, 830, !, . или +N.'
-        );
-        return;
-      }
-      const startAt = binding.kind === 'startDate'
-        ? combineIso(parsed, currentParts.time)
-        : combineIso(currentParts.date, parsed);
-      if (!startAt) return;
-      if (typeof identity === 'number') {
-        enqueueRecordPatch(identity, worksheet, row, () => ({ startAt }));
-      } else {
-        worksheet.getRange(row, column).setValue(
-          binding.kind === 'startDate'
-            ? `${parsed.slice(8, 10)}.${parsed.slice(5, 7)}.${parsed.slice(0, 4)}`
-            : parsed
-        );
-        updateDraft(identity, worksheet, row, (current) => ({ ...current, startAt }));
-      }
-      return;
-    }
-
-    if (binding.kind === 'endDate' || binding.kind === 'endTime') {
-      const existing = endParts.get(key) ?? splitIso(model.endAt);
-      const above = row > 1 ? worksheet.getRange(row - 1, column).getValue() : '';
-      const raw = cellText(value).trim();
-      if (!raw) {
-        endParts.set(key, { date: '', time: '' });
-        if (typeof identity === 'number') {
-          enqueueRecordPatch(identity, worksheet, row, () => ({ endAt: null }));
-        } else {
-          updateDraft(identity, worksheet, row, (current) => ({ ...current, endAt: null }));
-        }
-        return;
-      }
-      const parsed = binding.kind === 'endDate'
-        ? parseDate(value, existing.date || splitIso(model.startAt).date, above)
-        : parseTime(value, existing.time, above);
-      if (!parsed) {
-        worksheet.getRange(row, column).setValue(getDisplayValue(model, column));
-        setError(
-          binding.kind === 'endDate'
-            ? 'Дата пуска не сохранена. Используйте ДД.ММ.ГГГГ, 2707, !, . или +N.'
-            : 'Время пуска не сохранено. Используйте ЧЧ:ММ, 830, !, . или +N.'
-        );
-        return;
-      }
-      const nextParts = binding.kind === 'endDate'
-        ? { ...existing, date: parsed }
-        : { ...existing, time: parsed };
-      endParts.set(key, nextParts);
-      const endAt = combineIso(nextParts.date, nextParts.time);
-      if (!endAt) {
-        status.classList.remove('shift-helper-v2__status--error');
-        status.textContent = 'Для завершения события заполните и дату, и время пуска.';
-        return;
-      }
-      if (typeof identity === 'number') {
-        enqueueRecordPatch(identity, worksheet, row, () => ({ endAt }));
-      } else {
-        updateDraft(identity, worksheet, row, (current) => ({ ...current, endAt }));
-      }
+      editText(identity, worksheet, row, column, binding.field, value);
+    } else if (binding.kind === 'startDate' || binding.kind === 'startTime') {
+      editStartPart(identity, model, worksheet, row, column, binding, value);
+    } else {
+      editEndPart(identity, model, worksheet, row, column, binding, value);
     }
   };
 
@@ -457,7 +549,11 @@ export function startJournalController(
       setError('Дождитесь завершения текущего сохранения перед пакетной вставкой.');
       return;
     }
-    const matrix = text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n').map((line) => line.split('\t'));
+    const matrix = text
+      .replace(/\r\n?/g, '\n')
+      .replace(/\n$/, '')
+      .split('\n')
+      .map((line) => line.split('\t'));
     if (!matrix[0]?.length) return;
     if (matrix.length > 200) {
       setError('За одну пакетную вставку допускается не более 200 строк.');
@@ -495,9 +591,11 @@ export function startJournalController(
       updated.forEach((record) => recordsById.set(record.id, record));
       window.location.reload();
     } catch (error) {
-      setError(`Пакетная вставка отменена: ${error instanceof Error ? error.message : String(error)}`);
       batchInProgress = false;
       finishPending();
+      setError(
+        `Пакетная вставка отменена: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   };
 
@@ -550,6 +648,7 @@ export function startJournalController(
     const current = worksheet?.getSelection?.()?.getCurrentCell?.();
     if (worksheet && current) syncSelection(worksheet, current.actualRow);
   });
+
   univerAPI.addEvent(univerAPI.Event.CellClicked, ({ row, worksheet }: any) => {
     if (worksheet) syncSelection(worksheet, row);
   });
@@ -569,14 +668,12 @@ export function startJournalController(
       }
       const current = draftsById.get(draftId);
       if (!current) return;
-      let updated = { ...current };
+      const updated = { ...current };
       fields.forEach((field) => {
         if (field === 'endAt') {
           updated.endAt = null;
           endParts.set(draftId, { date: '', time: '' });
-        } else if (field === 'startAt') {
-          return;
-        } else if (field in updated) {
+        } else if (field !== 'startAt' && field in updated) {
           (updated as Record<string, unknown>)[field] =
             field === 'assetLabel' || field === 'description' ? '' : null;
         }
