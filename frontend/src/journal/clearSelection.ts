@@ -1,3 +1,8 @@
+import {
+  EDITOR_ACTIVATED,
+  FOCUSING_COMMON_DRAWINGS,
+  FOCUSING_SHEET,
+} from '@univerjs/core';
 import { SheetsSelectionsService } from '@univerjs/sheets';
 
 import './clearSelection.css';
@@ -16,10 +21,13 @@ import type {
 } from './types';
 
 const MAX_ROWS = 200;
+const DELETE_KEY_CODE = 46;
+const DELETE_SHORTCUT_PRIORITY = 10_000;
 const DRAFT_ID_PREFIX = 'draft:';
 const DRAFT_CLEAR_EVENT = 'shift-helper:draft-clear';
+const CLEAR_CONTENT_COMMAND = 'sheet.command.clear-selection-content';
 const CLEAR_COMMANDS = new Set([
-  'sheet.command.clear-selection-content',
+  CLEAR_CONTENT_COMMAND,
   'sheet.command.clear-selection-all',
 ]);
 
@@ -36,6 +44,16 @@ type DraftClearRow = {
   deleteRow?: boolean;
 };
 
+type ContextReader = {
+  getContextValue: (key: unknown) => unknown;
+};
+
+type ShortcutServiceFacade = {
+  _shortcutService?: {
+    registerShortcut?: (shortcut: object) => unknown;
+  };
+};
+
 function positiveInteger(value: unknown): number | null {
   if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
   if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
@@ -50,6 +68,13 @@ function isTextEditorTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement ||
     target instanceof HTMLTextAreaElement ||
     target instanceof HTMLSelectElement;
+}
+
+function sheetSelectionFocused(contextService: ContextReader): boolean {
+  return Boolean(contextService.getContextValue(FOCUSING_SHEET)) &&
+    !Boolean(contextService.getContextValue(EDITOR_ACTIVATED)) &&
+    !Boolean(contextService.getContextValue(FOCUSING_COMMON_DRAWINGS)) &&
+    !isTextEditorTarget(document.activeElement);
 }
 
 function resolveRange(value: unknown): ResolvedRange | null {
@@ -322,6 +347,15 @@ export function startJournalClearSelection(
     if (!CLEAR_COMMANDS.has(event.id)) return;
     event.cancel = true;
     executeClear(event?.params?.ranges);
+  });
+
+  const shortcutFacade = univerAPI.getShortcut?.() as ShortcutServiceFacade | undefined;
+  shortcutFacade?._shortcutService?.registerShortcut?.({
+    id: CLEAR_CONTENT_COMMAND,
+    description: 'Удалить выбранные данные журнала',
+    priority: DELETE_SHORTCUT_PRIORITY,
+    binding: DELETE_KEY_CODE,
+    preconditions: sheetSelectionFocused,
   });
 
   document.documentElement.dataset.clearSelection = 'approved-js';
