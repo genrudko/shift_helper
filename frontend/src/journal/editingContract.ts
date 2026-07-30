@@ -128,7 +128,7 @@ export function startJournalEditingContract(
           initialized = true;
           worksheet.getRange(draftRow, 3).activate?.();
           univerAPI.fireEvent(univerAPI.Event.CellClicked, { row: draftRow, column: 3, worksheet });
-          setStatus(status, `Новая запись: заполните строку ${draftRow + 1}. Дата, время и тип редактируются прямо в таблице.`);
+          setStatus(status, `Загружено записей: ${draftRow - 1} · Новая запись: заполните строку ${draftRow + 1}. Дата, время и тип редактируются прямо в таблице.`);
         }
       } finally {
         marking = false;
