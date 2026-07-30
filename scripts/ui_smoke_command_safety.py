@@ -79,11 +79,17 @@ def main() -> None:
             if html.get_attribute("data-editing-model") != "native-row":
                 raise AssertionError("Native row editing model не активирован.")
             if page.locator('[data-testid="journal-date"]').count() != 0:
-                raise AssertionError("Удалённый дублирующий редактор даты снова появился в shell.")
+                raise AssertionError(
+                    "Удалённый дублирующий редактор даты снова появился в shell."
+                )
             if page.locator('[data-testid="journal-time"]').count() != 0:
-                raise AssertionError("Удалённый дублирующий редактор времени снова появился в shell.")
+                raise AssertionError(
+                    "Удалённый дублирующий редактор времени снова появился в shell."
+                )
             if page.locator('[data-testid="journal-event-type"]').count() != 0:
-                raise AssertionError("Удалённый дублирующий редактор типа снова появился в shell.")
+                raise AssertionError(
+                    "Удалённый дублирующий редактор типа снова появился в shell."
+                )
 
             _assert_menu_command_hidden(page, "univer.command.undo")
             _assert_menu_command_hidden(page, "univer.command.redo")
