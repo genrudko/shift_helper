@@ -103,23 +103,17 @@ def _dispatch_delete(page: Page) -> None:
     page.evaluate(
         """
         () => {
-          const target = document.activeElement || document.body;
-          target.dispatchEvent(new KeyboardEvent('keydown', {
+          const options = {
             key: 'Delete',
             code: 'Delete',
             keyCode: 46,
             which: 46,
             bubbles: true,
             cancelable: true,
-          }));
-          target.dispatchEvent(new KeyboardEvent('keyup', {
-            key: 'Delete',
-            code: 'Delete',
-            keyCode: 46,
-            which: 46,
-            bubbles: true,
-            cancelable: true,
-          }));
+            composed: true,
+          };
+          window.dispatchEvent(new KeyboardEvent('keydown', options));
+          window.dispatchEvent(new KeyboardEvent('keyup', options));
         }
         """
     )
