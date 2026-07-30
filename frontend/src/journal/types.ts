@@ -3,7 +3,6 @@ export interface JournalRowSnapshot {
   endAt: string | null;
   assetLabel: string;
   eventType: string;
-  eventTypeLabel: string;
   description: string;
   reason: string | null;
   actions: string | null;
@@ -11,8 +10,11 @@ export interface JournalRowSnapshot {
   errorCodes: string | null;
   rotorLimit: string | null;
   repairPowerMw: string | null;
-  status: 'open' | 'closed';
+  status: string;
   includeInReport: boolean;
+  enteredBy: string;
+  downtimeMinutes: number | null;
+  losses: string | null;
 }
 
 export interface JournalEventSnapshot extends JournalRowSnapshot {
@@ -24,15 +26,9 @@ export interface JournalDraftSnapshot extends JournalRowSnapshot {
   clientId: string;
 }
 
-export interface JournalEventTypeOption {
-  value: string;
-  label: string;
-}
-
 export interface JournalSnapshot {
-  schemaVersion: 1;
+  schemaVersion: 2;
   generatedAt: string;
-  eventTypes: JournalEventTypeOption[];
   records: JournalEventSnapshot[];
 }
 
@@ -41,15 +37,15 @@ export type EditableJournalField =
   | 'description'
   | 'reason'
   | 'actions'
-  | 'performer'
-  | 'errorCodes'
-  | 'rotorLimit';
+  | 'performer';
 
 export type JournalPatchField =
   | EditableJournalField
   | 'startAt'
+  | 'endAt'
   | 'eventType'
-  | 'includeInReport';
+  | 'includeInReport'
+  | 'rotorLimit';
 
 export type JournalPatchValue = string | null | boolean;
 
@@ -58,17 +54,14 @@ export interface JournalPatchRequest {
   changes: Partial<Record<JournalPatchField, JournalPatchValue>>;
 }
 
-export interface JournalTransitionRequest {
-  revision: number;
-}
-
 export interface JournalPatchResponse {
-  schemaVersion: 1;
+  schemaVersion: 2;
   record: JournalEventSnapshot;
 }
 
 export interface JournalCreateValues {
   startAt: string;
+  endAt: string | null;
   assetLabel: string;
   eventType: string;
   description: string;
@@ -86,7 +79,7 @@ export interface JournalCreateRequest {
 }
 
 export interface JournalCreateResponse {
-  schemaVersion: 1;
+  schemaVersion: 2;
   clientId: string;
   record: JournalEventSnapshot;
 }
@@ -94,7 +87,7 @@ export interface JournalCreateResponse {
 export interface JournalBatchOperation {
   recordId: number;
   revision: number;
-  changes: Partial<Record<EditableJournalField, string | null>>;
+  changes: Partial<Record<JournalPatchField, JournalPatchValue>>;
 }
 
 export interface JournalBatchRequest {
@@ -102,8 +95,22 @@ export interface JournalBatchRequest {
 }
 
 export interface JournalBatchResponse {
-  schemaVersion: 1;
+  schemaVersion: 2;
   records: JournalEventSnapshot[];
+}
+
+export interface JournalDeleteOperation {
+  recordId: number;
+  revision: number;
+}
+
+export interface JournalDeleteRequest {
+  operations: JournalDeleteOperation[];
+}
+
+export interface JournalDeleteResponse {
+  schemaVersion: 2;
+  deletedRecordIds: number[];
 }
 
 export interface JournalOperationSummary {
