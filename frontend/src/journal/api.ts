@@ -4,6 +4,8 @@ import type {
   JournalBatchResponse,
   JournalCreateRequest,
   JournalCreateResponse,
+  JournalDeleteRequest,
+  JournalDeleteResponse,
   JournalEventSnapshot,
   JournalOperationState,
   JournalOperationTransitionResponse,
@@ -12,11 +14,10 @@ import type {
   JournalPresentationSaveRequest,
   JournalPresentationState,
   JournalSnapshot,
-  JournalTransitionRequest,
 } from './types';
 
-const SNAPSHOT_ENDPOINT = '/events/api/v2/snapshot';
-const RECORD_ENDPOINT = '/events/api/v2/records';
+const SNAPSHOT_ENDPOINT = '/events/api/v3/snapshot';
+const RECORD_ENDPOINT = '/events/api/v3/records';
 const PRESENTATION_ENDPOINT = '/events/api/v2/presentation';
 const OPERATION_ENDPOINT = '/events/api/v2/operations';
 export const JOURNAL_DATA_MUTATED_EVENT = 'shift-helper:data-mutated';
@@ -91,13 +92,8 @@ export async function loadSnapshot(): Promise<JournalSnapshot> {
   });
   const body = await jsonResponse(response);
   if (!response.ok) throw apiError(response, body);
-
   const data = body as JournalSnapshot;
-  if (
-    data.schemaVersion !== 1 ||
-    !Array.isArray(data.eventTypes) ||
-    !Array.isArray(data.records)
-  ) {
+  if (data.schemaVersion !== 2 || !Array.isArray(data.records)) {
     throw new Error('Сервер вернул неподдерживаемый формат журнала.');
   }
   return data;
@@ -147,7 +143,6 @@ export async function loadPresentation(): Promise<JournalPresentationState> {
   });
   const body = await jsonResponse(response);
   if (!response.ok) throw apiError(response, body);
-
   const data = body as JournalPresentationState;
   if (
     data.schemaVersion !== 1 ||
@@ -210,23 +205,8 @@ export async function patchRecord(
   const body = await jsonResponse(response);
   if (!response.ok) throw apiError(response, body);
   const result = body as JournalPatchResponse;
-  if (result.schemaVersion !== 1 || typeof result.record?.id !== 'number') {
+  if (result.schemaVersion !== 2 || typeof result.record?.id !== 'number') {
     throw new Error('Сервер вернул неподдерживаемый результат сохранения.');
-  }
-  notifyDataMutation();
-  return result.record;
-}
-
-export async function closeRecord(
-  recordId: number,
-  payload: JournalTransitionRequest
-): Promise<JournalEventSnapshot> {
-  const result = await mutationRequest<JournalPatchResponse>(
-    `${RECORD_ENDPOINT}/${recordId}/close`,
-    payload
-  );
-  if (result.schemaVersion !== 1 || typeof result.record?.id !== 'number') {
-    throw new Error('Сервер вернул неподдерживаемый результат завершения события.');
   }
   notifyDataMutation();
   return result.record;
@@ -237,7 +217,7 @@ export async function createRecord(
 ): Promise<JournalCreateResponse> {
   const result = await mutationRequest<JournalCreateResponse>(RECORD_ENDPOINT, payload);
   if (
-    result.schemaVersion !== 1 ||
+    result.schemaVersion !== 2 ||
     result.clientId !== payload.clientId ||
     typeof result.record?.id !== 'number'
   ) {
@@ -254,9 +234,23 @@ export async function patchRecordsBatch(
     `${RECORD_ENDPOINT}/batch`,
     payload
   );
-  if (result.schemaVersion !== 1 || !Array.isArray(result.records)) {
+  if (result.schemaVersion !== 2 || !Array.isArray(result.records)) {
     throw new Error('Сервер вернул неподдерживаемый результат пакетной операции.');
   }
   notifyDataMutation();
   return result.records;
+}
+
+export async function deleteRecords(
+  payload: JournalDeleteRequest
+): Promise<number[]> {
+  const result = await mutationRequest<JournalDeleteResponse>(
+    `${RECORD_ENDPOINT}/delete`,
+    payload
+  );
+  if (result.schemaVersion !== 2 || !Array.isArray(result.deletedRecordIds)) {
+    throw new Error('Сервер вернул неподдерживаемый результат удаления строк.');
+  }
+  notifyDataMutation();
+  return result.deletedRecordIds;
 }
