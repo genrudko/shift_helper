@@ -46,10 +46,9 @@ function isDraft(value: unknown): boolean {
   return typeof value === 'string' && value.startsWith(DRAFT_ID_PREFIX);
 }
 
-function isExternalEditorTarget(target: EventTarget | null): boolean {
+function isTextEditorTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  const editor = target.closest('input, textarea, select, [contenteditable="true"]');
-  return Boolean(editor && !editor.closest('#univer-sheet'));
+  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
 }
 
 function resolveRange(value: unknown): ResolvedRange | null {
@@ -163,7 +162,6 @@ export function startJournalClearSelection(
   status: HTMLElement
 ): void {
   let busy = false;
-  let sheetEditing = false;
 
   const show = (message: string, error = false): void => {
     status.dataset.clearState = error ? 'error' : 'saving';
@@ -303,23 +301,15 @@ export function startJournalClearSelection(
     else void clearCells(worksheet, range);
   };
 
-  univerAPI.addEvent(univerAPI.Event.BeforeSheetEditStart, (params: any) => {
-    sheetEditing = !params.cancel;
-  });
-  univerAPI.addEvent(univerAPI.Event.SheetEditEnded, () => {
-    sheetEditing = false;
-  });
-
   document.addEventListener(
     'keydown',
     (event) => {
       if (event.key !== 'Delete' && event.key !== 'Backspace') return;
       document.documentElement.dataset.clearLastKey = event.key;
-      document.documentElement.dataset.clearSheetEditing = String(sheetEditing);
       document.documentElement.dataset.clearKeyTarget =
         event.target instanceof HTMLElement ? event.target.tagName : 'unknown';
-      if (event.ctrlKey || event.metaKey || event.altKey) return;
-      if (sheetEditing || isExternalEditorTarget(event.target)) return;
+      if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+      if (isTextEditorTarget(event.target)) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       executeClear();
