@@ -41,13 +41,29 @@ def _snapshot(page: Page, base_url: str) -> list[dict[str, object]]:
     return records
 
 
+def _delete_diagnostics(page: Page) -> dict[str, object]:
+    html = page.locator("html")
+    status = page.locator(".shift-helper-v2__status")
+    return {
+        "lastKey": html.get_attribute("data-clear-last-key"),
+        "sheetEditing": html.get_attribute("data-clear-sheet-editing"),
+        "keyTarget": html.get_attribute("data-clear-key-target"),
+        "rangeCount": html.get_attribute("data-clear-range-count"),
+        "resolvedRange": html.get_attribute("data-clear-resolved-range"),
+        "status": status.text_content() if status.count() else None,
+    }
+
+
 def _wait_for_records(page: Page, base_url: str, predicate, message: str):
     for _attempt in range(200):
         records = _snapshot(page, base_url)
         if predicate(records):
             return records
         page.wait_for_timeout(100)
-    raise AssertionError(f"{message} Последнее состояние: {_snapshot(page, base_url)!r}")
+    raise AssertionError(
+        f"{message} Последнее состояние: {_snapshot(page, base_url)!r}; "
+        f"Delete diagnostics: {_delete_diagnostics(page)!r}"
+    )
 
 
 def _wait_for_canvas(page: Page) -> dict[str, float]:
