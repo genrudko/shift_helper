@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
-const EXPECTED_SEMANTIC_SHA256 = '4b7b9079cef680b287fafda404df2fa151246706de1a6fff769feead57d7ecc4';
+const EXPECTED_SEMANTIC_SHA256 = '0bc9075c92c2da7d16d8d8eb09602a28c9c74c9404bc2526de8c47e752b3860c';
 const lockPath = process.argv[2] ?? 'package-lock.json';
 
 function canonicalize(value) {
