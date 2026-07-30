@@ -4,8 +4,9 @@ import os
 
 from playwright.sync_api import ConsoleMessage, Page, sync_playwright
 
-EDITED_DESCRIPTION = "Изменение сохранено из Univer UI V2"
-CREATED_DESCRIPTION = "Новая запись создана из первой строки Univer"
+EDITED_DESCRIPTION = "Изменение сохранено из native Univer row"
+CREATED_DESCRIPTION = "Новая запись создана в выбранной пустой строке"
+CREATED_REASON = "Независимый черновик выбранной строки"
 BATCH_FIRST_DESCRIPTION = "Пакетное описание первой строки"
 BATCH_FIRST_REASON = "Пакетная причина первой строки"
 BATCH_SECOND_DESCRIPTION = "Пакетное описание второй строки"
@@ -89,8 +90,8 @@ def main() -> None:
                 raise AssertionError("Undo не восстановил причину первой записи.")
             if undone[1].get("description") != CREATED_DESCRIPTION:
                 raise AssertionError("Undo не восстановил описание второй записи.")
-            if undone[1].get("reason") is not None:
-                raise AssertionError("Undo не восстановил пустую причину второй записи.")
+            if undone[1].get("reason") != CREATED_REASON:
+                raise AssertionError("Undo не восстановил причину второй записи.")
             if int(undone[0].get("revision", 0)) <= int(before[0].get("revision", 0)):
                 raise AssertionError("Undo не повысил ревизию первой записи.")
             if int(undone[1].get("revision", 0)) <= int(before[1].get("revision", 0)):
