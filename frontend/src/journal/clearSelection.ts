@@ -47,6 +47,14 @@ function isDraft(value: unknown): boolean {
   return typeof value === 'string' && value.startsWith(DRAFT_ID_PREFIX);
 }
 
+function isEditorTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(
+    target.isContentEditable ||
+    target.closest('input, textarea, select, [contenteditable="true"]')
+  );
+}
+
 function resolveRange(value: unknown): ResolvedRange | null {
   if (!value || typeof value !== 'object') return null;
   const candidate = value as Record<string, unknown>;
@@ -85,8 +93,7 @@ function resolveRange(value: unknown): ResolvedRange | null {
   };
 }
 
-function commandRanges(univerAPI: any, event: any): unknown[] {
-  const explicit = event?.params?.ranges;
+function selectionRanges(univerAPI: any, explicit?: unknown): unknown[] {
   if (Array.isArray(explicit) && explicit.length > 0) return explicit;
   try {
     const service = univerAPI?._injector?.get?.(SheetsSelectionsService) as
@@ -158,9 +165,7 @@ export function startJournalClearSelection(
 
   const dispatchDraftClear = (rows: DraftClearRow[]): void => {
     if (rows.length === 0) return;
-    window.dispatchEvent(
-      new CustomEvent(DRAFT_CLEAR_EVENT, { detail: { rows } })
-    );
+    window.dispatchEvent(new CustomEvent(DRAFT_CLEAR_EVENT, { detail: { rows } }));
   };
 
   const deleteRows = async (worksheet: any, range: ResolvedRange): Promise<void> => {
@@ -178,12 +183,12 @@ export function startJournalClearSelection(
       }
     }
     if (saved.length === 0 && drafts.length === 0) {
-      show('Выбранные строки уже пусты.', false);
+      show('Выбранные строки уже пусты.');
       return;
     }
     dispatchDraftClear(drafts);
     if (saved.length === 0) {
-      show('Черновые строки очищены.', false);
+      show('Черновые строки очищены.');
       return;
     }
     busy = true;
@@ -225,14 +230,20 @@ export function startJournalClearSelection(
       }
     }
 
-    const draftRows = clearDraftCells(worksheet, range, fields);
-    dispatchDraftClear(draftRows);
-    if (operations.length === 0) {
-      show(hasDraft ? 'Выбранные ячейки черновика очищены.' : 'Выбранные ячейки уже пусты.');
+    if (hasDraft && operations.length > 0) {
+      show('Нельзя одной операцией очищать сохранённые строки и черновики.', true);
       return;
     }
+
     if (hasDraft) {
-      show('Нельзя одной операцией очищать сохранённые строки и черновики.', true);
+      const draftRows = clearDraftCells(worksheet, range, fields);
+      dispatchDraftClear(draftRows);
+      show('Выбранные ячейки черновика очищены.');
+      return;
+    }
+
+    if (operations.length === 0) {
+      show('Выбранные ячейки уже пусты.');
       return;
     }
 
@@ -251,12 +262,10 @@ export function startJournalClearSelection(
     }
   };
 
-  univerAPI.addEvent(univerAPI.Event.BeforeCommandExecute, (event: any) => {
-    if (!CLEAR_COMMANDS.has(event.id)) return;
-    event.cancel = true;
+  const executeClear = (explicitRanges?: unknown): void => {
     if (busy) return;
     const worksheet = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.();
-    const ranges = commandRanges(univerAPI, event);
+    const ranges = selectionRanges(univerAPI, explicitRanges);
     if (!worksheet || ranges.length !== 1) {
       show('Не удалось однозначно определить выбранный диапазон.', true);
       return;
@@ -277,11 +286,28 @@ export function startJournalClearSelection(
 
     const wholeRows =
       range.startColumn === 0 && range.columnCount >= DISPLAY_COLUMNS.length;
-    if (wholeRows) {
-      void deleteRows(worksheet, range);
-    } else {
-      void clearCells(worksheet, range);
-    }
+    if (wholeRows) void deleteRows(worksheet, range);
+    else void clearCells(worksheet, range);
+  };
+
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (isEditorTarget(event.target)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      document.documentElement.dataset.clearLastKey = event.key;
+      executeClear();
+    },
+    true
+  );
+
+  univerAPI.addEvent(univerAPI.Event.BeforeCommandExecute, (event: any) => {
+    if (!CLEAR_COMMANDS.has(event.id)) return;
+    event.cancel = true;
+    executeClear(event?.params?.ranges);
   });
 
   document.documentElement.dataset.clearSelection = 'approved-js';
