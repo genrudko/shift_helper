@@ -72,10 +72,6 @@ async function start(): Promise<void> {
       DISPLAY_COLUMNS.length
     );
     const workbook = univerAPI.createWorkbook(workbookData);
-    document.documentElement.dataset.journalForm = 'approved-js-12';
-    document.documentElement.dataset.journalColumns = DISPLAY_COLUMNS
-      .map((column) => column.title)
-      .join('|');
     startJournalController(univerAPI, snapshot, status, controls);
     startZoomControl(
       univerAPI,
@@ -90,6 +86,10 @@ async function start(): Promise<void> {
       DISPLAY_COLUMNS.length,
       status
     );
+    document.documentElement.dataset.journalColumns = DISPLAY_COLUMNS
+      .map((column) => column.title)
+      .join('|');
+    document.documentElement.dataset.journalForm = 'approved-js-12';
   } catch (error) {
     renderFailure(root, error);
   }
