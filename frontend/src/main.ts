@@ -13,6 +13,7 @@ import {
   startJournalCommandSafety,
 } from './journal/commandSafety';
 import { createDraft, startJournalController } from './journal/controller';
+import { startJournalEditingContract } from './journal/editingContract';
 import { startOperationHistoryControls } from './journal/operationHistory';
 import {
   applyPresentation,
@@ -25,6 +26,15 @@ import {
   renderShell,
 } from './journal/shell';
 import { startZoomControl } from './journal/zoomControl';
+
+const JOURNAL_RU_LOCALE = {
+  'sheets-ui': {
+    info: {
+      error: 'Ошибка',
+      forceStringInfo: 'Число хранится как текст',
+    },
+  },
+};
 
 function requireRoot(): HTMLElement {
   const root = document.querySelector<HTMLElement>('#app');
@@ -49,12 +59,17 @@ async function start(): Promise<void> {
     const { univerAPI } = createUniver({
       locale: LocaleType.RU_RU,
       locales: {
-        [LocaleType.RU_RU]: mergeLocales(sheetsCoreRuRU),
+        [LocaleType.RU_RU]: mergeLocales(
+          sheetsCoreRuRU,
+          JOURNAL_RU_LOCALE as never
+        ),
       },
       presets: [
         UniverSheetsCorePreset({
           container: 'univer-sheet',
           menu: JOURNAL_MENU_CONFIG,
+          disableForceStringAlert: true,
+          disableForceStringMark: true,
           footer: {
             sheetBar: true,
             statisticBar: true,
@@ -75,6 +90,12 @@ async function start(): Promise<void> {
       DISPLAY_COLUMNS.length
     );
     const workbook = univerAPI.createWorkbook(workbookData);
+    startJournalEditingContract(
+      univerAPI,
+      status,
+      controls,
+      snapshot.eventTypes
+    );
     startZoomControl(
       univerAPI,
       presentation.presentation.sheet.zoomRatio
