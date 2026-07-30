@@ -47,12 +47,10 @@ function isDraft(value: unknown): boolean {
   return typeof value === 'string' && value.startsWith(DRAFT_ID_PREFIX);
 }
 
-function isEditorTarget(target: EventTarget | null): boolean {
+function isExternalEditorTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return Boolean(
-    target.isContentEditable ||
-    target.closest('input, textarea, select, [contenteditable="true"]')
-  );
+  const editor = target.closest('input, textarea, select, [contenteditable="true"]');
+  return Boolean(editor && !editor.closest('#univer-sheet'));
 }
 
 function resolveRange(value: unknown): ResolvedRange | null {
@@ -156,6 +154,7 @@ export function startJournalClearSelection(
   status: HTMLElement
 ): void {
   let busy = false;
+  let sheetEditing = false;
 
   const show = (message: string, error = false): void => {
     status.dataset.clearState = error ? 'error' : 'saving';
@@ -234,14 +233,11 @@ export function startJournalClearSelection(
       show('Нельзя одной операцией очищать сохранённые строки и черновики.', true);
       return;
     }
-
     if (hasDraft) {
-      const draftRows = clearDraftCells(worksheet, range, fields);
-      dispatchDraftClear(draftRows);
+      dispatchDraftClear(clearDraftCells(worksheet, range, fields));
       show('Выбранные ячейки черновика очищены.');
       return;
     }
-
     if (operations.length === 0) {
       show('Выбранные ячейки уже пусты.');
       return;
@@ -266,11 +262,15 @@ export function startJournalClearSelection(
     if (busy) return;
     const worksheet = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.();
     const ranges = selectionRanges(univerAPI, explicitRanges);
+    document.documentElement.dataset.clearRangeCount = String(ranges.length);
     if (!worksheet || ranges.length !== 1) {
       show('Не удалось однозначно определить выбранный диапазон.', true);
       return;
     }
     const range = resolveRange(ranges[0]);
+    if (range) {
+      document.documentElement.dataset.clearResolvedRange = JSON.stringify(range);
+    }
     if (!range || range.rowCount < 1 || range.columnCount < 1) {
       show('Выбран некорректный диапазон.', true);
       return;
@@ -290,15 +290,25 @@ export function startJournalClearSelection(
     else void clearCells(worksheet, range);
   };
 
+  univerAPI.addEvent(univerAPI.Event.BeforeSheetEditStart, (params: any) => {
+    sheetEditing = !params.cancel;
+  });
+  univerAPI.addEvent(univerAPI.Event.SheetEditEnded, () => {
+    sheetEditing = false;
+  });
+
   document.addEventListener(
     'keydown',
     (event) => {
       if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      document.documentElement.dataset.clearLastKey = event.key;
+      document.documentElement.dataset.clearSheetEditing = String(sheetEditing);
+      document.documentElement.dataset.clearKeyTarget =
+        event.target instanceof HTMLElement ? event.target.tagName : 'unknown';
       if (event.ctrlKey || event.metaKey || event.altKey) return;
-      if (isEditorTarget(event.target)) return;
+      if (sheetEditing || isExternalEditorTarget(event.target)) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      document.documentElement.dataset.clearLastKey = event.key;
       executeClear();
     },
     true
