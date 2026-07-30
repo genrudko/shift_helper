@@ -41,6 +41,20 @@ def _wait_for_records(page: Page, base_url: str, count: int) -> list[dict[str, o
     raise AssertionError(f"Количество записей не стало равным {count}.")
 
 
+def _find_record(
+    records: list[dict[str, object]], asset: str, description: str
+) -> dict[str, object] | None:
+    return next(
+        (
+            record
+            for record in records
+            if record.get("assetLabel") == asset
+            and record.get("description") == description
+        ),
+        None,
+    )
+
+
 def _wait_for_working_canvas(page: Page) -> None:
     for _attempt in range(100):
         canvases = page.locator("canvas")
@@ -166,9 +180,9 @@ def main() -> None:
             _edit_cell(page, description_x, row_two_y, FIRST_DESCRIPTION)
             _edit_cell(page, asset_x, row_two_y, FIRST_ASSET)
             first_records = _wait_for_records(page, base_url, 1)
-            first = first_records[0]
-            if first.get("assetLabel") != FIRST_ASSET or first.get("description") != FIRST_DESCRIPTION:
-                raise AssertionError(f"Первая запись содержит утёкший ввод: {first!r}")
+            first = _find_record(first_records, FIRST_ASSET, FIRST_DESCRIPTION)
+            if first is None:
+                raise AssertionError(f"Первая запись содержит утёкший ввод: {first_records!r}")
             if first.get("startAt") != "2026-07-31T10:25" or first.get("eventType") != "startup":
                 raise AssertionError(f"Специальные поля первой записи сохранены неверно: {first!r}")
 
@@ -189,9 +203,12 @@ def main() -> None:
             _edit_cell(page, description_x, row_three_y, SECOND_DESCRIPTION)
             _edit_cell(page, asset_x, row_three_y, SECOND_ASSET)
             second_records = _wait_for_records(page, base_url, 2)
-            second = second_records[1]
-            if second.get("assetLabel") != SECOND_ASSET or second.get("description") != SECOND_DESCRIPTION:
-                raise AssertionError(f"Вторая запись содержит утёкший ввод: {second!r}")
+            second = _find_record(second_records, SECOND_ASSET, SECOND_DESCRIPTION)
+            if second is None:
+                raise AssertionError(f"Вторая запись содержит утёкший ввод: {second_records!r}")
+            serialized_records = repr(second_records)
+            if "LEAK-FROM-ROW-6" in serialized_records or "LEAK-FROM-ROW-12" in serialized_records:
+                raise AssertionError(f"В SQLite обнаружен утёкший ввод: {second_records!r}")
 
             body_text = page.locator("body").inner_text()
             if "sheets-ui.info.error" in body_text or "sheets-ui.info.forceStringInfo" in body_text:
