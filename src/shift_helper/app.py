@@ -21,6 +21,7 @@ from .event_presentation import (
     initialize_event_presentation,
 )
 from .events import events_blueprint
+from .journal_form_api import journal_form_blueprint
 from .paths import build_runtime_paths, ensure_runtime_directories
 from .runtime_files import runtime_files_blueprint
 from .security import configure_lan_security, load_or_create_session_secret
@@ -83,6 +84,7 @@ def create_app(
     app.extensions["shift_helper_event_mirror"] = mirror_state
     app.extensions["shift_helper_database_backup"] = backup_state
     app.register_blueprint(events_blueprint)
+    app.register_blueprint(journal_form_blueprint)
     app.register_blueprint(event_history_blueprint)
     app.register_blueprint(event_batch_blueprint)
     app.register_blueprint(event_presentation_blueprint)
