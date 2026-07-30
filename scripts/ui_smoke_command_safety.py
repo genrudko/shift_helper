@@ -71,17 +71,19 @@ def main() -> None:
             ).wait_for(state="visible", timeout=30_000)
             _wait_for_working_canvas(page)
 
-            command_safety = page.locator("html").get_attribute("data-command-safety")
-            if command_safety != "active":
+            html = page.locator("html")
+            if html.get_attribute("data-command-safety") != "active":
                 raise AssertionError("Command safety не активирован.")
-            clear_adapter = page.locator("html").get_attribute("data-clear-selection")
-            if clear_adapter != "active":
+            if html.get_attribute("data-clear-selection") != "active":
                 raise AssertionError("Clear-selection adapter не активирован.")
-            date_placeholder = page.locator('[data-testid="journal-date"]').get_attribute(
-                "placeholder"
-            )
-            if date_placeholder != "дд.мм.гггг":
-                raise AssertionError("Поле даты не использует локализованный формат.")
+            if html.get_attribute("data-editing-model") != "native-row":
+                raise AssertionError("Native row editing model не активирован.")
+            if page.locator('[data-testid="journal-date"]').count() != 0:
+                raise AssertionError("Удалённый дублирующий редактор даты снова появился в shell.")
+            if page.locator('[data-testid="journal-time"]').count() != 0:
+                raise AssertionError("Удалённый дублирующий редактор времени снова появился в shell.")
+            if page.locator('[data-testid="journal-event-type"]').count() != 0:
+                raise AssertionError("Удалённый дублирующий редактор типа снова появился в shell.")
 
             _assert_menu_command_hidden(page, "univer.command.undo")
             _assert_menu_command_hidden(page, "univer.command.redo")
