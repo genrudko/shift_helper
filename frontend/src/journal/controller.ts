@@ -347,7 +347,7 @@ export function startJournalController(
     worksheet.getRange(row, RECORD_ID_COLUMN).setValue(draft.clientId);
     worksheet.getRange(row, REVISION_COLUMN).setValue('');
   };
-  const scheduleRender = (
+  const scheduleRowRender = (
     worksheet: WorksheetFacade,
     row: number,
     model: JournalEventSnapshot | JournalDraftSnapshot
@@ -357,9 +357,19 @@ export function startJournalController(
       else applyDraftToRow(worksheet, row, model);
     }, 0);
   };
+  const scheduleCellRender = (
+    worksheet: WorksheetFacade,
+    row: number,
+    column: number,
+    model: JournalEventSnapshot | JournalDraftSnapshot
+  ): void => {
+    window.setTimeout(() => {
+      worksheet.getRange(row, column).setValue(getDisplayValue(model, column, row - 1));
+    }, 0);
+  };
   const restoreRecord = (worksheet: WorksheetFacade, record: JournalEventSnapshot): void => {
     const row = findRecordRow(worksheet, record.id);
-    if (row !== null) scheduleRender(worksheet, row, record);
+    if (row !== null) scheduleRowRender(worksheet, row, record);
   };
 
   const syncSelectionContext = (worksheet: WorksheetFacade, row: number): void => {
@@ -631,7 +641,7 @@ export function startJournalController(
       if (!current) return;
       const immediate = parseEdit(asDraft(current), binding, rawValue, snapshot.eventTypes);
       if (!immediate.ok) {
-        scheduleRender(worksheet, row, current);
+        scheduleCellRender(worksheet, row, column, current);
         setErrorStatus(immediate.message);
         return;
       }
@@ -647,12 +657,14 @@ export function startJournalController(
     if (!currentDraft) return;
     const parsed = parseEdit(currentDraft, binding, rawValue, snapshot.eventTypes);
     if (!parsed.ok) {
-      scheduleRender(worksheet, row, currentDraft);
+      scheduleCellRender(worksheet, row, column, currentDraft);
       setErrorStatus(parsed.message);
       return;
     }
     draftsById.set(identity, parsed.draft);
-    scheduleRender(worksheet, row, parsed.draft);
+    if (binding.kind !== 'text') {
+      scheduleCellRender(worksheet, row, column, parsed.draft);
+    }
     if (activeRow?.row === row) syncSelectionContext(worksheet, row);
     maybeCreateDraft(identity, worksheet);
   });
