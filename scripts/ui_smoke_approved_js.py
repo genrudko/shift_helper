@@ -50,6 +50,14 @@ def _delete_diagnostics(page: Page) -> dict[str, object]:
         "keyTarget": html.get_attribute("data-clear-key-target"),
         "rangeCount": html.get_attribute("data-clear-range-count"),
         "resolvedRange": html.get_attribute("data-clear-resolved-range"),
+        "rowCaptureInstalled": html.get_attribute(
+            "data-row-delete-capture-installed"
+        ),
+        "rowCaptureSeen": html.get_attribute("data-row-delete-capture-seen"),
+        "rowCaptureHandled": html.get_attribute(
+            "data-row-delete-capture-handled"
+        ),
+        "rowCaptureRange": html.get_attribute("data-row-delete-capture-range"),
         "activeElement": page.evaluate(
             "document.activeElement ? document.activeElement.tagName + '.' + "
             "document.activeElement.className : 'none'"
@@ -89,6 +97,32 @@ def _edit_cell(page: Page, x: float, y: float, value: str) -> None:
     page.keyboard.press("Control+A")
     page.keyboard.type(value)
     page.keyboard.press("Enter")
+
+
+def _dispatch_delete(page: Page) -> None:
+    page.evaluate(
+        """
+        () => {
+          const target = document.activeElement || document.body;
+          target.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Delete',
+            code: 'Delete',
+            keyCode: 46,
+            which: 46,
+            bubbles: true,
+            cancelable: true,
+          }));
+          target.dispatchEvent(new KeyboardEvent('keyup', {
+            key: 'Delete',
+            code: 'Delete',
+            keyCode: 46,
+            which: 46,
+            bubbles: true,
+            cancelable: true,
+          }));
+        }
+        """
+    )
 
 
 def _runtime_origin(page: Page) -> float:
@@ -177,6 +211,8 @@ def main() -> None:
                 raise AssertionError("Approved ЖС row controller не активирован.")
             if html.get_attribute("data-clear-selection") != "approved-js":
                 raise AssertionError("Approved Delete adapter не активирован.")
+            if html.get_attribute("data-row-delete-capture-installed") != "true":
+                raise AssertionError("Ранний capture удаления строки не активирован.")
             if page.locator('[data-testid="journal-close"]').count() != 0:
                 raise AssertionError("Старая кнопка завершения события осталась в форме.")
 
@@ -237,7 +273,7 @@ def main() -> None:
 
             _select_persisted_row(page)
             delete_origin = _runtime_origin(page)
-            page.keyboard.press("Delete")
+            _dispatch_delete(page)
             _wait_for_records(
                 page,
                 base_url,
