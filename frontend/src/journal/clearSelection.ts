@@ -25,6 +25,7 @@ const DELETE_KEY_CODE = 46;
 const DELETE_SHORTCUT_PRIORITY = 10_000;
 const DRAFT_ID_PREFIX = 'draft:';
 const DRAFT_CLEAR_EVENT = 'shift-helper:draft-clear';
+const ROW_DELETE_KEY_EVENT = 'shift-helper:row-delete-key';
 const CLEAR_CONTENT_COMMAND = 'sheet.command.clear-selection-content';
 const CLEAR_COMMANDS = new Set([
   CLEAR_CONTENT_COMMAND,
@@ -53,6 +54,34 @@ type ShortcutServiceFacade = {
     registerShortcut?: (shortcut: object) => unknown;
   };
 };
+
+type RowDeleteKeyDetail = {
+  handled: boolean;
+};
+
+export function installJournalDeleteCapture(): void {
+  const html = document.documentElement;
+  if (html.dataset.rowDeleteCaptureInstalled === 'true') return;
+
+  window.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key !== 'Delete') return;
+      if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+
+      html.dataset.rowDeleteCaptureSeen = 'true';
+      const detail: RowDeleteKeyDetail = { handled: false };
+      window.dispatchEvent(new CustomEvent(ROW_DELETE_KEY_EVENT, { detail }));
+      if (!detail.handled) return;
+
+      html.dataset.rowDeleteCaptureHandled = 'true';
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    },
+    true
+  );
+  html.dataset.rowDeleteCaptureInstalled = 'true';
+}
 
 function positiveInteger(value: unknown): number | null {
   if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
@@ -326,6 +355,24 @@ export function startJournalClearSelection(
     if (wholeRows) void deleteRows(worksheet, range);
     else void clearCells(worksheet, range);
   };
+
+  window.addEventListener(ROW_DELETE_KEY_EVENT, (event) => {
+    const request = event as CustomEvent<RowDeleteKeyDetail>;
+    const ranges = selectionRanges(univerAPI);
+    const range = ranges.length === 1 ? resolveRange(ranges[0]) : null;
+    if (range) {
+      document.documentElement.dataset.rowDeleteCaptureRange = JSON.stringify(range);
+    }
+    const wholeRows = Boolean(
+      range &&
+      range.startColumn === 0 &&
+      range.columnCount >= DISPLAY_COLUMNS.length
+    );
+    if (!wholeRows) return;
+
+    request.detail.handled = true;
+    executeClear(ranges);
+  });
 
   document.addEventListener(
     'keydown',
