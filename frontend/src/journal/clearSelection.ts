@@ -146,6 +146,25 @@ function resolveRange(value: unknown): ResolvedRange | null {
       columnCount: Number((candidate.getNumColumns as () => unknown)()),
     };
   }
+  const countedStartRow = Number(candidate.startRow);
+  const countedStartColumn = Number(candidate.startColumn);
+  const rowCount = Number(candidate.rowCount);
+  const columnCount = Number(candidate.columnCount);
+  if (
+    Number.isInteger(countedStartRow) &&
+    Number.isInteger(countedStartColumn) &&
+    Number.isInteger(rowCount) &&
+    Number.isInteger(columnCount) &&
+    rowCount > 0 &&
+    columnCount > 0
+  ) {
+    return {
+      startRow: countedStartRow,
+      startColumn: countedStartColumn,
+      rowCount,
+      columnCount,
+    };
+  }
   const startRow = Number(candidate.startRow);
   const endRow = Number(candidate.endRow);
   const startColumn = Number(candidate.startColumn);
