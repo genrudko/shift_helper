@@ -87,7 +87,16 @@ def _edit_cell(page: Page, x: float, y: float, value: str) -> None:
     page.keyboard.press("Enter")
 
 
-def _wait_for_reload(page: Page) -> None:
+def _runtime_origin(page: Page) -> float:
+    return float(page.evaluate("performance.timeOrigin"))
+
+
+def _wait_for_reload(page: Page, previous_origin: float) -> None:
+    page.wait_for_function(
+        "origin => performance.timeOrigin !== origin",
+        arg=previous_origin,
+        timeout=30_000,
+    )
     page.wait_for_load_state("networkidle", timeout=30_000)
     page.locator('html[data-journal-form="approved-js-12"]').wait_for(
         state="attached",
@@ -208,6 +217,7 @@ def main() -> None:
             if not isinstance(closed.get("downtimeMinutes"), int):
                 raise AssertionError(f"Простой не был рассчитан: {closed!r}")
 
+            clear_origin = _runtime_origin(page)
             page.mouse.click(reason_x, row_two_y)
             page.keyboard.press("Delete")
             _wait_for_records(
@@ -216,10 +226,11 @@ def main() -> None:
                 lambda records: len(records) == 1 and records[0].get("reason") is None,
                 "Delete не очистил значение ячейки в SQLite.",
             )
-            _wait_for_reload(page)
+            _wait_for_reload(page, clear_origin)
 
             _select_persisted_row(page)
             page.keyboard.press("Shift+Space")
+            delete_origin = _runtime_origin(page)
             page.keyboard.press("Delete")
             _wait_for_records(
                 page,
@@ -227,11 +238,12 @@ def main() -> None:
                 lambda records: len(records) == 0,
                 "Delete выделенной строки не удалил её из рабочего журнала.",
             )
-            _wait_for_reload(page)
+            _wait_for_reload(page, delete_origin)
 
             page.locator(
                 '[data-testid="operation-history"][data-can-undo="true"]'
             ).wait_for(state="visible", timeout=30_000)
+            restore_origin = _runtime_origin(page)
             page.keyboard.press("Control+Z")
             restored = _wait_for_records(
                 page,
@@ -241,11 +253,12 @@ def main() -> None:
             )[0]
             if restored.get("description") != DESCRIPTION:
                 raise AssertionError("Восстановленная строка потеряла исходные данные.")
-            _wait_for_reload(page)
+            _wait_for_reload(page, restore_origin)
 
             page.locator(
                 '[data-testid="operation-history"][data-can-undo="true"]'
             ).wait_for(state="visible", timeout=30_000)
+            reason_origin = _runtime_origin(page)
             page.keyboard.press("Control+Z")
             _wait_for_records(
                 page,
@@ -253,7 +266,7 @@ def main() -> None:
                 lambda records: len(records) == 1 and records[0].get("reason") == REASON,
                 "Второй Ctrl+Z не восстановил очищенное значение ячейки.",
             )
-            _wait_for_reload(page)
+            _wait_for_reload(page, reason_origin)
 
             page.screenshot(path=str(screenshot_path), full_page=True)
             if page_errors:
