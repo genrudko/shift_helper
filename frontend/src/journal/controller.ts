@@ -209,6 +209,10 @@ function reconciliationChanges(
   return changes;
 }
 
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
 export function startJournalController(
   univerAPI: UniverApi,
   snapshot: JournalSnapshot,
@@ -219,6 +223,7 @@ export function startJournalController(
   const draftsById = new Map<string, JournalDraftSnapshot>();
   const saveQueues = new Map<string, Promise<void>>();
   const creatingDrafts = new Set<string>();
+  const activeEditRows = new Set<number>();
   const endParts = new Map<string, EndParts>();
   let pendingSaveCount = 0;
   let batchInProgress = false;
@@ -251,6 +256,10 @@ export function startJournalController(
     pendingSaveCount = Math.max(0, pendingSaveCount - 1);
     if (pendingSaveCount > 0) setSaving();
     else if (!status.classList.contains('shift-helper-v2__status--error')) setReadyStatus();
+  };
+
+  const waitForEditEnd = async (row: number): Promise<void> => {
+    while (activeEditRows.has(row)) await delay(20);
   };
 
   const rowIdentity = (worksheet: WorksheetFacade, row: number): number | string | null => {
@@ -322,8 +331,10 @@ export function startJournalController(
         });
         recordsById.set(recordId, updated);
         endParts.set(String(recordId), splitIso(updated.endAt));
+        await waitForEditEnd(row);
         applyRecord(worksheet, row, updated);
       } catch (error) {
+        await waitForEditEnd(row);
         if (error instanceof JournalApiError && error.current) {
           recordsById.set(recordId, error.current);
           applyRecord(worksheet, row, error.current);
@@ -359,6 +370,7 @@ export function startJournalController(
         let synchronized = created.record;
 
         while (true) {
+          await waitForEditEnd(row);
           const latest = draftsById.get(draftId) ?? submitted;
           const changes = reconciliationChanges(synchronized, latest);
           if (Object.keys(changes).length === 0) break;
@@ -613,12 +625,17 @@ export function startJournalController(
       return;
     }
     if (rowIdentity(worksheet, row) === null) materializeDraft(worksheet, row);
+    activeEditRows.add(row);
   });
 
   univerAPI.addEvent(univerAPI.Event.SheetEditEnded, ({ row, column, worksheet }: any) => {
-    const binding = getCellBinding(column);
-    if (!worksheet || !binding || binding.kind === 'readonly' || batchInProgress) return;
-    editModel(worksheet, row, column, binding, worksheet.getRange(row, column).getValue());
+    try {
+      const binding = getCellBinding(column);
+      if (!worksheet || !binding || binding.kind === 'readonly' || batchInProgress) return;
+      editModel(worksheet, row, column, binding, worksheet.getRange(row, column).getValue());
+    } finally {
+      activeEditRows.delete(row);
+    }
   });
 
   univerAPI.addEvent(univerAPI.Event.BeforeClipboardPaste, (params: any) => {
