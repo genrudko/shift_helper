@@ -12,29 +12,15 @@ import {
   JOURNAL_MENU_CONFIG,
   startJournalCommandSafety,
 } from './journal/commandSafety';
-import { createDraft, startJournalController } from './journal/controller';
-import { startJournalEditingContract } from './journal/editingContract';
+import { startJournalController } from './journal/controller';
 import { startOperationHistoryControls } from './journal/operationHistory';
 import {
   applyPresentation,
   startPresentationPersistence,
 } from './journal/presentation';
 import { startRuntimeFileControls } from './journal/runtimeFiles';
-import {
-  configureEventTypeOptions,
-  renderFailure,
-  renderShell,
-} from './journal/shell';
+import { renderFailure, renderShell } from './journal/shell';
 import { startZoomControl } from './journal/zoomControl';
-
-const JOURNAL_RU_LOCALE = {
-  'sheets-ui': {
-    info: {
-      error: 'Ошибка',
-      forceStringInfo: 'Число хранится как текст',
-    },
-  },
-};
 
 function requireRoot(): HTMLElement {
   const root = document.querySelector<HTMLElement>('#app');
@@ -54,15 +40,10 @@ async function start(): Promise<void> {
       loadSnapshot(),
       loadPresentation(),
     ]);
-    configureEventTypeOptions(controls.eventType, snapshot.eventTypes);
-    const draft = createDraft(snapshot.eventTypes);
     const { univerAPI } = createUniver({
       locale: LocaleType.RU_RU,
       locales: {
-        [LocaleType.RU_RU]: mergeLocales(
-          sheetsCoreRuRU,
-          JOURNAL_RU_LOCALE as never
-        ),
+        [LocaleType.RU_RU]: mergeLocales(sheetsCoreRuRU),
       },
       presets: [
         UniverSheetsCorePreset({
@@ -85,19 +66,13 @@ async function start(): Promise<void> {
       ],
     });
 
-    startJournalController(univerAPI, snapshot, draft, status, controls);
     const workbookData = applyPresentation(
-      buildWorkbookData(snapshot, draft),
+      buildWorkbookData(snapshot),
       presentation,
       DISPLAY_COLUMNS.length
     );
     const workbook = univerAPI.createWorkbook(workbookData);
-    startJournalEditingContract(
-      univerAPI,
-      status,
-      controls,
-      snapshot.eventTypes
-    );
+    startJournalController(univerAPI, snapshot, status, controls);
     startZoomControl(
       univerAPI,
       presentation.presentation.sheet.zoomRatio
