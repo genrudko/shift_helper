@@ -47,8 +47,9 @@ function isDraft(value: unknown): boolean {
 }
 
 function isTextEditorTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+  return target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement;
 }
 
 function resolveRange(value: unknown): ResolvedRange | null {
