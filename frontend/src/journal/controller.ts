@@ -3,8 +3,12 @@ import {
   HEADER_ROW_INDEX,
   RECORD_ID_COLUMN,
   REVISION_COLUMN,
+  formatDate,
+  formatTime,
+  getCellBinding,
   getDisplayValue,
   getEditableField,
+  type JournalCellBinding,
 } from './buildWorkbook';
 import {
   JournalApiError,
@@ -34,8 +38,12 @@ type UniverApi = any;
 type ActiveRow = {
   readonly worksheet: WorksheetFacade;
   readonly row: number;
-  readonly identity: number | string;
+  readonly identity: number | string | null;
 };
+
+type ParsedEdit =
+  | { readonly ok: true; readonly draft: JournalDraftSnapshot; readonly changes: JournalPatchRequest['changes'] }
+  | { readonly ok: false; readonly message: string };
 
 function numericCellValue(value: unknown): number | null {
   if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
@@ -66,9 +74,7 @@ function localMinuteIso(date = new Date()): string {
   ].join('');
 }
 
-export function createDraft(
-  eventTypes: readonly JournalEventTypeOption[]
-): JournalDraftSnapshot {
+function createDraft(eventTypes: readonly JournalEventTypeOption[]): JournalDraftSnapshot {
   draftSequence += 1;
   const randomPart = Math.random().toString(36).slice(2, 10);
   const defaultType =
@@ -120,14 +126,6 @@ function draftIsComplete(draft: JournalDraftSnapshot): boolean {
   return Boolean(draft.assetLabel.trim() && draft.description.trim());
 }
 
-function updateDraftField(
-  draft: JournalDraftSnapshot,
-  field: EditableJournalField,
-  value: string
-): JournalDraftSnapshot {
-  return { ...draft, [field]: value } as JournalDraftSnapshot;
-}
-
 function splitStartAt(startAt: string): { date: string; time: string } {
   const [date = '', rawTime = ''] = startAt.split('T');
   return { date, time: rawTime.slice(0, 5) };
@@ -140,6 +138,66 @@ function combineStartAt(date: string, time: string): string | null {
   return `${date}T${time}`;
 }
 
+function parseDate(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * 86_400_000);
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+  }
+  const text = String(value ?? '').trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  const display = /^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$/.exec(text);
+  const year = Number(iso?.[1] ?? display?.[3]);
+  const month = Number(iso?.[2] ?? display?.[2]);
+  const day = Number(iso?.[3] ?? display?.[1]);
+  if (!year || !month || !day) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function parseTime(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const fraction = ((value % 1) + 1) % 1;
+    const minutes = Math.round(fraction * 1440) % 1440;
+    return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+  }
+  const match = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(String(value ?? '').trim());
+  if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return null;
+  return `${String(Number(match[1])).padStart(2, '0')}:${match[2]}`;
+}
+
+function parseReportFlag(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  const normalized = String(value ?? '').trim().toLocaleLowerCase('ru-RU');
+  if (['да', 'yes', 'true', '1', '+'].includes(normalized)) return true;
+  if (['нет', 'no', 'false', '0', '-'].includes(normalized)) return false;
+  return null;
+}
+
+function resolveEventType(
+  value: unknown,
+  eventTypes: readonly JournalEventTypeOption[]
+): JournalEventTypeOption | null {
+  const normalized = String(value ?? '').trim().toLocaleLowerCase('ru-RU');
+  return (
+    eventTypes.find(
+      (item) =>
+        item.value.toLocaleLowerCase('ru-RU') === normalized ||
+        item.label.toLocaleLowerCase('ru-RU') === normalized
+    ) ?? null
+  );
+}
+
 function parseClipboardMatrix(text: string): string[][] {
   const normalized = text.replace(/\r\n?/g, '\n');
   const withoutFinalNewline = normalized.endsWith('\n')
@@ -149,27 +207,83 @@ function parseClipboardMatrix(text: string): string[][] {
   return withoutFinalNewline.split('\n').map((row) => row.split('\t'));
 }
 
-function setControlsEnabled(controls: EditorControls, enabled: boolean): void {
-  controls.date.disabled = !enabled;
-  controls.time.disabled = !enabled;
-  controls.eventType.disabled = !enabled;
-  controls.includeInReport.disabled = !enabled;
-  if (!enabled) controls.close.disabled = true;
+function normalizeTextField(field: EditableJournalField, value: string): string | null {
+  if (field === 'assetLabel' || field === 'description') return value;
+  return value.trim() ? value : null;
+}
+
+function parseDraftEdit(
+  draft: JournalDraftSnapshot,
+  binding: JournalCellBinding,
+  value: unknown,
+  eventTypes: readonly JournalEventTypeOption[]
+): ParsedEdit {
+  if (binding.kind === 'text') {
+    const normalized = normalizeTextField(binding.field, editableCellValue(value));
+    return {
+      ok: true,
+      draft: { ...draft, [binding.field]: normalized } as JournalDraftSnapshot,
+      changes: { [binding.field]: normalized },
+    };
+  }
+
+  if (binding.kind === 'date') {
+    const date = parseDate(value);
+    if (!date) return { ok: false, message: 'Дата не сохранена. Используйте формат ДД.ММ.ГГГГ.' };
+    const { time } = splitStartAt(draft.startAt);
+    const startAt = combineStartAt(date, time);
+    if (!startAt) return { ok: false, message: 'Дата не сохранена: не удалось собрать дату и время.' };
+    return { ok: true, draft: { ...draft, startAt }, changes: { startAt } };
+  }
+
+  if (binding.kind === 'time') {
+    const time = parseTime(value);
+    if (!time) return { ok: false, message: 'Время не сохранено. Используйте формат ЧЧ:ММ.' };
+    const { date } = splitStartAt(draft.startAt);
+    const startAt = combineStartAt(date, time);
+    if (!startAt) return { ok: false, message: 'Время не сохранено: не удалось собрать дату и время.' };
+    return { ok: true, draft: { ...draft, startAt }, changes: { startAt } };
+  }
+
+  if (binding.kind === 'eventType') {
+    const eventType = resolveEventType(value, eventTypes);
+    if (!eventType) {
+      return {
+        ok: false,
+        message: `Тип события не сохранён. Допустимые значения: ${eventTypes
+          .map((item) => item.label)
+          .join(', ')}.`,
+      };
+    }
+    return {
+      ok: true,
+      draft: { ...draft, eventType: eventType.value, eventTypeLabel: eventType.label },
+      changes: { eventType: eventType.value },
+    };
+  }
+
+  const includeInReport = parseReportFlag(value);
+  if (includeInReport === null) {
+    return { ok: false, message: 'Поле «В рапорт» принимает только «Да» или «Нет».' };
+  }
+  return {
+    ok: true,
+    draft: { ...draft, includeInReport },
+    changes: { includeInReport },
+  };
 }
 
 export function startJournalController(
   univerAPI: UniverApi,
   snapshot: JournalSnapshot,
-  initialDraft: JournalDraftSnapshot,
   status: HTMLElement,
   controls: EditorControls
 ): void {
-  const eventTypeLabels = new Map(snapshot.eventTypes.map(({ value, label }) => [value, label]));
   const recordsById = new Map(snapshot.records.map((record) => [record.id, record]));
-  const draftsById = new Map([[initialDraft.clientId, initialDraft]]);
+  const draftsById = new Map<string, JournalDraftSnapshot>();
   const saveQueues = new Map<string, Promise<void>>();
   const creatingDrafts = new Set<string>();
-  const maximumScanRow = Math.max(snapshot.records.length + 400, 600);
+  const maximumScanRow = Math.max(snapshot.records.length + 600, 800);
   let pendingSaveCount = 0;
   let activeRow: ActiveRow | null = null;
   let batchInProgress = false;
@@ -177,7 +291,7 @@ export function startJournalController(
   const setReadyStatus = (): void => {
     const recordCount = new Intl.NumberFormat('ru-RU').format(recordsById.size);
     status.classList.remove('shift-helper-v2__status--error');
-    status.textContent = `Загружено записей: ${recordCount} · все изменения сохранены`;
+    status.textContent = `Загружено записей: ${recordCount} · изменения сохраняются автоматически`;
   };
 
   const setSavingStatus = (message?: string): void => {
@@ -189,9 +303,9 @@ export function startJournalController(
         : 'Сохранение изменения…');
   };
 
-  const setDraftStatus = (): void => {
+  const setDraftStatus = (row: number): void => {
     status.classList.remove('shift-helper-v2__status--error');
-    status.textContent = 'Новая строка: заполните оборудование и описание';
+    status.textContent = `Черновик в строке ${row + 1}: для создания записи заполните оборудование и описание`;
   };
 
   const setErrorStatus = (message: string): void => {
@@ -208,18 +322,25 @@ export function startJournalController(
     }
   };
 
+  const rowIdentity = (worksheet: WorksheetFacade, row: number): number | string | null => {
+    const value = worksheet.getRange(row, RECORD_ID_COLUMN).getValue();
+    return numericCellValue(value) ?? draftCellValue(value);
+  };
+
   const findRecordRow = (worksheet: WorksheetFacade, recordId: number): number | null => {
     for (let row = 1; row < maximumScanRow; row += 1) {
-      const value = numericCellValue(worksheet.getRange(row, RECORD_ID_COLUMN).getValue());
-      if (value === recordId) return row;
+      if (numericCellValue(worksheet.getRange(row, RECORD_ID_COLUMN).getValue()) === recordId) {
+        return row;
+      }
     }
     return null;
   };
 
   const findDraftRow = (worksheet: WorksheetFacade, clientId: string): number | null => {
     for (let row = 1; row < maximumScanRow; row += 1) {
-      const value = draftCellValue(worksheet.getRange(row, RECORD_ID_COLUMN).getValue());
-      if (value === clientId) return row;
+      if (draftCellValue(worksheet.getRange(row, RECORD_ID_COLUMN).getValue()) === clientId) {
+        return row;
+      }
     }
     return null;
   };
@@ -248,57 +369,49 @@ export function startJournalController(
     worksheet.getRange(row, REVISION_COLUMN).setValue('');
   };
 
+  const scheduleModelRender = (
+    worksheet: WorksheetFacade,
+    row: number,
+    model: JournalEventSnapshot | JournalDraftSnapshot
+  ): void => {
+    window.setTimeout(() => {
+      if ('id' in model) applyRecordToRow(worksheet, row, model);
+      else applyDraftToRow(worksheet, row, model);
+    }, 0);
+  };
+
   const restoreRecord = (worksheet: WorksheetFacade, record: JournalEventSnapshot): void => {
     const currentRow = findRecordRow(worksheet, record.id);
-    if (currentRow !== null) applyRecordToRow(worksheet, currentRow, record);
+    if (currentRow !== null) scheduleModelRender(worksheet, currentRow, record);
   };
 
-  const clearEditorSelection = (): void => {
-    activeRow = null;
-    controls.selection.textContent = 'Выберите строку';
-    controls.date.value = '';
-    controls.time.value = '';
-    controls.eventType.value = '';
-    controls.includeInReport.checked = false;
-    setControlsEnabled(controls, false);
-  };
-
-  const syncEditorSelection = (worksheet: WorksheetFacade, row: number): void => {
+  const syncSelectionContext = (worksheet: WorksheetFacade, row: number): void => {
     if (row === HEADER_ROW_INDEX) {
-      clearEditorSelection();
-      return;
-    }
-    const identityValue = worksheet.getRange(row, RECORD_ID_COLUMN).getValue();
-    const recordId = numericCellValue(identityValue);
-    const draftId = draftCellValue(identityValue);
-    const model =
-      recordId !== null
-        ? recordsById.get(recordId)
-        : draftId !== null
-          ? draftsById.get(draftId)
-          : undefined;
-    const identity = recordId ?? draftId;
-    if (!model || identity === null) {
-      clearEditorSelection();
+      activeRow = null;
+      controls.selection.textContent = 'Заголовок таблицы';
+      controls.close.disabled = true;
+      controls.close.textContent = 'Завершить событие';
       return;
     }
 
+    const identity = rowIdentity(worksheet, row);
     activeRow = { worksheet, row, identity };
-    const { date, time } = splitStartAt(model.startAt);
-    controls.selection.textContent =
-      recordId !== null ? `Событие №${recordId}` : `Новая строка №${row}`;
-    controls.date.value = date;
-    controls.time.value = time;
-    controls.eventType.value = model.eventType;
-    controls.includeInReport.checked = model.includeInReport;
-    setControlsEnabled(controls, !batchInProgress);
-    controls.close.disabled = batchInProgress || recordId === null || model.status === 'closed';
-    controls.close.textContent =
-      model.status === 'closed' ? 'Событие завершено' : 'Завершить событие';
-  };
-
-  const refreshActiveEditor = (): void => {
-    if (activeRow) syncEditorSelection(activeRow.worksheet, activeRow.row);
+    if (typeof identity === 'number') {
+      const record = recordsById.get(identity);
+      controls.selection.textContent = record ? `Событие №${record.id}` : `Строка ${row + 1}`;
+      controls.close.disabled = batchInProgress || !record || record.status === 'closed';
+      controls.close.textContent = record?.status === 'closed' ? 'Событие завершено' : 'Завершить событие';
+      return;
+    }
+    if (typeof identity === 'string') {
+      controls.selection.textContent = `Черновик · строка ${row + 1}`;
+      controls.close.disabled = true;
+      controls.close.textContent = 'Завершить событие';
+      return;
+    }
+    controls.selection.textContent = `Пустая строка ${row + 1} · начните ввод в нужной ячейке`;
+    controls.close.disabled = true;
+    controls.close.textContent = 'Завершить событие';
   };
 
   const queueMatchesActiveRow = (queueKey: string): boolean => {
@@ -316,7 +429,9 @@ export function startJournalController(
       .finally(() => {
         if (saveQueues.get(queueKey) === next) {
           saveQueues.delete(queueKey);
-          if (queueMatchesActiveRow(queueKey)) refreshActiveEditor();
+          if (queueMatchesActiveRow(queueKey) && activeRow) {
+            syncSelectionContext(activeRow.worksheet, activeRow.row);
+          }
           if (
             pendingSaveCount === 0 &&
             !status.classList.contains('shift-helper-v2__status--error')
@@ -337,12 +452,10 @@ export function startJournalController(
     if (error instanceof JournalApiError && error.current) {
       recordsById.set(current.id, error.current);
       restoreRecord(worksheet, error.current);
-      refreshActiveEditor();
       setErrorStatus(`Конфликт сохранения: ${error.message}`);
       return;
     }
     restoreRecord(worksheet, current);
-    refreshActiveEditor();
     const message = error instanceof Error ? error.message : String(error);
     setErrorStatus(`${prefix}: ${message}`);
   };
@@ -350,14 +463,11 @@ export function startJournalController(
   const enqueueRecordPatch = (
     recordId: number,
     worksheet: WorksheetFacade,
-    buildChanges: (current: JournalEventSnapshot) => JournalPatchRequest['changes']
+    changes: JournalPatchRequest['changes']
   ): void => {
     enqueueSave(`record:${recordId}`, async () => {
       const current = recordsById.get(recordId);
-      if (!current) return;
-      const changes = buildChanges(current);
-      if (Object.keys(changes).length === 0) return;
-
+      if (!current || Object.keys(changes).length === 0) return;
       pendingSaveCount += 1;
       setSavingStatus();
       try {
@@ -390,10 +500,27 @@ export function startJournalController(
     });
   };
 
+  const materializeDraft = (worksheet: WorksheetFacade, row: number): JournalDraftSnapshot => {
+    const existingIdentity = rowIdentity(worksheet, row);
+    if (typeof existingIdentity === 'string') {
+      const existing = draftsById.get(existingIdentity);
+      if (existing) return existing;
+    }
+    const draft = createDraft(snapshot.eventTypes);
+    draftsById.set(draft.clientId, draft);
+    applyDraftToRow(worksheet, row, draft);
+    activeRow = { worksheet, row, identity: draft.clientId };
+    controls.selection.textContent = `Черновик · строка ${row + 1}`;
+    controls.close.disabled = true;
+    setDraftStatus(row);
+    return draft;
+  };
+
   const maybeCreateDraft = (draftId: string, worksheet: WorksheetFacade): void => {
     const draft = draftsById.get(draftId);
     if (!draft || !draftIsComplete(draft)) {
-      setDraftStatus();
+      const row = findDraftRow(worksheet, draftId);
+      if (row !== null) setDraftStatus(row);
       return;
     }
     if (creatingDrafts.has(draftId) || batchInProgress) return;
@@ -401,7 +528,7 @@ export function startJournalController(
     creatingDrafts.add(draftId);
     enqueueSave(draftId, async () => {
       pendingSaveCount += 1;
-      setSavingStatus();
+      setSavingStatus('Создание записи…');
       try {
         const currentDraft = draftsById.get(draftId);
         if (!currentDraft || !draftIsComplete(currentDraft)) return;
@@ -411,11 +538,9 @@ export function startJournalController(
         recordsById.set(created.record.id, created.record);
         if (draftRow !== null) {
           applyRecordToRow(worksheet, draftRow, created.record);
-          const nextDraft = createDraft(snapshot.eventTypes);
-          draftsById.set(nextDraft.clientId, nextDraft);
-          applyDraftToRow(worksheet, draftRow + 1, nextDraft);
           if (activeRow?.identity === draftId) {
             activeRow = { worksheet, row: draftRow, identity: created.record.id };
+            syncSelectionContext(worksheet, draftRow);
           }
         }
       } catch (error) {
@@ -426,20 +551,6 @@ export function startJournalController(
         finishPendingOperation();
       }
     });
-  };
-
-  const updateActiveDraft = (
-    update: (draft: JournalDraftSnapshot) => JournalDraftSnapshot
-  ): void => {
-    if (!activeRow || typeof activeRow.identity !== 'string' || batchInProgress) return;
-    const draftId = activeRow.identity;
-    const current = draftsById.get(draftId);
-    if (!current) return;
-    const updated = update(current);
-    draftsById.set(draftId, updated);
-    applyDraftToRow(activeRow.worksheet, activeRow.row, updated);
-    refreshActiveEditor();
-    maybeCreateDraft(draftId, activeRow.worksheet);
   };
 
   const applyBatchPaste = async (
@@ -466,7 +577,7 @@ export function startJournalController(
         worksheet.getRange(targetRow, RECORD_ID_COLUMN).getValue()
       );
       if (recordId === null) {
-        setErrorStatus('Пакетная вставка пока поддерживается только для сохранённых строк.');
+        setErrorStatus('Транзакционная вставка диапазона поддерживается только для сохранённых строк.');
         return;
       }
       const record = recordsById.get(recordId);
@@ -481,12 +592,12 @@ export function startJournalController(
         const targetColumn = startColumn + columnOffset;
         const field = getEditableField(targetColumn);
         if (field === null) {
-          setErrorStatus('Диапазон вставки содержит защищённую колонку. Операция отменена.');
+          setErrorStatus('Диапазон вставки содержит специальную или защищённую колонку. Операция отменена.');
           return;
         }
         const value = values[columnOffset] ?? '';
         if (value !== String(getDisplayValue(record, targetColumn, targetRow - 1))) {
-          changes[field] = value;
+          changes[field] = normalizeTextField(field, value);
         }
       }
       if (Object.keys(changes).length > 0) {
@@ -500,7 +611,7 @@ export function startJournalController(
 
     batchInProgress = true;
     pendingSaveCount += 1;
-    setControlsEnabled(controls, false);
+    controls.close.disabled = true;
     setSavingStatus(`Пакетное сохранение: ${operations.length} строк…`);
     try {
       const updatedRecords = await patchRecordsBatch({ operations });
@@ -508,7 +619,7 @@ export function startJournalController(
         recordsById.set(record.id, record);
         restoreRecord(worksheet, record);
       });
-      refreshActiveEditor();
+      if (activeRow) syncSelectionContext(activeRow.worksheet, activeRow.row);
     } catch (error) {
       if (error instanceof JournalApiError && error.current) {
         recordsById.set(error.current.id, error.current);
@@ -518,76 +629,10 @@ export function startJournalController(
       setErrorStatus(`Пакетная вставка отменена: ${message}`);
     } finally {
       batchInProgress = false;
-      refreshActiveEditor();
+      if (activeRow) syncSelectionContext(activeRow.worksheet, activeRow.row);
       finishPendingOperation();
     }
   };
-
-  controls.date.addEventListener('change', () => {
-    if (!activeRow || batchInProgress) return;
-    const selectedDate = controls.date.value;
-    if (typeof activeRow.identity === 'number') {
-      enqueueRecordPatch(activeRow.identity, activeRow.worksheet, (current) => {
-        const { time } = splitStartAt(current.startAt);
-        const startAt = combineStartAt(selectedDate, time);
-        return startAt && startAt !== current.startAt ? { startAt } : {};
-      });
-    } else {
-      updateActiveDraft((draft) => {
-        const { time } = splitStartAt(draft.startAt);
-        const startAt = combineStartAt(selectedDate, time);
-        return startAt ? { ...draft, startAt } : draft;
-      });
-    }
-  });
-
-  controls.time.addEventListener('change', () => {
-    if (!activeRow || batchInProgress) return;
-    const selectedTime = controls.time.value;
-    if (typeof activeRow.identity === 'number') {
-      enqueueRecordPatch(activeRow.identity, activeRow.worksheet, (current) => {
-        const { date } = splitStartAt(current.startAt);
-        const startAt = combineStartAt(date, selectedTime);
-        return startAt && startAt !== current.startAt ? { startAt } : {};
-      });
-    } else {
-      updateActiveDraft((draft) => {
-        const { date } = splitStartAt(draft.startAt);
-        const startAt = combineStartAt(date, selectedTime);
-        return startAt ? { ...draft, startAt } : draft;
-      });
-    }
-  });
-
-  controls.eventType.addEventListener('change', () => {
-    if (!activeRow || batchInProgress) return;
-    const eventType = controls.eventType.value;
-    const eventTypeLabel = eventTypeLabels.get(eventType);
-    if (!eventTypeLabel) {
-      setErrorStatus('Выбран неизвестный тип события.');
-      refreshActiveEditor();
-      return;
-    }
-    if (typeof activeRow.identity === 'number') {
-      enqueueRecordPatch(activeRow.identity, activeRow.worksheet, (current) =>
-        current.eventType === eventType ? {} : { eventType }
-      );
-    } else {
-      updateActiveDraft((draft) => ({ ...draft, eventType, eventTypeLabel }));
-    }
-  });
-
-  controls.includeInReport.addEventListener('change', () => {
-    if (!activeRow || batchInProgress) return;
-    const includeInReport = controls.includeInReport.checked;
-    if (typeof activeRow.identity === 'number') {
-      enqueueRecordPatch(activeRow.identity, activeRow.worksheet, (current) =>
-        current.includeInReport === includeInReport ? {} : { includeInReport }
-      );
-    } else {
-      updateActiveDraft((draft) => ({ ...draft, includeInReport }));
-    }
-  });
 
   controls.close.addEventListener('click', () => {
     if (!activeRow || typeof activeRow.identity !== 'number' || batchInProgress) return;
@@ -597,45 +642,68 @@ export function startJournalController(
 
   univerAPI.addEvent(univerAPI.Event.BeforeSheetEditStart, (params: any) => {
     const { row, column, worksheet } = params;
-    const identity = worksheet.getRange(row, RECORD_ID_COLUMN).getValue();
-    const recordId = numericCellValue(identity);
-    const draftId = draftCellValue(identity);
-    const editableIdentity =
-      (recordId !== null && recordsById.has(recordId)) ||
-      (draftId !== null && draftsById.has(draftId));
-    if (
-      batchInProgress ||
-      row === HEADER_ROW_INDEX ||
-      !editableIdentity ||
-      getEditableField(column) === null
-    ) {
+    const binding = getCellBinding(column);
+    if (!worksheet || batchInProgress || row === HEADER_ROW_INDEX || binding === null) {
       params.cancel = true;
+      if (worksheet && row !== HEADER_ROW_INDEX && binding === null) {
+        setErrorStatus('Эта колонка вычисляется автоматически или защищена от редактирования.');
+      }
+      return;
     }
+
+    const identity = rowIdentity(worksheet, row);
+    if (typeof identity === 'string' && creatingDrafts.has(identity)) {
+      params.cancel = true;
+      setErrorStatus('Дождитесь создания записи из этой строки.');
+      return;
+    }
+    if (identity === null) materializeDraft(worksheet, row);
+    else syncSelectionContext(worksheet, row);
   });
 
   univerAPI.addEvent(
     univerAPI.Event.SheetEditEnded,
     ({ row, column, worksheet }: any) => {
-      const field = getEditableField(column);
-      if (field === null || batchInProgress) return;
-      const identity = worksheet.getRange(row, RECORD_ID_COLUMN).getValue();
-      const recordId = numericCellValue(identity);
-      const draftId = draftCellValue(identity);
-      const value = editableCellValue(worksheet.getRange(row, column).getValue());
+      if (!worksheet || batchInProgress) return;
+      const binding = getCellBinding(column);
+      if (binding === null) return;
+      const identity = rowIdentity(worksheet, row);
+      const rawValue = worksheet.getRange(row, column).getValue();
 
-      if (recordId !== null) {
-        const existing = recordsById.get(recordId);
-        if (!existing || value === String(getDisplayValue(existing, column, row - 1))) return;
-        enqueueRecordPatch(recordId, worksheet, () => ({ [field]: value }));
+      if (typeof identity === 'number') {
+        const current = recordsById.get(identity);
+        if (!current) return;
+        const currentAsDraft: JournalDraftSnapshot = {
+          ...current,
+          clientId: `${DRAFT_ID_PREFIX}record-${current.id}`,
+        };
+        const parsed = parseDraftEdit(currentAsDraft, binding, rawValue, snapshot.eventTypes);
+        if (!parsed.ok) {
+          scheduleModelRender(worksheet, row, current);
+          setErrorStatus(parsed.message);
+          return;
+        }
+        if (Object.keys(parsed.changes).length === 0) {
+          scheduleModelRender(worksheet, row, current);
+          return;
+        }
+        enqueueRecordPatch(identity, worksheet, parsed.changes);
         return;
       }
-      if (draftId === null) return;
-      const existingDraft = draftsById.get(draftId);
-      if (!existingDraft) return;
-      const updatedDraft = updateDraftField(existingDraft, field, value);
-      draftsById.set(draftId, updatedDraft);
-      if (activeRow?.identity === draftId) refreshActiveEditor();
-      maybeCreateDraft(draftId, worksheet);
+
+      if (typeof identity !== 'string') return;
+      const currentDraft = draftsById.get(identity);
+      if (!currentDraft) return;
+      const parsed = parseDraftEdit(currentDraft, binding, rawValue, snapshot.eventTypes);
+      if (!parsed.ok) {
+        scheduleModelRender(worksheet, row, currentDraft);
+        setErrorStatus(parsed.message);
+        return;
+      }
+      draftsById.set(identity, parsed.draft);
+      scheduleModelRender(worksheet, row, parsed.draft);
+      if (activeRow?.row === row) syncSelectionContext(worksheet, row);
+      maybeCreateDraft(identity, worksheet);
     }
   );
 
@@ -664,19 +732,21 @@ export function startJournalController(
   });
 
   univerAPI.addEvent(univerAPI.Event.SelectionChanged, ({ worksheet }: any) => {
-    const selection = worksheet?.getSelection?.();
-    const currentCell = selection?.getCurrentCell?.();
-    if (!worksheet || !currentCell) {
-      clearEditorSelection();
-      return;
-    }
-    syncEditorSelection(worksheet, currentCell.actualRow);
+    const currentCell = worksheet?.getSelection?.()?.getCurrentCell?.();
+    if (!worksheet || !currentCell) return;
+    syncSelectionContext(worksheet, currentCell.actualRow);
   });
 
   univerAPI.addEvent(univerAPI.Event.CellClicked, ({ row, worksheet }: any) => {
-    if (worksheet) syncEditorSelection(worksheet, row);
+    if (worksheet) syncSelectionContext(worksheet, row);
   });
 
-  clearEditorSelection();
   setReadyStatus();
+  const worksheet = univerAPI.getActiveWorkbook?.()?.getActiveSheet?.();
+  if (worksheet) {
+    const firstBlankRow = snapshot.records.length + 1;
+    worksheet.getRange(firstBlankRow, 3).activate?.();
+    syncSelectionContext(worksheet, firstBlankRow);
+  }
+  document.documentElement.dataset.editingModel = 'native-row';
 }
