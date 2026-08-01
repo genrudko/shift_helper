@@ -3,8 +3,8 @@
 <manifest:manifest xmlns:manifest="http://openoffice.org/2001/manifest">
   <manifest:file-entry manifest:media-type="application/vnd.sun.star.framework-script"
                        manifest:full-path="Scripts/python"/>
-  <manifest:file-entry manifest:media-type="application/vnd.sun.star.uno-component;type=Python"
-                       manifest:full-path="shift_helper_controls.py"/>
   <manifest:file-entry manifest:media-type="application/vnd.sun.star.configuration-data"
                        manifest:full-path="Addons.xcu"/>
+  <manifest:file-entry manifest:media-type="application/vnd.sun.star.configuration-data"
+                       manifest:full-path="CalcWindowState.xcu"/>
 </manifest:manifest>

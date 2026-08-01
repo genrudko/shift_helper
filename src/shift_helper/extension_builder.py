@@ -9,15 +9,13 @@ from pathlib import Path, PurePosixPath
 
 _EXTENSION_NAME = "Shift-Helper-Calc-UNO-001.oxt"
 _FIXED_TIMESTAMP = (2026, 8, 1, 0, 0, 0)
-_VERSION = "0.3.1.dev0"
+_VERSION = "0.3.1.dev1"
 
 _STATIC_FILES = {
     "description.xml": "packaging/libreoffice_extension/description.xml",
     "META-INF/manifest.xml": "packaging/libreoffice_extension/META-INF/manifest.xml",
     "Addons.xcu": "packaging/libreoffice_extension/Addons.xcu",
-    "shift_helper_controls.py": (
-        "packaging/libreoffice_extension/shift_helper_controls.py"
-    ),
+    "CalcWindowState.xcu": "packaging/libreoffice_extension/CalcWindowState.xcu",
     "Scripts/python/shift_helper_calc.py": (
         "packaging/libreoffice_extension/Scripts/python/shift_helper_calc.py"
     ),
@@ -67,6 +65,13 @@ def _payload(repo_root: Path) -> dict[str, bytes]:
     return files
 
 
+def _parse_xml(name: str, content: str) -> None:
+    try:
+        ET.fromstring(content)
+    except ET.ParseError as exc:
+        raise ExtensionBuildError(f"{name} повреждён: {exc}.") from exc
+
+
 def verify_calc_extension(path: Path) -> tuple[str, ...]:
     if not path.is_file():
         raise ExtensionBuildError(f"Расширение не создано: {path}.")
@@ -83,18 +88,21 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
         missing = sorted(required.difference(names))
         if missing:
             raise ExtensionBuildError(f"В OXT отсутствуют файлы: {missing!r}.")
+        if "shift_helper_controls.py" in names:
+            raise ExtensionBuildError(
+                "Устаревший промежуточный UNO-компонент не должен входить в OXT."
+            )
 
         manifest = archive.read("META-INF/manifest.xml").decode("utf-8")
         if "application/vnd.sun.star.framework-script" not in manifest:
             raise ExtensionBuildError("Manifest не регистрирует Python framework scripts.")
-        if 'manifest:full-path="Scripts/python"' not in manifest:
-            raise ExtensionBuildError("Manifest не регистрирует Scripts/python.")
-        if "application/vnd.sun.star.uno-component;type=Python" not in manifest:
-            raise ExtensionBuildError("Manifest не регистрирует Python UNO component.")
-        if 'manifest:full-path="shift_helper_controls.py"' not in manifest:
-            raise ExtensionBuildError("Manifest не регистрирует control component.")
-        if 'manifest:full-path="Addons.xcu"' not in manifest:
-            raise ExtensionBuildError("Manifest не регистрирует Addons.xcu.")
+        for registered in ("Scripts/python", "Addons.xcu", "CalcWindowState.xcu"):
+            if f'manifest:full-path="{registered}"' not in manifest:
+                raise ExtensionBuildError(f"Manifest не регистрирует {registered}.")
+        if "application/vnd.sun.star.uno-component;type=Python" in manifest:
+            raise ExtensionBuildError(
+                "Manifest не должен регистрировать промежуточный Python UNO component."
+            )
 
         description = archive.read("description.xml").decode("utf-8")
         if f'<version value="{_VERSION}"/>' not in description:
@@ -104,15 +112,13 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
 
         macro = archive.read("Scripts/python/shift_helper_calc.py").decode("utf-8")
         automatic = archive.read("Scripts/python/shift_helper_auto.py").decode("utf-8")
-        controls = archive.read("shift_helper_controls.py").decode("utf-8")
         addons = archive.read("Addons.xcu").decode("utf-8")
+        window_state = archive.read("CalcWindowState.xcu").decode("utf-8")
+
         compile(macro, "Scripts/python/shift_helper_calc.py", "exec")
         compile(automatic, "Scripts/python/shift_helper_auto.py", "exec")
-        compile(controls, "shift_helper_controls.py", "exec")
-        try:
-            ET.fromstring(addons)
-        except ET.ParseError as exc:
-            raise ExtensionBuildError(f"Addons.xcu повреждён: {exc}.") from exc
+        _parse_xml("Addons.xcu", addons)
+        _parse_xml("CalcWindowState.xcu", window_state)
 
         if "__file__" in macro or "__file__" in automatic:
             raise ExtensionBuildError(
@@ -126,7 +132,9 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
             "g_exportedScripts",
         ):
             if exported not in macro:
-                raise ExtensionBuildError(f"В диагностическом макросе отсутствует {exported}.")
+                raise ExtensionBuildError(
+                    f"В диагностическом макросе отсутствует {exported}."
+                )
 
         for exported in (
             "enable_automatic_input",
@@ -135,7 +143,9 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
             "g_exportedScripts",
         ):
             if exported not in automatic:
-                raise ExtensionBuildError(f"В automatic-макросе отсутствует {exported}.")
+                raise ExtensionBuildError(
+                    f"В automatic-макросе отсутствует {exported}."
+                )
 
         for runtime_marker in (
             "XSelectionChangeListener",
@@ -152,7 +162,7 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
             "getTransferData",
             "enterHiddenUndoContext",
             "enterUndoContext",
-            "_PASTE_URL = \".uno:Paste\"",
+            '_PASTE_URL = ".uno:Paste"',
             "_BUFFER_ROWS",
             '_TEXT_FORMAT = "@"',
         ):
@@ -161,32 +171,38 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
                     f"В автоматическом UNO-кандидате отсутствует {runtime_marker}."
                 )
 
-        for control_marker in (
-            "XJobExecutor",
-            "unohelper.ImplementationHelper",
-            "ru.kves.shifthelper.calc.controls",
-            "MasterScriptProviderFactory",
-            "enable_automatic_input",
-            "disable_automatic_input",
-            "automatic_input_status",
-        ):
-            if control_marker not in controls:
-                raise ExtensionBuildError(
-                    f"В UNO-002 control component отсутствует {control_marker}."
-                )
-
+        script_urls = (
+            "vnd.sun.star.script:shift_helper_auto.py$enable_automatic_input"
+            "?language=Python&amp;location=user",
+            "vnd.sun.star.script:shift_helper_auto.py$disable_automatic_input"
+            "?language=Python&amp;location=user",
+            "vnd.sun.star.script:shift_helper_auto.py$automatic_input_status"
+            "?language=Python&amp;location=user",
+        )
         required_ui = (
             "com.sun.star.sheet.SpreadsheetDocument",
-            "service:ru.kves.shifthelper.calc.controls?enable",
-            "service:ru.kves.shifthelper.calc.controls?disable",
-            "service:ru.kves.shifthelper.calc.controls?status",
             "Включить быстрый ввод",
             "Выключить быстрый ввод",
             "Состояние Shift-Helper",
+            *script_urls,
         )
         for marker in required_ui:
             if marker not in addons:
                 raise ExtensionBuildError(f"В Addons.xcu отсутствует {marker}.")
+        if "service:ru.kves.shifthelper.calc.controls" in addons:
+            raise ExtensionBuildError(
+                "Addons.xcu не должен обращаться к удалённому control component."
+            )
+
+        for marker in (
+            "private:resource/toolbar/addon_ru.kves.shifthelper.calc.toolbar",
+            "<value>true</value>",
+            '<value xml:lang="ru-RU">Shift-Helper</value>',
+        ):
+            if marker not in window_state:
+                raise ExtensionBuildError(
+                    f"В CalcWindowState.xcu отсутствует {marker}."
+                )
 
         for name in names:
             if name.endswith(".py"):
