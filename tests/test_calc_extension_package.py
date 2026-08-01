@@ -11,15 +11,26 @@ def test_build_extension_contains_only_safe_required_payload(tmp_path: Path) -> 
     names = verify_calc_extension(output)
     assert "description.xml" in names
     assert "Scripts/python/shift_helper_calc.py" in names
+    assert "Scripts/python/shift_helper_auto.py" in names
     assert all(not name.startswith("/") and ".." not in name.split("/") for name in names)
 
     with zipfile.ZipFile(output) as archive:
+        description = archive.read("description.xml").decode("utf-8")
         macro = archive.read("Scripts/python/shift_helper_calc.py").decode("utf-8")
+        automatic = archive.read("Scripts/python/shift_helper_auto.py").decode("utf-8")
+        assert '<version value="0.3.0.dev2"/>' in description
         assert "g_exportedScripts" in macro
         assert "normalize_selected_dates" in macro
         assert "normalize_selected_times" in macro
+        assert "enable_automatic_input" in automatic
+        assert "disable_automatic_input" in automatic
+        assert "automatic_input_status" in automatic
+        assert "XSelectionChangeListener" in automatic
+        assert "XModifyListener" in automatic
+        assert "enterHiddenUndoContext" in automatic
         assert "__file__" not in macro
-        assert "from shift_helper.uno_adapter.calc_selection import" in macro
+        assert "__file__" not in automatic
+        assert "from shift_helper.uno_adapter.calc_selection import" in automatic
 
 
 def test_extension_build_is_deterministic(tmp_path: Path) -> None:
