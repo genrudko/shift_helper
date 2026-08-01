@@ -18,7 +18,7 @@ def test_build_extension_contains_only_safe_required_payload(tmp_path: Path) -> 
         description = archive.read("description.xml").decode("utf-8")
         macro = archive.read("Scripts/python/shift_helper_calc.py").decode("utf-8")
         automatic = archive.read("Scripts/python/shift_helper_auto.py").decode("utf-8")
-        assert '<version value="0.3.0.dev4"/>' in description
+        assert '<version value="0.3.0.dev5"/>' in description
         assert "g_exportedScripts" in macro
         assert "normalize_selected_dates" in macro
         assert "normalize_selected_times" in macro
@@ -28,15 +28,19 @@ def test_build_extension_contains_only_safe_required_payload(tmp_path: Path) -> 
         assert "XSelectionChangeListener" in automatic
         assert "XModifyListener" in automatic
         assert "XCallback" in automatic
-        assert "XKeyHandler" in automatic
+        assert "XDispatchProviderInterceptor" in automatic
+        assert "XInterceptorInfo" in automatic
+        assert "XDispatch" in automatic
+        assert "registerDispatchProviderInterceptor" in automatic
+        assert "releaseDispatchProviderInterceptor" in automatic
+        assert '".uno:Paste"' in automatic
         assert "com.sun.star.awt.AsyncCallback" in automatic
         assert "com.sun.star.datatransfer.clipboard.SystemClipboard" in automatic
-        assert "addCallback" in automatic
-        assert "addKeyHandler" in automatic
         assert "getTransferData" in automatic
-        assert "keyPressed" in automatic
         assert "enterHiddenUndoContext" in automatic
         assert "enterUndoContext" in automatic
+        assert "XKeyHandler" not in automatic
+        assert "addKeyHandler" not in automatic
         assert "__file__" not in macro
         assert "__file__" not in automatic
         assert "from shift_helper.uno_adapter.calc_selection import" in automatic
