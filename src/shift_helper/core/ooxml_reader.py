@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, time, timedelta
+from datetime import datetime, time, timedelta
 from pathlib import Path, PurePosixPath
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
@@ -57,7 +57,7 @@ class StreamingWorkbook:
     def close(self) -> None:
         self.archive.close()
 
-    def __enter__(self) -> "StreamingWorkbook":
+    def __enter__(self) -> StreamingWorkbook:
         return self
 
     def __exit__(self, *_args: object) -> None:
