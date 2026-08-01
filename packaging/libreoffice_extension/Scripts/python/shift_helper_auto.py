@@ -1,4 +1,4 @@
-"""Automatic quick-input listener candidate for LibreOffice Calc."""
+"""Automatic quick-input integration for LibreOffice Calc."""
 
 from __future__ import annotations
 
@@ -8,7 +8,8 @@ from typing import Any
 
 import uno
 import unohelper
-from com.sun.star.awt import XCallback, XKeyHandler
+from com.sun.star.awt import XCallback
+from com.sun.star.frame import XDispatch, XDispatchProviderInterceptor, XInterceptorInfo
 from com.sun.star.util import XModifyListener
 from com.sun.star.view import XSelectionChangeListener
 
@@ -20,7 +21,7 @@ from shift_helper.uno_adapter.calc_selection import (
 
 XSCRIPTCONTEXT: Any = globals().get("XSCRIPTCONTEXT")
 
-_VERSION = "0.3.0.dev4"
+_VERSION = "0.3.0.dev5"
 _SHEET_NAME = "ЖС"
 _TEXT_FORMAT = "@"
 _DATE_FORMAT = "DD.MM.YYYY"
@@ -29,8 +30,7 @@ _BUFFER_ROWS = 256
 _DATE_COLUMNS = frozenset({1, 8})
 _TIME_COLUMNS = frozenset({2, 9})
 _SUPPORTED_COLUMNS = _DATE_COLUMNS | _TIME_COLUMNS
-_MOD1 = int(uno.getConstantByName("com.sun.star.awt.KeyModifier.MOD1"))
-_KEY_V = int(uno.getConstantByName("com.sun.star.awt.Key.V"))
+_PASTE_URL = ".uno:Paste"
 _SESSION: AutomaticInputSession | None = None
 
 
@@ -133,9 +133,7 @@ def _write_one(document, sheet, write) -> None:
         return
     seconds = write.value.hour * 3600 + write.value.minute * 60
     cell.setValue(seconds / 86400.0)
-    cell.setPropertyValue(
-        "NumberFormat", _format_key(document, cell, _TIME_FORMAT)
-    )
+    cell.setPropertyValue("NumberFormat", _format_key(document, cell, _TIME_FORMAT))
 
 
 def _write_plan(document, sheet, plan: SelectionPlan) -> None:
@@ -179,13 +177,6 @@ def _groups(rows: list[int]) -> list[tuple[int, int]]:
 
 def _column_name(column: int) -> str:
     return {1: "B", 2: "C", 8: "I", 9: "J"}.get(column, str(column + 1))
-
-
-def _is_paste_shortcut(event) -> bool:
-    modifiers = int(getattr(event, "Modifiers", 0))
-    key_code = int(getattr(event, "KeyCode", 0))
-    key_char = str(getattr(event, "KeyChar", "")).lower()
-    return bool(modifiers & _MOD1) and (key_code == _KEY_V or key_char == "v")
 
 
 def _clipboard_text() -> str | None:
@@ -245,18 +236,89 @@ def _single_clipboard_column(text: str) -> list[str] | None:
     return rows
 
 
+class PasteDispatchInterceptor(
+    unohelper.Base,
+    XDispatchProviderInterceptor,
+    XInterceptorInfo,
+    XDispatch,
+):
+    """Intercept .uno:Paste before Calc performs clipboard type inference."""
+
+    def __init__(self, session: AutomaticInputSession) -> None:
+        self.session = session
+        self.master = None
+        self.slave = None
+
+    def getInterceptedURLs(self):  # noqa: N802
+        return (_PASTE_URL,)
+
+    def getMasterDispatchProvider(self):  # noqa: N802
+        return self.master
+
+    def setMasterDispatchProvider(self, provider) -> None:  # noqa: N802
+        self.master = provider
+
+    def getSlaveDispatchProvider(self):  # noqa: N802
+        return self.slave
+
+    def setSlaveDispatchProvider(self, provider) -> None:  # noqa: N802
+        self.slave = provider
+
+    def queryDispatch(self, url, target_frame_name, search_flags):  # noqa: N802
+        if str(getattr(url, "Complete", "")) == _PASTE_URL:
+            return self
+        if self.slave is None:
+            return None
+        return self.slave.queryDispatch(url, target_frame_name, search_flags)
+
+    def queryDispatches(self, requests):  # noqa: N802
+        return tuple(
+            self.queryDispatch(
+                request.FeatureURL,
+                request.FrameName,
+                request.SearchFlags,
+            )
+            for request in requests
+        )
+
+    def dispatch(self, url, arguments) -> None:
+        if (
+            str(getattr(url, "Complete", "")) == _PASTE_URL
+            and self.session.try_paste_from_clipboard()
+        ):
+            return
+        delegate = self._delegate(url)
+        if delegate is not None:
+            delegate.dispatch(url, arguments)
+
+    def addStatusListener(self, listener, url) -> None:  # noqa: N802
+        delegate = self._delegate(url)
+        if delegate is not None:
+            delegate.addStatusListener(listener, url)
+
+    def removeStatusListener(self, listener, url) -> None:  # noqa: N802
+        delegate = self._delegate(url)
+        if delegate is not None:
+            delegate.removeStatusListener(listener, url)
+
+    def _delegate(self, url):
+        if self.slave is None:
+            return None
+        return self.slave.queryDispatch(url, "", 0)
+
+
 class AutomaticInputSession(
     unohelper.Base,
     XSelectionChangeListener,
     XModifyListener,
     XCallback,
-    XKeyHandler,
 ):
-    """Preserve raw tokens before Calc interprets them, then normalize after commit."""
+    """Preserve raw tokens, normalize ordinary input and intercept paste dispatches."""
 
     def __init__(self, document) -> None:
         self.document = document
         self.controller = document.getCurrentController()
+        self.frame = self.controller.getFrame()
         self.sheet = _sheet(document)
         self.prepared: dict[tuple[int, int], int] = {}
         self.invalid: dict[tuple[int, int], str] = {}
@@ -276,9 +338,15 @@ class AutomaticInputSession(
         ):
             raise RuntimeError("LibreOffice не предоставил сервис AsyncCallback.")
 
+        self.paste_interceptor = PasteDispatchInterceptor(self)
+        if not hasattr(self.frame, "registerDispatchProviderInterceptor"):
+            raise RuntimeError(
+                "Окно LibreOffice не поддерживает перехват команд Dispatch."
+            )
+
         self.controller.addSelectionChangeListener(self)
         self.document.addModifyListener(self)
-        self.controller.addKeyHandler(self)
+        self.frame.registerDispatchProviderInterceptor(self.paste_interceptor)
         self.prepare()
 
     def selectionChanged(self, _event) -> None:  # noqa: N802
@@ -289,34 +357,6 @@ class AutomaticInputSession(
     def modified(self, _event) -> None:
         if self.enabled and not self.guard:
             self.request_normalize()
-
-    def keyPressed(self, event) -> bool:  # noqa: N802
-        if not self.enabled or self.guard or not _is_paste_shortcut(event):
-            return False
-        target = self._paste_target()
-        if target is None:
-            return False
-        text = _clipboard_text()
-        if text is None:
-            return False
-        try:
-            values = _single_clipboard_column(text)
-        except RuntimeError as exc:
-            _message(str(exc), error=True)
-            return True
-        if values is None:
-            return False
-        if not values:
-            return True
-        column, start = target
-        try:
-            self._paste_column(column, start, values)
-        except Exception as exc:
-            _message(f"Не удалось обработать вставку: {exc}", error=True)
-        return True
-
-    def keyReleased(self, _event) -> bool:  # noqa: N802
-        return False
 
     def notify(self, data) -> None:
         self.callback_pending = False
@@ -373,6 +413,31 @@ class AutomaticInputSession(
             return None
         return column, row
 
+    def try_paste_from_clipboard(self) -> bool:
+        if not self.enabled or self.guard:
+            return False
+        target = self._paste_target()
+        if target is None:
+            return False
+        text = _clipboard_text()
+        if text is None:
+            return False
+        try:
+            values = _single_clipboard_column(text)
+        except RuntimeError as exc:
+            _message(str(exc), error=True)
+            return True
+        if values is None:
+            return False
+        if not values:
+            return True
+        column, start = target
+        try:
+            self._paste_column(column, start, values)
+        except Exception as exc:
+            _message(f"Не удалось обработать вставку: {exc}", error=True)
+        return True
+
     def _paste_column(self, column: int, start: int, values: list[str]) -> None:
         last_row = start + len(values) - 1
         if last_row >= self.sheet.getRows().getCount():
@@ -385,7 +450,7 @@ class AutomaticInputSession(
         if occupied:
             first = occupied[0] + 1
             raise RuntimeError(
-                f"Массовая вставка Shift-Helper разрешена только в пустые ячейки. "
+                "Массовая вставка Shift-Helper разрешена только в пустые ячейки. "
                 f"Первая занятая строка: {first}."
             )
 
@@ -406,9 +471,7 @@ class AutomaticInputSession(
                 key = (column, row)
                 cell = self.sheet.getCellByPosition(column, row)
                 if key not in self.prepared:
-                    self.prepared[key] = int(
-                        cell.getPropertyValue("NumberFormat")
-                    )
+                    self.prepared[key] = int(cell.getPropertyValue("NumberFormat"))
                 cell.setPropertyValue(
                     "NumberFormat",
                     _format_key(self.document, cell, _TEXT_FORMAT),
@@ -469,9 +532,7 @@ class AutomaticInputSession(
                 cell = self.sheet.getCellByPosition(column, row)
                 if not _is_empty(cell):
                     continue
-                self.prepared[key] = int(
-                    cell.getPropertyValue("NumberFormat")
-                )
+                self.prepared[key] = int(cell.getPropertyValue("NumberFormat"))
                 cell.setPropertyValue(
                     "NumberFormat",
                     _format_key(self.document, cell, _TEXT_FORMAT),
@@ -529,8 +590,7 @@ class AutomaticInputSession(
                     continue
                 self.invalid[key] = token
                 fresh.append(
-                    f"{_column_name(issue.column)}{issue.row + 1}: "
-                    f"{issue.message}"
+                    f"{_column_name(issue.column)}{issue.row + 1}: {issue.message}"
                 )
         if fresh:
             _message("\n".join(fresh[:10]), error=has_error)
@@ -596,7 +656,7 @@ class AutomaticInputSession(
         except Exception:
             pass
         try:
-            self.controller.removeKeyHandler(self)
+            self.frame.releaseDispatchProviderInterceptor(self.paste_interceptor)
         except Exception:
             pass
         if not restore:
@@ -643,7 +703,7 @@ def enable_automatic_input(_args=None) -> None:
         _message(
             f"Автоматический ввод {_VERSION} включён.\n"
             "Столбцы: B, C, I, J.\n"
-            "Ctrl+V в этих столбцах перехватывается до обработки Calc."
+            "Команда .uno:Paste перехватывается до обработки Calc."
         )
     except Exception as exc:
         _SESSION = None
@@ -670,7 +730,7 @@ def automatic_input_status(_args=None) -> None:
     _message(
         f"Версия {_VERSION}. Автоматический ввод включён.\n"
         f"Подготовлено пустых ячеек: {len(_SESSION.prepared)}.\n"
-        "Перехват Ctrl+V: включён."
+        "Перехват .uno:Paste: включён."
     )
 
 
