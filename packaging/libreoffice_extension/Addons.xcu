@@ -91,7 +91,7 @@
     </node>
 
     <node oor:name="OfficeToolBar">
-      <node oor:name="ru.kves.shifthelper.calc.toolbar" oor:op="replace">
+      <node oor:name="ru.kves.shifthelper.calc.toolbar.v031" oor:op="replace">
         <node oor:name="Enable" oor:op="replace">
           <prop oor:name="Context" oor:type="xs:string">
             <value>com.sun.star.sheet.SpreadsheetDocument</value>

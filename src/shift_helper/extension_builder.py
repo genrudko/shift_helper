@@ -195,7 +195,7 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
             )
 
         for marker in (
-            "private:resource/toolbar/addon_ru.kves.shifthelper.calc.toolbar",
+            "private:resource/toolbar/addon_ru.kves.shifthelper.calc.toolbar.v031",
             "<value>true</value>",
             '<value xml:lang="ru-RU">Shift-Helper</value>',
         ):

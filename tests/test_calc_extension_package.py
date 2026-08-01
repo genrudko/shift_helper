@@ -80,7 +80,7 @@ def test_build_extension_contains_only_safe_required_payload(tmp_path: Path) -> 
         assert "Состояние Shift-Helper" in addons
 
         assert (
-            "private:resource/toolbar/addon_ru.kves.shifthelper.calc.toolbar"
+            "private:resource/toolbar/addon_ru.kves.shifthelper.calc.toolbar.v031"
             in window_state
         )
         assert "<value>true</value>" in window_state
