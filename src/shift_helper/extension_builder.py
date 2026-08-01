@@ -15,6 +15,9 @@ _STATIC_FILES = {
     "Scripts/python/shift_helper_calc.py": (
         "packaging/libreoffice_extension/Scripts/python/shift_helper_calc.py"
     ),
+    "Scripts/python/shift_helper_auto.py": (
+        "packaging/libreoffice_extension/Scripts/python/shift_helper_auto.py"
+    ),
 }
 _SOURCE_FILES = {
     "Scripts/python/pythonpath/shift_helper/core/quick_input.py": (
@@ -81,9 +84,15 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
         if 'manifest:full-path="Scripts/python"' not in manifest:
             raise ExtensionBuildError("Manifest не регистрирует Scripts/python.")
 
+        description = archive.read("description.xml").decode("utf-8")
+        if '<version value="0.3.0.dev2"/>' not in description:
+            raise ExtensionBuildError("OXT должен иметь runtime-кандидат версии 0.3.0.dev2.")
+
         macro = archive.read("Scripts/python/shift_helper_calc.py").decode("utf-8")
+        automatic = archive.read("Scripts/python/shift_helper_auto.py").decode("utf-8")
         compile(macro, "Scripts/python/shift_helper_calc.py", "exec")
-        if "__file__" in macro:
+        compile(automatic, "Scripts/python/shift_helper_auto.py", "exec")
+        if "__file__" in macro or "__file__" in automatic:
             raise ExtensionBuildError(
                 "Макрос не должен зависеть от __file__: LibreOffice ScriptProvider его не задаёт."
             )
@@ -94,7 +103,26 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
             "g_exportedScripts",
         ):
             if exported not in macro:
-                raise ExtensionBuildError(f"В макросе отсутствует {exported}.")
+                raise ExtensionBuildError(f"В диагностическом макросе отсутствует {exported}.")
+        for exported in (
+            "enable_automatic_input",
+            "disable_automatic_input",
+            "automatic_input_status",
+            "g_exportedScripts",
+        ):
+            if exported not in automatic:
+                raise ExtensionBuildError(f"В automatic-макросе отсутствует {exported}.")
+        for runtime_marker in (
+            "XSelectionChangeListener",
+            "XModifyListener",
+            "enterHiddenUndoContext",
+            "_BUFFER_ROWS",
+            '_TEXT_FORMAT = "@"',
+        ):
+            if runtime_marker not in automatic:
+                raise ExtensionBuildError(
+                    f"В автоматическом UNO-кандидате отсутствует {runtime_marker}."
+                )
 
         for name in names:
             if name.endswith(".py"):
