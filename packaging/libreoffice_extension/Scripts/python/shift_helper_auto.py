@@ -8,6 +8,7 @@ from typing import Any
 
 import uno
 import unohelper
+from com.sun.star.awt import XCallback
 from com.sun.star.util import XModifyListener
 from com.sun.star.view import XSelectionChangeListener
 
@@ -19,7 +20,7 @@ from shift_helper.uno_adapter.calc_selection import (
 
 XSCRIPTCONTEXT: Any = globals().get("XSCRIPTCONTEXT")
 
-_VERSION = "0.3.0.dev2"
+_VERSION = "0.3.0.dev3"
 _SHEET_NAME = "ЖС"
 _TEXT_FORMAT = "@"
 _DATE_FORMAT = "DD.MM.YYYY"
@@ -175,8 +176,13 @@ def _column_name(column: int) -> str:
     return {1: "B", 2: "C", 8: "I", 9: "J"}.get(column, str(column + 1))
 
 
-class AutomaticInputSession(unohelper.Base, XSelectionChangeListener, XModifyListener):
-    """Preserve raw tokens before Calc interprets them, then normalize on commit."""
+class AutomaticInputSession(
+    unohelper.Base,
+    XSelectionChangeListener,
+    XModifyListener,
+    XCallback,
+):
+    """Preserve raw tokens before Calc interprets them, then normalize after commit."""
 
     def __init__(self, document) -> None:
         self.document = document
@@ -186,21 +192,67 @@ class AutomaticInputSession(unohelper.Base, XSelectionChangeListener, XModifyLis
         self.invalid: dict[tuple[int, int], str] = {}
         self.guard = False
         self.enabled = True
+        self.callback_pending = False
+        self.change_revision = 0
+        self.confirmed_revision = -1
+
+        context = XSCRIPTCONTEXT.getComponentContext()
+        manager = context.getServiceManager()
+        self.async_callback = manager.createInstanceWithContext(
+            "com.sun.star.awt.AsyncCallback", context
+        )
+        if self.async_callback is None or not hasattr(self.async_callback, "addCallback"):
+            raise RuntimeError("LibreOffice не предоставил сервис AsyncCallback.")
+
         self.controller.addSelectionChangeListener(self)
         self.document.addModifyListener(self)
         self.prepare()
 
     def selectionChanged(self, _event) -> None:  # noqa: N802
         if self.enabled and not self.guard:
-            self.normalize()
             self.prepare()
+            self.request_normalize()
 
     def modified(self, _event) -> None:
         if self.enabled and not self.guard:
-            self.normalize()
+            self.request_normalize()
+
+    def notify(self, data) -> None:
+        self.callback_pending = False
+        if not self.enabled or self.guard:
+            return
+        try:
+            scheduled_revision = int(data)
+        except (TypeError, ValueError):
+            scheduled_revision = -1
+        if scheduled_revision != self.change_revision:
+            self._enqueue_callback()
+            return
+        if self.confirmed_revision != self.change_revision:
+            self.confirmed_revision = self.change_revision
+            self._enqueue_callback()
+            return
+        self.confirmed_revision = -1
+        self.normalize()
+        self.prepare()
 
     def disposing(self, _event) -> None:
         self.detach(restore=False)
+
+    def request_normalize(self) -> None:
+        self.change_revision += 1
+        self.confirmed_revision = -1
+        self._enqueue_callback()
+
+    def _enqueue_callback(self) -> None:
+        if self.callback_pending or not self.enabled:
+            return
+        self.callback_pending = True
+        try:
+            self.async_callback.addCallback(self, self.change_revision)
+        except Exception:
+            self.callback_pending = False
+            raise
 
     def prepare(self) -> None:
         if self.controller.getActiveSheet().getName() != _SHEET_NAME:
@@ -414,7 +466,8 @@ def automatic_input_status(_args=None) -> None:
         return
     _message(
         f"Версия {_VERSION}. Автоматический ввод включён.\n"
-        f"Подготовлено пустых ячеек: {len(_SESSION.prepared)}."
+        f"Подготовлено пустых ячеек: {len(_SESSION.prepared)}.\n"
+        f"Ожидает callback: {'да' if _SESSION.callback_pending else 'нет'}."
     )
 
 
