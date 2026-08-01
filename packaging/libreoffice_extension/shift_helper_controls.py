@@ -27,6 +27,30 @@ _ACTIONS = {
 _RUNTIMES: dict[str, ModuleType] = {}
 
 
+class _UnoCompatProxy:
+    """Translate enum members that pyuno does not expose as constants."""
+
+    _PUSH_BUTTON_TYPES = {
+        "com.sun.star.awt.PushButtonType.OK": "OK",
+        "com.sun.star.awt.PushButtonType.CANCEL": "CANCEL",
+    }
+
+    def __init__(self, module: Any) -> None:
+        self._module = module
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._module, name)
+
+    def getConstantByName(self, name: str):  # noqa: N802
+        enum_name = self._PUSH_BUTTON_TYPES.get(name)
+        if enum_name is not None:
+            return self._module.Enum(
+                "com.sun.star.awt.PushButtonType",
+                enum_name,
+            )
+        return self._module.getConstantByName(name)
+
+
 def _desktop(context):
     return context.getServiceManager().createInstanceWithContext(
         "com.sun.star.frame.Desktop", context
@@ -102,6 +126,8 @@ def _load_runtime(runtime_key: str) -> ModuleType:
     except Exception:
         sys.modules.pop(module_name, None)
         raise
+    if runtime_key == "report":
+        module.uno = _UnoCompatProxy(uno)
     _RUNTIMES[runtime_key] = module
     return module
 
