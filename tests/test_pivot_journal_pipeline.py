@@ -1,10 +1,11 @@
 from datetime import date, datetime, time
 from hashlib import sha256
+from io import BytesIO, TextIOWrapper
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
-from shift_helper.cli import main
+from shift_helper.cli import _configure_console_stream, main
 from shift_helper.core.journal_reader import read_event_journal
 from shift_helper.core.selection import event_filter_code, select_emergency_events
 
@@ -212,3 +213,12 @@ def test_actual_header_warning_is_non_blocking(tmp_path: Path) -> None:
     assert 2 in result.ignored_rows
     selection = select_emergency_events(result.events, date(2026, 7, 30))
     assert [event.asset_number for event in selection.selected_events] == [57, 58]
+
+
+def test_packaged_console_stream_supports_russian_help() -> None:
+    buffer = BytesIO()
+    stream = TextIOWrapper(buffer, encoding="cp1252")
+    _configure_console_stream(stream)
+    stream.write("Журнал событий")
+    stream.flush()
+    assert buffer.getvalue().decode("utf-8") == "Журнал событий"

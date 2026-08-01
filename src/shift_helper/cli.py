@@ -13,6 +13,19 @@ from .core.report_writer import build_emergency_report
 from .core.selection import select_emergency_events
 
 
+def _configure_console_stream(stream: object) -> None:
+    """Use UTF-8 for Russian diagnostics in packaged Windows consoles."""
+
+    reconfigure = getattr(stream, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding="utf-8", errors="replace")
+
+
+def _configure_console() -> None:
+    _configure_console_stream(sys.stdout)
+    _configure_console_stream(sys.stderr)
+
+
 def _report_date(value: str) -> date:
     try:
         return date.fromisoformat(value)
@@ -81,6 +94,7 @@ def _build_emergency_report(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _configure_console()
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "build-emergency-report":
