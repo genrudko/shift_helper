@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<description xmlns="http://openoffice.org/extensions/description/2006"
+             xmlns:xlink="http://www.w3.org/1999/xlink">
+  <identifier value="ru.kves.shifthelper.calc"/>
+  <version value="0.3.0.dev5"/>
+  <display-name>
+    <name lang="ru">Shift-Helper для LibreOffice Calc</name>
+    <name lang="en">Shift-Helper for LibreOffice Calc</name>
+  </display-name>
+  <publisher>
+    <name lang="ru">Кочубеевская ВЭС</name>
+  </publisher>
+  <platform value="all"/>
+</description>
