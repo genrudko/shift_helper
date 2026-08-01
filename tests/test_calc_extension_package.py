@@ -18,7 +18,7 @@ def test_build_extension_contains_only_safe_required_payload(tmp_path: Path) -> 
         description = archive.read("description.xml").decode("utf-8")
         macro = archive.read("Scripts/python/shift_helper_calc.py").decode("utf-8")
         automatic = archive.read("Scripts/python/shift_helper_auto.py").decode("utf-8")
-        assert '<version value="0.3.0.dev2"/>' in description
+        assert '<version value="0.3.0.dev3"/>' in description
         assert "g_exportedScripts" in macro
         assert "normalize_selected_dates" in macro
         assert "normalize_selected_times" in macro
@@ -27,6 +27,9 @@ def test_build_extension_contains_only_safe_required_payload(tmp_path: Path) -> 
         assert "automatic_input_status" in automatic
         assert "XSelectionChangeListener" in automatic
         assert "XModifyListener" in automatic
+        assert "XCallback" in automatic
+        assert "com.sun.star.awt.AsyncCallback" in automatic
+        assert "addCallback" in automatic
         assert "enterHiddenUndoContext" in automatic
         assert "__file__" not in macro
         assert "__file__" not in automatic
