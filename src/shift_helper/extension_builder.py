@@ -85,8 +85,8 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
             raise ExtensionBuildError("Manifest не регистрирует Scripts/python.")
 
         description = archive.read("description.xml").decode("utf-8")
-        if '<version value="0.3.0.dev3"/>' not in description:
-            raise ExtensionBuildError("OXT должен иметь runtime-кандидат версии 0.3.0.dev3.")
+        if '<version value="0.3.0.dev4"/>' not in description:
+            raise ExtensionBuildError("OXT должен иметь runtime-кандидат версии 0.3.0.dev4.")
 
         macro = archive.read("Scripts/python/shift_helper_calc.py").decode("utf-8")
         automatic = archive.read("Scripts/python/shift_helper_auto.py").decode("utf-8")
@@ -119,9 +119,15 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
             "XSelectionChangeListener",
             "XModifyListener",
             "XCallback",
+            "XKeyHandler",
             "com.sun.star.awt.AsyncCallback",
+            "com.sun.star.datatransfer.clipboard.SystemClipboard",
             "addCallback",
+            "addKeyHandler",
+            "getTransferData",
+            "keyPressed",
             "enterHiddenUndoContext",
+            "enterUndoContext",
             "_BUFFER_ROWS",
             '_TEXT_FORMAT = "@"',
         ):
