@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import argparse
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path, PurePosixPath
 
 _EXTENSION_NAME = "Shift-Helper-Calc-UNO-001.oxt"
 _FIXED_TIMESTAMP = (2026, 8, 1, 0, 0, 0)
+_VERSION = "0.3.1.dev0"
 
 _STATIC_FILES = {
     "description.xml": "packaging/libreoffice_extension/description.xml",
     "META-INF/manifest.xml": "packaging/libreoffice_extension/META-INF/manifest.xml",
+    "Addons.xcu": "packaging/libreoffice_extension/Addons.xcu",
+    "shift_helper_controls.py": (
+        "packaging/libreoffice_extension/shift_helper_controls.py"
+    ),
     "Scripts/python/shift_helper_calc.py": (
         "packaging/libreoffice_extension/Scripts/python/shift_helper_calc.py"
     ),
@@ -83,15 +89,31 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
             raise ExtensionBuildError("Manifest не регистрирует Python framework scripts.")
         if 'manifest:full-path="Scripts/python"' not in manifest:
             raise ExtensionBuildError("Manifest не регистрирует Scripts/python.")
+        if "application/vnd.sun.star.uno-component;type=Python" not in manifest:
+            raise ExtensionBuildError("Manifest не регистрирует Python UNO component.")
+        if 'manifest:full-path="shift_helper_controls.py"' not in manifest:
+            raise ExtensionBuildError("Manifest не регистрирует control component.")
+        if 'manifest:full-path="Addons.xcu"' not in manifest:
+            raise ExtensionBuildError("Manifest не регистрирует Addons.xcu.")
 
         description = archive.read("description.xml").decode("utf-8")
-        if '<version value="0.3.0.dev5"/>' not in description:
-            raise ExtensionBuildError("OXT должен иметь runtime-кандидат версии 0.3.0.dev5.")
+        if f'<version value="{_VERSION}"/>' not in description:
+            raise ExtensionBuildError(
+                f"OXT должен иметь runtime-кандидат версии {_VERSION}."
+            )
 
         macro = archive.read("Scripts/python/shift_helper_calc.py").decode("utf-8")
         automatic = archive.read("Scripts/python/shift_helper_auto.py").decode("utf-8")
+        controls = archive.read("shift_helper_controls.py").decode("utf-8")
+        addons = archive.read("Addons.xcu").decode("utf-8")
         compile(macro, "Scripts/python/shift_helper_calc.py", "exec")
         compile(automatic, "Scripts/python/shift_helper_auto.py", "exec")
+        compile(controls, "shift_helper_controls.py", "exec")
+        try:
+            ET.fromstring(addons)
+        except ET.ParseError as exc:
+            raise ExtensionBuildError(f"Addons.xcu повреждён: {exc}.") from exc
+
         if "__file__" in macro or "__file__" in automatic:
             raise ExtensionBuildError(
                 "Макрос не должен зависеть от __file__: LibreOffice ScriptProvider его не задаёт."
@@ -138,6 +160,33 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
                 raise ExtensionBuildError(
                     f"В автоматическом UNO-кандидате отсутствует {runtime_marker}."
                 )
+
+        for control_marker in (
+            "XJobExecutor",
+            "unohelper.ImplementationHelper",
+            "ru.kves.shifthelper.calc.controls",
+            "MasterScriptProviderFactory",
+            "enable_automatic_input",
+            "disable_automatic_input",
+            "automatic_input_status",
+        ):
+            if control_marker not in controls:
+                raise ExtensionBuildError(
+                    f"В UNO-002 control component отсутствует {control_marker}."
+                )
+
+        required_ui = (
+            "com.sun.star.sheet.SpreadsheetDocument",
+            "service:ru.kves.shifthelper.calc.controls?enable",
+            "service:ru.kves.shifthelper.calc.controls?disable",
+            "service:ru.kves.shifthelper.calc.controls?status",
+            "Включить быстрый ввод",
+            "Выключить быстрый ввод",
+            "Состояние Shift-Helper",
+        )
+        for marker in required_ui:
+            if marker not in addons:
+                raise ExtensionBuildError(f"В Addons.xcu отсутствует {marker}.")
 
         for name in names:
             if name.endswith(".py"):
