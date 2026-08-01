@@ -5,8 +5,11 @@ from __future__ import annotations
 import os
 import sys
 from datetime import date, datetime, time, timedelta
+from typing import Any
 
 import uno
+
+XSCRIPTCONTEXT: Any
 
 _SCRIPT_DIR = os.path.dirname(__file__)
 _PYTHONPATH = os.path.join(_SCRIPT_DIR, "pythonpath")
