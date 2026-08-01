@@ -85,8 +85,8 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
             raise ExtensionBuildError("Manifest не регистрирует Scripts/python.")
 
         description = archive.read("description.xml").decode("utf-8")
-        if '<version value="0.3.0.dev2"/>' not in description:
-            raise ExtensionBuildError("OXT должен иметь runtime-кандидат версии 0.3.0.dev2.")
+        if '<version value="0.3.0.dev3"/>' not in description:
+            raise ExtensionBuildError("OXT должен иметь runtime-кандидат версии 0.3.0.dev3.")
 
         macro = archive.read("Scripts/python/shift_helper_calc.py").decode("utf-8")
         automatic = archive.read("Scripts/python/shift_helper_auto.py").decode("utf-8")
@@ -96,6 +96,7 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
             raise ExtensionBuildError(
                 "Макрос не должен зависеть от __file__: LibreOffice ScriptProvider его не задаёт."
             )
+
         for exported in (
             "show_status",
             "normalize_selected_dates",
@@ -104,6 +105,7 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
         ):
             if exported not in macro:
                 raise ExtensionBuildError(f"В диагностическом макросе отсутствует {exported}.")
+
         for exported in (
             "enable_automatic_input",
             "disable_automatic_input",
@@ -112,9 +114,13 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
         ):
             if exported not in automatic:
                 raise ExtensionBuildError(f"В automatic-макросе отсутствует {exported}.")
+
         for runtime_marker in (
             "XSelectionChangeListener",
             "XModifyListener",
+            "XCallback",
+            "com.sun.star.awt.AsyncCallback",
+            "addCallback",
             "enterHiddenUndoContext",
             "_BUFFER_ROWS",
             '_TEXT_FORMAT = "@"',
