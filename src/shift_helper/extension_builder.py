@@ -9,7 +9,7 @@ from pathlib import Path, PurePosixPath
 
 _EXTENSION_NAME = "Shift-Helper-Calc-UNO-001.oxt"
 _FIXED_TIMESTAMP = (2026, 8, 1, 0, 0, 0)
-_VERSION = "0.3.1.dev1"
+_VERSION = "0.3.1.dev2"
 
 _STATIC_FILES = {
     "description.xml": "packaging/libreoffice_extension/description.xml",
@@ -173,11 +173,11 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
 
         script_urls = (
             "vnd.sun.star.script:shift_helper_auto.py$enable_automatic_input"
-            "?language=Python&amp;location=user",
+            "?language=Python&amp;location=uno_packages",
             "vnd.sun.star.script:shift_helper_auto.py$disable_automatic_input"
-            "?language=Python&amp;location=user",
+            "?language=Python&amp;location=uno_packages",
             "vnd.sun.star.script:shift_helper_auto.py$automatic_input_status"
-            "?language=Python&amp;location=user",
+            "?language=Python&amp;location=uno_packages",
         )
         required_ui = (
             "com.sun.star.sheet.SpreadsheetDocument",
@@ -189,6 +189,10 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
         for marker in required_ui:
             if marker not in addons:
                 raise ExtensionBuildError(f"В Addons.xcu отсутствует {marker}.")
+        if "location=user" in addons:
+            raise ExtensionBuildError(
+                "Addons.xcu не должен искать extension-макросы в обычном user-каталоге."
+            )
         if "service:ru.kves.shifthelper.calc.controls" in addons:
             raise ExtensionBuildError(
                 "Addons.xcu не должен обращаться к удалённому control component."

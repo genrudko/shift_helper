@@ -28,7 +28,7 @@ def test_build_extension_contains_only_safe_required_payload(tmp_path: Path) -> 
         macro = archive.read("Scripts/python/shift_helper_calc.py").decode("utf-8")
         automatic = archive.read("Scripts/python/shift_helper_auto.py").decode("utf-8")
 
-        assert '<version value="0.3.1.dev1"/>' in description
+        assert '<version value="0.3.1.dev2"/>' in description
         assert "application/vnd.sun.star.uno-component;type=Python" not in manifest
         assert "application/vnd.sun.star.configuration-data" in manifest
         assert "shift_helper_controls.py" not in manifest
@@ -64,16 +64,17 @@ def test_build_extension_contains_only_safe_required_payload(tmp_path: Path) -> 
         assert "com.sun.star.sheet.SpreadsheetDocument" in addons
         assert (
             "vnd.sun.star.script:shift_helper_auto.py$enable_automatic_input"
-            "?language=Python&amp;location=user"
+            "?language=Python&amp;location=uno_packages"
         ) in addons
         assert (
             "vnd.sun.star.script:shift_helper_auto.py$disable_automatic_input"
-            "?language=Python&amp;location=user"
+            "?language=Python&amp;location=uno_packages"
         ) in addons
         assert (
             "vnd.sun.star.script:shift_helper_auto.py$automatic_input_status"
-            "?language=Python&amp;location=user"
+            "?language=Python&amp;location=uno_packages"
         ) in addons
+        assert "location=user" not in addons
         assert "service:ru.kves.shifthelper.calc.controls" not in addons
         assert "Включить быстрый ввод" in addons
         assert "Выключить быстрый ввод" in addons
