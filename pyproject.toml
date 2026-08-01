@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shift-helper"
-version = "0.1.0.dev0"
-description = "Local cross-platform shift journals and report application"
+version = "0.2.0.dev0"
+description = "Calc-based workbook automation and report generation core"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
@@ -27,7 +27,7 @@ build = [
 ]
 
 [project.scripts]
-shift-helper = "shift_helper.launcher:main"
+shift-helper = "shift_helper.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
