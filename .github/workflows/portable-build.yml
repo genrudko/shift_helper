@@ -90,3 +90,34 @@ jobs:
           name: Shift-Helper-linux-x64
           path: Shift-Helper-linux-x64.tar.gz
           if-no-files-found: error
+
+  build-calc-extension:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build deterministic Calc extension
+        shell: bash
+        run: PYTHONPATH=src python scripts/build_calc_extension.py
+
+      - name: Verify Calc extension
+        shell: bash
+        run: >-
+          PYTHONPATH=src python -c
+          "from pathlib import Path;
+          from shift_helper.extension_builder import verify_calc_extension;
+          print(verify_calc_extension(Path('dist/Shift-Helper-Calc-UNO-001.oxt')))"
+
+      - name: Upload Calc extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: Shift-Helper-Calc-UNO-001
+          path: dist/Shift-Helper-Calc-UNO-001.oxt
+          if-no-files-found: error
