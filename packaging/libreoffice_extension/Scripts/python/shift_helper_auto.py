@@ -8,7 +8,7 @@ from typing import Any
 
 import uno
 import unohelper
-from com.sun.star.awt import XCallback
+from com.sun.star.awt import XCallback, XKeyHandler
 from com.sun.star.util import XModifyListener
 from com.sun.star.view import XSelectionChangeListener
 
@@ -20,7 +20,7 @@ from shift_helper.uno_adapter.calc_selection import (
 
 XSCRIPTCONTEXT: Any = globals().get("XSCRIPTCONTEXT")
 
-_VERSION = "0.3.0.dev3"
+_VERSION = "0.3.0.dev4"
 _SHEET_NAME = "ЖС"
 _TEXT_FORMAT = "@"
 _DATE_FORMAT = "DD.MM.YYYY"
@@ -29,6 +29,8 @@ _BUFFER_ROWS = 256
 _DATE_COLUMNS = frozenset({1, 8})
 _TIME_COLUMNS = frozenset({2, 9})
 _SUPPORTED_COLUMNS = _DATE_COLUMNS | _TIME_COLUMNS
+_MOD1 = int(uno.getConstantByName("com.sun.star.awt.KeyModifier.MOD1"))
+_KEY_V = int(uno.getConstantByName("com.sun.star.awt.Key.V"))
 _SESSION: AutomaticInputSession | None = None
 
 
@@ -121,10 +123,24 @@ def _format_key(document, cell, code: str) -> int:
     return formats.addNew(code, locale) if key == -1 else key
 
 
+def _write_one(document, sheet, write) -> None:
+    cell = sheet.getCellByPosition(write.column, write.row)
+    if write.kind == "date":
+        cell.setValue(float((write.value - _null_date(document)).days))
+        cell.setPropertyValue(
+            "NumberFormat", _format_key(document, cell, _DATE_FORMAT)
+        )
+        return
+    seconds = write.value.hour * 3600 + write.value.minute * 60
+    cell.setValue(seconds / 86400.0)
+    cell.setPropertyValue(
+        "NumberFormat", _format_key(document, cell, _TIME_FORMAT)
+    )
+
+
 def _write_plan(document, sheet, plan: SelectionPlan) -> None:
     if not plan.writes:
         return
-    null_date = _null_date(document)
     undo = None
     opened = False
     document.lockControllers()
@@ -136,18 +152,7 @@ def _write_plan(document, sheet, plan: SelectionPlan) -> None:
         except Exception:
             undo = None
         for write in plan.writes:
-            cell = sheet.getCellByPosition(write.column, write.row)
-            if write.kind == "date":
-                cell.setValue(float((write.value - null_date).days))
-                cell.setPropertyValue(
-                    "NumberFormat", _format_key(document, cell, _DATE_FORMAT)
-                )
-            else:
-                seconds = write.value.hour * 3600 + write.value.minute * 60
-                cell.setValue(seconds / 86400.0)
-                cell.setPropertyValue(
-                    "NumberFormat", _format_key(document, cell, _TIME_FORMAT)
-                )
+            _write_one(document, sheet, write)
     finally:
         if undo is not None and opened:
             try:
@@ -176,11 +181,76 @@ def _column_name(column: int) -> str:
     return {1: "B", 2: "C", 8: "I", 9: "J"}.get(column, str(column + 1))
 
 
+def _is_paste_shortcut(event) -> bool:
+    modifiers = int(getattr(event, "Modifiers", 0))
+    key_code = int(getattr(event, "KeyCode", 0))
+    key_char = str(getattr(event, "KeyChar", "")).lower()
+    return bool(modifiers & _MOD1) and (key_code == _KEY_V or key_char == "v")
+
+
+def _clipboard_text() -> str | None:
+    context = XSCRIPTCONTEXT.getComponentContext()
+    manager = context.getServiceManager()
+    clipboard = manager.createInstanceWithContext(
+        "com.sun.star.datatransfer.clipboard.SystemClipboard",
+        context,
+    )
+    if clipboard is None:
+        return None
+    transferable = clipboard.getContents()
+    if transferable is None:
+        return None
+
+    flavors = tuple(transferable.getTransferDataFlavors())
+    ordered = sorted(
+        flavors,
+        key=lambda flavor: (
+            0 if "charset=utf-16" in str(flavor.MimeType).lower() else 1,
+            str(flavor.MimeType).lower(),
+        ),
+    )
+    for flavor in ordered:
+        mime = str(flavor.MimeType).lower()
+        if not mime.startswith("text/plain"):
+            continue
+        try:
+            data = transferable.getTransferData(flavor)
+        except Exception:
+            continue
+        if isinstance(data, str):
+            return data.rstrip("\x00")
+        value = getattr(data, "value", data)
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            encoding = "utf-16" if "utf-16" in mime else "utf-8"
+            try:
+                return bytes(value).decode(encoding).rstrip("\x00")
+            except UnicodeError:
+                continue
+    return None
+
+
+def _single_clipboard_column(text: str) -> list[str] | None:
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n").rstrip("\x00")
+    while normalized.endswith("\n"):
+        normalized = normalized[:-1]
+    if not normalized:
+        return []
+    rows = normalized.split("\n")
+    if any("\t" in row for row in rows):
+        return None
+    if len(rows) > _BUFFER_ROWS:
+        raise RuntimeError(
+            f"За одну операцию поддерживается не более {_BUFFER_ROWS} строк."
+        )
+    return rows
+
+
 class AutomaticInputSession(
     unohelper.Base,
     XSelectionChangeListener,
     XModifyListener,
     XCallback,
+    XKeyHandler,
 ):
     """Preserve raw tokens before Calc interprets them, then normalize after commit."""
 
@@ -201,11 +271,14 @@ class AutomaticInputSession(
         self.async_callback = manager.createInstanceWithContext(
             "com.sun.star.awt.AsyncCallback", context
         )
-        if self.async_callback is None or not hasattr(self.async_callback, "addCallback"):
+        if self.async_callback is None or not hasattr(
+            self.async_callback, "addCallback"
+        ):
             raise RuntimeError("LibreOffice не предоставил сервис AsyncCallback.")
 
         self.controller.addSelectionChangeListener(self)
         self.document.addModifyListener(self)
+        self.controller.addKeyHandler(self)
         self.prepare()
 
     def selectionChanged(self, _event) -> None:  # noqa: N802
@@ -216,6 +289,34 @@ class AutomaticInputSession(
     def modified(self, _event) -> None:
         if self.enabled and not self.guard:
             self.request_normalize()
+
+    def keyPressed(self, event) -> bool:  # noqa: N802
+        if not self.enabled or self.guard or not _is_paste_shortcut(event):
+            return False
+        target = self._paste_target()
+        if target is None:
+            return False
+        text = _clipboard_text()
+        if text is None:
+            return False
+        try:
+            values = _single_clipboard_column(text)
+        except RuntimeError as exc:
+            _message(str(exc), error=True)
+            return True
+        if values is None:
+            return False
+        if not values:
+            return True
+        column, start = target
+        try:
+            self._paste_column(column, start, values)
+        except Exception as exc:
+            _message(f"Не удалось обработать вставку: {exc}", error=True)
+        return True
+
+    def keyReleased(self, _event) -> bool:  # noqa: N802
+        return False
 
     def notify(self, data) -> None:
         self.callback_pending = False
@@ -254,6 +355,88 @@ class AutomaticInputSession(
             self.callback_pending = False
             raise
 
+    def _paste_target(self) -> tuple[int, int] | None:
+        if self.controller.getActiveSheet().getName() != _SHEET_NAME:
+            return None
+        try:
+            address = _address(self.document)
+        except RuntimeError:
+            return None
+        if (
+            address.StartColumn != address.EndColumn
+            or address.StartRow != address.EndRow
+        ):
+            return None
+        column = int(address.StartColumn)
+        row = int(address.StartRow)
+        if column not in _SUPPORTED_COLUMNS or row < 1:
+            return None
+        return column, row
+
+    def _paste_column(self, column: int, start: int, values: list[str]) -> None:
+        last_row = start + len(values) - 1
+        if last_row >= self.sheet.getRows().getCount():
+            raise RuntimeError("Вставка выходит за пределы листа.")
+        occupied = [
+            row
+            for row in range(start, last_row + 1)
+            if not _is_empty(self.sheet.getCellByPosition(column, row))
+        ]
+        if occupied:
+            first = occupied[0] + 1
+            raise RuntimeError(
+                f"Массовая вставка Shift-Helper разрешена только в пустые ячейки. "
+                f"Первая занятая строка: {first}."
+            )
+
+        undo = None
+        opened = False
+        self.guard = True
+        self.document.lockControllers()
+        try:
+            try:
+                undo = self.document.getUndoManager()
+                undo.enterUndoContext("Shift-Helper: массовая вставка")
+                opened = True
+            except Exception:
+                undo = None
+
+            for offset, raw in enumerate(values):
+                row = start + offset
+                key = (column, row)
+                cell = self.sheet.getCellByPosition(column, row)
+                if key not in self.prepared:
+                    self.prepared[key] = int(
+                        cell.getPropertyValue("NumberFormat")
+                    )
+                cell.setPropertyValue(
+                    "NumberFormat",
+                    _format_key(self.document, cell, _TEXT_FORMAT),
+                )
+                cell.setString(raw)
+
+            plan = self._plan_values(column, start, values)
+            for write in plan.writes:
+                _write_one(self.document, self.sheet, write)
+                self.prepared.pop((write.column, write.row), None)
+                self.invalid.pop((write.column, write.row), None)
+
+            target_range = self.sheet.getCellRangeByPosition(
+                column, start, column, last_row
+            )
+            self.controller.select(target_range)
+        finally:
+            if undo is not None and opened:
+                try:
+                    undo.leaveUndoContext()
+                except Exception:
+                    pass
+            self.document.unlockControllers()
+            self.guard = False
+
+        self._report_plans([plan])
+        self.prepare()
+
     def prepare(self) -> None:
         if self.controller.getActiveSheet().getName() != _SHEET_NAME:
             return
@@ -286,9 +469,12 @@ class AutomaticInputSession(
                 cell = self.sheet.getCellByPosition(column, row)
                 if not _is_empty(cell):
                     continue
-                self.prepared[key] = int(cell.getPropertyValue("NumberFormat"))
+                self.prepared[key] = int(
+                    cell.getPropertyValue("NumberFormat")
+                )
                 cell.setPropertyValue(
-                    "NumberFormat", _format_key(self.document, cell, _TEXT_FORMAT)
+                    "NumberFormat",
+                    _format_key(self.document, cell, _TEXT_FORMAT),
                 )
         finally:
             if undo is not None:
@@ -329,6 +515,9 @@ class AutomaticInputSession(
         finally:
             self.guard = False
 
+        self._report_plans(plans)
+
+    def _report_plans(self, plans: list[SelectionPlan]) -> None:
         fresh: list[str] = []
         has_error = False
         for plan in plans:
@@ -340,7 +529,8 @@ class AutomaticInputSession(
                     continue
                 self.invalid[key] = token
                 fresh.append(
-                    f"{_column_name(issue.column)}{issue.row + 1}: {issue.message}"
+                    f"{_column_name(issue.column)}{issue.row + 1}: "
+                    f"{issue.message}"
                 )
         if fresh:
             _message("\n".join(fresh[:10]), error=has_error)
@@ -350,12 +540,18 @@ class AutomaticInputSession(
             self.sheet.getCellByPosition(column, row).getString().strip()
             for row in range(start, end + 1)
         ]
+        return self._plan_values(column, start, raw)
+
+    def _plan_values(
+        self, column: int, start: int, raw: list[object]
+    ) -> SelectionPlan:
         null_date = _null_date(self.document)
         if column in _DATE_COLUMNS:
             previous = None
             if start > 1:
                 previous = _numeric_date(
-                    self.sheet.getCellByPosition(column, start - 1), null_date
+                    self.sheet.getCellByPosition(column, start - 1),
+                    null_date,
                 )
             return plan_date_selection(
                 start_row=start,
@@ -372,8 +568,11 @@ class AutomaticInputSession(
             )
         paired_column = 1 if column == 2 else 8
         paired_dates = [
-            _numeric_date(self.sheet.getCellByPosition(paired_column, row), null_date)
-            for row in range(start, end + 1)
+            _numeric_date(
+                self.sheet.getCellByPosition(paired_column, row),
+                null_date,
+            )
+            for row in range(start, start + len(raw))
         ]
         return plan_time_selection(
             start_row=start,
@@ -394,6 +593,10 @@ class AutomaticInputSession(
             pass
         try:
             self.document.removeModifyListener(self)
+        except Exception:
+            pass
+        try:
+            self.controller.removeKeyHandler(self)
         except Exception:
             pass
         if not restore:
@@ -440,7 +643,7 @@ def enable_automatic_input(_args=None) -> None:
         _message(
             f"Автоматический ввод {_VERSION} включён.\n"
             "Столбцы: B, C, I, J.\n"
-            "Режим действует для текущей книги до закрытия LibreOffice."
+            "Ctrl+V в этих столбцах перехватывается до обработки Calc."
         )
     except Exception as exc:
         _SESSION = None
@@ -467,7 +670,7 @@ def automatic_input_status(_args=None) -> None:
     _message(
         f"Версия {_VERSION}. Автоматический ввод включён.\n"
         f"Подготовлено пустых ячеек: {len(_SESSION.prepared)}.\n"
-        f"Ожидает callback: {'да' if _SESSION.callback_pending else 'нет'}."
+        "Перехват Ctrl+V: включён."
     )
 
 
