@@ -222,3 +222,61 @@ def test_packaged_console_stream_supports_russian_help() -> None:
     stream.write("Журнал событий")
     stream.flush()
     assert buffer.getvalue().decode("utf-8") == "Журнал событий"
+
+
+def test_source_journal_cannot_be_used_as_output(tmp_path: Path) -> None:
+    journal = tmp_path / "journal.xlsx"
+    template = tmp_path / "template.xlsx"
+    _journal(journal)
+    _template(template)
+    source_before = _digest(journal)
+
+    result = main(
+        [
+            "build-emergency-report",
+            "--journal",
+            str(journal),
+            "--template",
+            str(template),
+            "--report-date",
+            "2026-07-30",
+            "--output",
+            str(journal),
+            "--diagnostics",
+            str(tmp_path / "diagnostics"),
+        ]
+    )
+
+    assert result == 2
+    assert _digest(journal) == source_before
+
+
+def test_missing_journal_sheet_blocks_output(tmp_path: Path) -> None:
+    journal = tmp_path / "journal.xlsx"
+    template = tmp_path / "template.xlsx"
+    output = tmp_path / "output.xlsx"
+    diagnostics = tmp_path / "diagnostics"
+    workbook = Workbook()
+    workbook.active.title = "Не ЖС"
+    workbook.save(journal)
+    _template(template)
+
+    result = main(
+        [
+            "build-emergency-report",
+            "--journal",
+            str(journal),
+            "--template",
+            str(template),
+            "--report-date",
+            "2026-07-30",
+            "--output",
+            str(output),
+            "--diagnostics",
+            str(diagnostics),
+        ]
+    )
+
+    assert result == 2
+    assert not output.exists()
+    assert (diagnostics / "validation.json").is_file()

@@ -49,29 +49,45 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _build_emergency_report(args: argparse.Namespace) -> int:
-    source_before = file_sha256(args.journal)
-    journal = read_event_journal(args.journal)
+    journal_path = args.journal.resolve()
+    template_path = args.template.resolve()
+    output_path = args.output.resolve()
+    if output_path == journal_path:
+        print(
+            "Путь результата совпадает с исходным журналом; операция запрещена.",
+            file=sys.stderr,
+        )
+        return 2
+    if output_path == template_path:
+        print(
+            "Путь результата совпадает с шаблоном рапорта; операция запрещена.",
+            file=sys.stderr,
+        )
+        return 2
+
+    source_before = file_sha256(journal_path)
+    journal = read_event_journal(journal_path)
     selection = select_emergency_events(journal.events, args.report_date)
     diagnostics = args.diagnostics.resolve()
     diagnostics.mkdir(parents=True, exist_ok=True)
     write_event_selection(diagnostics / "event-selection.csv", selection)
 
-    blocking_header_errors = [
+    blocking_structure_errors = [
         issue
         for issue in journal.issues
-        if issue.severity == "error" and issue.row == 1
+        if issue.severity == "error" and (issue.row is None or issue.row == 1)
     ]
     output_name: str | None = None
-    if not blocking_header_errors:
+    if not blocking_structure_errors:
         output = build_emergency_report(
-            template_path=args.template,
-            output_path=args.output,
+            template_path=template_path,
+            output_path=output_path,
             report_date=args.report_date,
             events=selection.selected_events,
         )
         output_name = output.name
 
-    source_after = file_sha256(args.journal)
+    source_after = file_sha256(journal_path)
     if source_before != source_after:
         raise RuntimeError("Исходный журнал изменился во время read-only обработки.")
 
@@ -81,14 +97,14 @@ def _build_emergency_report(args: argparse.Namespace) -> int:
         selection=selection,
         output_name=output_name,
     )
-    if blocking_header_errors:
+    if blocking_structure_errors:
         print(
-            "Генерация остановлена: структура листа ЖС не соответствует контракту.",
+            "Генерация остановлена: структура книги ЖС не соответствует контракту.",
             file=sys.stderr,
         )
         return 2
     print(f"Сформировано строк: {len(selection.selected_events)}")
-    print(f"Результат: {args.output.resolve()}")
+    print(f"Результат: {output_path}")
     print(f"Диагностика: {diagnostics}")
     return 0
 
