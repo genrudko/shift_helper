@@ -83,6 +83,10 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
 
         macro = archive.read("Scripts/python/shift_helper_calc.py").decode("utf-8")
         compile(macro, "Scripts/python/shift_helper_calc.py", "exec")
+        if "__file__" in macro:
+            raise ExtensionBuildError(
+                "Макрос не должен зависеть от __file__: LibreOffice ScriptProvider его не задаёт."
+            )
         for exported in (
             "show_status",
             "normalize_selected_dates",

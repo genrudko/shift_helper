@@ -2,21 +2,12 @@
 
 from __future__ import annotations
 
-import os
-import sys
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
 import uno
 
-XSCRIPTCONTEXT: Any = globals().get("XSCRIPTCONTEXT")
-
-_SCRIPT_DIR = os.path.dirname(__file__)
-_PYTHONPATH = os.path.join(_SCRIPT_DIR, "pythonpath")
-if _PYTHONPATH not in sys.path:
-    sys.path.insert(0, _PYTHONPATH)
-
-from shift_helper.uno_adapter.calc_selection import (  # noqa: E402
+from shift_helper.uno_adapter.calc_selection import (
     CalcSelectionError,
     SelectionPlan,
     plan_date_selection,
@@ -24,7 +15,9 @@ from shift_helper.uno_adapter.calc_selection import (  # noqa: E402
     validate_vertical_selection,
 )
 
-_EXTENSION_VERSION = "0.3.0.dev0"
+XSCRIPTCONTEXT: Any = globals().get("XSCRIPTCONTEXT")
+
+_EXTENSION_VERSION = "0.3.0.dev1"
 _JOURNAL_SHEET = "ЖС"
 _DATE_FORMAT = "DD.MM.YYYY"
 _TIME_FORMAT = "HH:MM"

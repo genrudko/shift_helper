@@ -18,6 +18,8 @@ def test_build_extension_contains_only_safe_required_payload(tmp_path: Path) -> 
         assert "g_exportedScripts" in macro
         assert "normalize_selected_dates" in macro
         assert "normalize_selected_times" in macro
+        assert "__file__" not in macro
+        assert "from shift_helper.uno_adapter.calc_selection import" in macro
 
 
 def test_extension_build_is_deterministic(tmp_path: Path) -> None:

@@ -2,7 +2,7 @@
 <description xmlns="http://openoffice.org/extensions/description/2006"
              xmlns:xlink="http://www.w3.org/1999/xlink">
   <identifier value="ru.kves.shifthelper.calc"/>
-  <version value="0.3.0.dev0"/>
+  <version value="0.3.0.dev1"/>
   <display-name>
     <name lang="ru">Shift-Helper для LibreOffice Calc</name>
     <name lang="en">Shift-Helper for LibreOffice Calc</name>
