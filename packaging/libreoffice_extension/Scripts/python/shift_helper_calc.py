@@ -9,7 +9,7 @@ from typing import Any
 
 import uno
 
-XSCRIPTCONTEXT: Any
+XSCRIPTCONTEXT: Any = globals().get("XSCRIPTCONTEXT")
 
 _SCRIPT_DIR = os.path.dirname(__file__)
 _PYTHONPATH = os.path.join(_SCRIPT_DIR, "pythonpath")
@@ -31,6 +31,8 @@ _TIME_FORMAT = "HH:MM"
 
 
 def _document():
+    if XSCRIPTCONTEXT is None:
+        raise CalcSelectionError("Макрос запущен вне LibreOffice.")
     document = XSCRIPTCONTEXT.getDocument()
     if document is None or not document.supportsService(
         "com.sun.star.sheet.SpreadsheetDocument"
@@ -40,18 +42,24 @@ def _document():
 
 
 def _message(title: str, text: str, *, error: bool = False) -> None:
+    if XSCRIPTCONTEXT is None:
+        raise RuntimeError(text)
     context = XSCRIPTCONTEXT.getComponentContext()
     service_manager = context.getServiceManager()
     toolkit = service_manager.createInstanceWithContext("com.sun.star.awt.Toolkit", context)
     parent = _document().getCurrentController().getFrame().getContainerWindow()
-    box_type_name = (
-        "com.sun.star.awt.MessageBoxType.ERRORBOX"
-        if error
-        else "com.sun.star.awt.MessageBoxType.INFOBOX"
+    box_type = uno.Enum(
+        "com.sun.star.awt.MessageBoxType",
+        "ERRORBOX" if error else "INFOBOX",
     )
-    box_type = uno.getConstantByName(box_type_name)
     buttons = uno.getConstantByName("com.sun.star.awt.MessageBoxButtons.BUTTONS_OK")
-    box = toolkit.createMessageBox(parent, box_type, buttons, title, text)
+    box = toolkit.createMessageBox(
+        parent,
+        box_type,
+        buttons,
+        title,
+        text.replace("\n", "\r\n"),
+    )
     box.execute()
 
 

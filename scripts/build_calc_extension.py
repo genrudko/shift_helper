@@ -1,9 +1,11 @@
 """Build the Shift-Helper LibreOffice Calc extension."""
 
-from __future__ import annotations
 
-from shift_helper.extension_builder import main
+def _main() -> int:
+    from shift_helper.extension_builder import main
+
+    return main()
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(_main())
