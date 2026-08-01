@@ -14,13 +14,17 @@ from com.sun.star.task import XJobExecutor
 
 _IMPLEMENTATION_NAME = "ru.kves.shifthelper.calc.controls"
 _CALC_SERVICE = "com.sun.star.sheet.SpreadsheetDocument"
-_RUNTIME_MODULE_NAME = "_shift_helper_extension_auto"
-_ACTIONS = {
-    "enable": "enable_automatic_input",
-    "disable": "disable_automatic_input",
-    "status": "automatic_input_status",
+_RUNTIME_FILES = {
+    "auto": ("_shift_helper_extension_auto", "shift_helper_auto.py"),
+    "report": ("_shift_helper_extension_report", "shift_helper_report.py"),
 }
-_RUNTIME: ModuleType | None = None
+_ACTIONS = {
+    "enable": ("auto", "enable_automatic_input"),
+    "disable": ("auto", "disable_automatic_input"),
+    "status": ("auto", "automatic_input_status"),
+    "report": ("report", "generate_emergency_report"),
+}
+_RUNTIMES: dict[str, ModuleType] = {}
 
 
 def _desktop(context):
@@ -65,42 +69,45 @@ def _component_root() -> Path:
     return Path(raw).resolve().parent
 
 
-def _load_runtime() -> ModuleType:
-    global _RUNTIME
-    if _RUNTIME is not None:
-        return _RUNTIME
+def _load_runtime(runtime_key: str) -> ModuleType:
+    cached = _RUNTIMES.get(runtime_key)
+    if cached is not None:
+        return cached
+
+    try:
+        module_name, filename = _RUNTIME_FILES[runtime_key]
+    except KeyError as exc:
+        raise RuntimeError(f"Неизвестное ядро Shift-Helper: {runtime_key}.") from exc
 
     root = _component_root()
     scripts = root / "Scripts" / "python"
     pythonpath = scripts / "pythonpath"
-    runtime_path = scripts / "shift_helper_auto.py"
+    runtime_path = scripts / filename
     if not runtime_path.is_file():
-        raise RuntimeError(
-            "В установленном расширении отсутствует Scripts/python/shift_helper_auto.py."
-        )
+        raise RuntimeError(f"В установленном расширении отсутствует {runtime_path.name}.")
 
     for directory in (pythonpath, scripts):
         value = str(directory)
         if value not in sys.path:
             sys.path.insert(0, value)
 
-    spec = importlib.util.spec_from_file_location(_RUNTIME_MODULE_NAME, runtime_path)
+    spec = importlib.util.spec_from_file_location(module_name, runtime_path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("Не удалось создать загрузчик ядра Shift-Helper.")
+        raise RuntimeError(f"Не удалось создать загрузчик {runtime_path.name}.")
 
     module = importlib.util.module_from_spec(spec)
-    sys.modules[_RUNTIME_MODULE_NAME] = module
+    sys.modules[module_name] = module
     try:
         spec.loader.exec_module(module)
     except Exception:
-        sys.modules.pop(_RUNTIME_MODULE_NAME, None)
+        sys.modules.pop(module_name, None)
         raise
-    _RUNTIME = module
+    _RUNTIMES[runtime_key] = module
     return module
 
 
 class _ScriptContextAdapter:
-    """Provide the subset of XScriptContext used by the accepted UNO-001 runtime."""
+    """Provide the subset of XScriptContext used by bundled runtimes."""
 
     def __init__(self, context, desktop, document) -> None:
         self._context = context
@@ -120,8 +127,8 @@ class _ScriptContextAdapter:
         return self._document
 
 
-def _invoke_runtime(context, document, function_name: str) -> None:
-    runtime = _load_runtime()
+def _invoke_runtime(context, document, runtime_key: str, function_name: str) -> None:
+    runtime = _load_runtime(runtime_key)
     runtime.XSCRIPTCONTEXT = _ScriptContextAdapter(
         context,
         _desktop(context),
@@ -134,7 +141,7 @@ def _invoke_runtime(context, document, function_name: str) -> None:
 
 
 class ShiftHelperControls(unohelper.Base, XJobExecutor):
-    """Dispatch Calc UI actions directly into the bundled UNO-001 runtime."""
+    """Dispatch Calc UI actions directly into bundled Shift-Helper runtimes."""
 
     def __init__(self, context: Any) -> None:
         self.context = context
@@ -144,10 +151,11 @@ class ShiftHelperControls(unohelper.Base, XJobExecutor):
         try:
             document = _current_calc(self.context)
             action = str(event).strip().lower()
-            function_name = _ACTIONS.get(action)
-            if function_name is None:
+            route = _ACTIONS.get(action)
+            if route is None:
                 raise RuntimeError(f"Неизвестная команда Shift-Helper: {event!r}.")
-            _invoke_runtime(self.context, document, function_name)
+            runtime_key, function_name = route
+            _invoke_runtime(self.context, document, runtime_key, function_name)
         except Exception as exc:
             if document is None:
                 try:

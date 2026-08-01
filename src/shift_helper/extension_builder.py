@@ -8,30 +8,40 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 _EXTENSION_NAME = "Shift-Helper-Calc-UNO-001.oxt"
-_FIXED_TIMESTAMP = (2026, 8, 1, 0, 0, 0)
-_VERSION = "0.3.1.dev3"
+_FIXED_TIMESTAMP = (2026, 8, 2, 0, 0, 0)
+_VERSION = "0.3.2.dev0"
 
 _STATIC_FILES = {
     "description.xml": "packaging/libreoffice_extension/description.xml",
     "META-INF/manifest.xml": "packaging/libreoffice_extension/META-INF/manifest.xml",
     "Addons.xcu": "packaging/libreoffice_extension/Addons.xcu",
     "CalcWindowState.xcu": "packaging/libreoffice_extension/CalcWindowState.xcu",
-    "shift_helper_controls.py": (
-        "packaging/libreoffice_extension/shift_helper_controls.py"
-    ),
+    "shift_helper_controls.py": "packaging/libreoffice_extension/shift_helper_controls.py",
     "Scripts/python/shift_helper_calc.py": (
         "packaging/libreoffice_extension/Scripts/python/shift_helper_calc.py"
     ),
     "Scripts/python/shift_helper_auto.py": (
         "packaging/libreoffice_extension/Scripts/python/shift_helper_auto.py"
     ),
+    "Scripts/python/shift_helper_report.py": (
+        "packaging/libreoffice_extension/Scripts/python/shift_helper_report.py"
+    ),
 }
 _SOURCE_FILES = {
     "Scripts/python/pythonpath/shift_helper/core/quick_input.py": (
         "src/shift_helper/core/quick_input.py"
     ),
+    "Scripts/python/pythonpath/shift_helper/core/events.py": (
+        "src/shift_helper/core/events.py"
+    ),
+    "Scripts/python/pythonpath/shift_helper/core/selection.py": (
+        "src/shift_helper/core/selection.py"
+    ),
     "Scripts/python/pythonpath/shift_helper/uno_adapter/calc_selection.py": (
         "src/shift_helper/uno_adapter/calc_selection.py"
+    ),
+    "Scripts/python/pythonpath/shift_helper/uno_adapter/report_generation.py": (
+        "src/shift_helper/uno_adapter/report_generation.py"
     ),
 }
 _GENERATED_FILES = {
@@ -39,10 +49,10 @@ _GENERATED_FILES = {
         '"""Shift-Helper modules bundled for LibreOffice."""\n'
     ),
     "Scripts/python/pythonpath/shift_helper/core/__init__.py": (
-        '"""Pure quick-input core bundled for LibreOffice."""\n'
+        '"""Pure Shift-Helper core bundled for LibreOffice."""\n'
     ),
     "Scripts/python/pythonpath/shift_helper/uno_adapter/__init__.py": (
-        '"""Calc adapter bundled for LibreOffice."""\n'
+        '"""Calc adapters bundled for LibreOffice."""\n'
     ),
 }
 
@@ -75,6 +85,12 @@ def _parse_xml(name: str, content: str) -> None:
         raise ExtensionBuildError(f"{name} повреждён: {exc}.") from exc
 
 
+def _require_markers(name: str, content: str, markers: tuple[str, ...]) -> None:
+    for marker in markers:
+        if marker not in content:
+            raise ExtensionBuildError(f"В {name} отсутствует {marker}.")
+
+
 def verify_calc_extension(path: Path) -> tuple[str, ...]:
     if not path.is_file():
         raise ExtensionBuildError(f"Расширение не создано: {path}.")
@@ -93,18 +109,18 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
             raise ExtensionBuildError(f"В OXT отсутствуют файлы: {missing!r}.")
 
         manifest = archive.read("META-INF/manifest.xml").decode("utf-8")
-        if "application/vnd.sun.star.framework-script" not in manifest:
-            raise ExtensionBuildError("Manifest не регистрирует Python framework scripts.")
-        for registered in (
-            "Scripts/python",
-            "shift_helper_controls.py",
-            "Addons.xcu",
-            "CalcWindowState.xcu",
-        ):
-            if f'manifest:full-path="{registered}"' not in manifest:
-                raise ExtensionBuildError(f"Manifest не регистрирует {registered}.")
-        if "application/vnd.sun.star.uno-component;type=Python" not in manifest:
-            raise ExtensionBuildError("Manifest не регистрирует Python UNO component.")
+        _require_markers(
+            "manifest.xml",
+            manifest,
+            (
+                "application/vnd.sun.star.framework-script",
+                "application/vnd.sun.star.uno-component;type=Python",
+                'manifest:full-path="Scripts/python"',
+                'manifest:full-path="shift_helper_controls.py"',
+                'manifest:full-path="Addons.xcu"',
+                'manifest:full-path="CalcWindowState.xcu"',
+            ),
+        )
 
         description = archive.read("description.xml").decode("utf-8")
         if f'<version value="{_VERSION}"/>' not in description:
@@ -114,126 +130,121 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
 
         macro = archive.read("Scripts/python/shift_helper_calc.py").decode("utf-8")
         automatic = archive.read("Scripts/python/shift_helper_auto.py").decode("utf-8")
+        report = archive.read("Scripts/python/shift_helper_report.py").decode("utf-8")
         controls = archive.read("shift_helper_controls.py").decode("utf-8")
         addons = archive.read("Addons.xcu").decode("utf-8")
         window_state = archive.read("CalcWindowState.xcu").decode("utf-8")
 
-        compile(macro, "Scripts/python/shift_helper_calc.py", "exec")
-        compile(automatic, "Scripts/python/shift_helper_auto.py", "exec")
-        compile(controls, "shift_helper_controls.py", "exec")
         _parse_xml("Addons.xcu", addons)
         _parse_xml("CalcWindowState.xcu", window_state)
 
-        if "__file__" in macro or "__file__" in automatic:
+        if "__file__" in macro or "__file__" in automatic or "__file__" in report:
             raise ExtensionBuildError(
-                "Макрос не должен зависеть от __file__: LibreOffice ScriptProvider его не задаёт."
+                "Framework scripts must not depend on __file__ under ScriptProvider."
             )
 
-        for exported in (
-            "show_status",
-            "normalize_selected_dates",
-            "normalize_selected_times",
-            "g_exportedScripts",
-        ):
-            if exported not in macro:
-                raise ExtensionBuildError(
-                    f"В диагностическом макросе отсутствует {exported}."
-                )
+        _require_markers(
+            "shift_helper_calc.py",
+            macro,
+            (
+                "show_status",
+                "normalize_selected_dates",
+                "normalize_selected_times",
+                "g_exportedScripts",
+            ),
+        )
+        _require_markers(
+            "shift_helper_auto.py",
+            automatic,
+            (
+                "enable_automatic_input",
+                "disable_automatic_input",
+                "automatic_input_status",
+                "XSelectionChangeListener",
+                "XModifyListener",
+                "XDispatchProviderInterceptor",
+                "registerDispatchProviderInterceptor",
+                "releaseDispatchProviderInterceptor",
+                '".uno:Paste"',
+                "g_exportedScripts",
+            ),
+        )
+        _require_markers(
+            "shift_helper_report.py",
+            report,
+            (
+                "generate_emergency_report",
+                "UnoControlDialogModel",
+                "com.sun.star.ui.dialogs.FilePicker",
+                "loadComponentFromURL",
+                "select_emergency_events",
+                "read_uno_journal",
+                "REPORT_SHEET",
+                "document.isModified()",
+                "os.replace",
+                "g_exportedScripts",
+            ),
+        )
+        if "openpyxl" in report:
+            raise ExtensionBuildError("Calc report runtime must not vendor or import openpyxl.")
 
-        for exported in (
-            "enable_automatic_input",
-            "disable_automatic_input",
-            "automatic_input_status",
-            "g_exportedScripts",
-        ):
-            if exported not in automatic:
-                raise ExtensionBuildError(
-                    f"В automatic-макросе отсутствует {exported}."
-                )
-
-        for runtime_marker in (
-            "XSelectionChangeListener",
-            "XModifyListener",
-            "XCallback",
-            "XDispatchProviderInterceptor",
-            "XInterceptorInfo",
-            "XDispatch",
-            "registerDispatchProviderInterceptor",
-            "releaseDispatchProviderInterceptor",
-            "queryDispatch",
-            "com.sun.star.awt.AsyncCallback",
-            "com.sun.star.datatransfer.clipboard.SystemClipboard",
-            "getTransferData",
-            "enterHiddenUndoContext",
-            "enterUndoContext",
-            '_PASTE_URL = ".uno:Paste"',
-            "_BUFFER_ROWS",
-            '_TEXT_FORMAT = "@"',
-        ):
-            if runtime_marker not in automatic:
-                raise ExtensionBuildError(
-                    f"В автоматическом UNO-кандидате отсутствует {runtime_marker}."
-                )
-
-        for control_marker in (
-            "XJobExecutor",
-            "unohelper.ImplementationHelper",
-            "ru.kves.shifthelper.calc.controls",
-            "importlib.util.spec_from_file_location",
-            'root / "Scripts" / "python"',
-            'scripts / "pythonpath"',
-            "_ScriptContextAdapter",
-            "getCurrentComponent",
-            "runtime.XSCRIPTCONTEXT",
-            "enable_automatic_input",
-            "disable_automatic_input",
-            "automatic_input_status",
-        ):
-            if control_marker not in controls:
-                raise ExtensionBuildError(
-                    f"В direct-runtime control component отсутствует {control_marker}."
-                )
-        for forbidden in (
-            "MasterScriptProviderFactory",
-            "vnd.sun.star.script:",
-            "location=user",
-            "location=uno_packages",
-        ):
+        _require_markers(
+            "shift_helper_controls.py",
+            controls,
+            (
+                "XJobExecutor",
+                "unohelper.ImplementationHelper",
+                "ru.kves.shifthelper.calc.controls",
+                '"report": ("_shift_helper_extension_report", "shift_helper_report.py")',
+                '"report": ("report", "generate_emergency_report")',
+                "importlib.util.spec_from_file_location",
+                "runtime.XSCRIPTCONTEXT",
+            ),
+        )
+        for forbidden in ("MasterScriptProviderFactory", "vnd.sun.star.script:"):
             if forbidden in controls:
                 raise ExtensionBuildError(
-                    f"Control component не должен использовать ScriptProvider: {forbidden}."
+                    f"Control component must not use ScriptProvider: {forbidden}."
                 )
 
-        required_ui = (
-            "com.sun.star.sheet.SpreadsheetDocument",
-            "service:ru.kves.shifthelper.calc.controls?enable",
-            "service:ru.kves.shifthelper.calc.controls?disable",
-            "service:ru.kves.shifthelper.calc.controls?status",
-            "Включить быстрый ввод",
-            "Выключить быстрый ввод",
-            "Состояние Shift-Helper",
+        _require_markers(
+            "Addons.xcu",
+            addons,
+            (
+                "com.sun.star.sheet.SpreadsheetDocument",
+                "service:ru.kves.shifthelper.calc.controls?report",
+                "service:ru.kves.shifthelper.calc.controls?enable",
+                "service:ru.kves.shifthelper.calc.controls?disable",
+                "service:ru.kves.shifthelper.calc.controls?status",
+                "Сформировать утренний рапорт",
+                "Включить быстрый ввод",
+                "Выключить быстрый ввод",
+                "Состояние Shift-Helper",
+            ),
         )
-        for marker in required_ui:
-            if marker not in addons:
-                raise ExtensionBuildError(f"В Addons.xcu отсутствует {marker}.")
         if "vnd.sun.star.script:" in addons:
             raise ExtensionBuildError(
-                "Addons.xcu не должен запускать Python через ScriptProvider."
+                "Addons.xcu must not launch Python through ScriptProvider."
             )
 
-        for marker in (
-            "private:resource/toolbar/addon_ru.kves.shifthelper.calc.toolbar.v031",
-            "<value>true</value>",
-            '<value xml:lang="ru-RU">Shift-Helper</value>',
-        ):
-            if marker not in window_state:
-                raise ExtensionBuildError(
-                    f"В CalcWindowState.xcu отсутствует {marker}."
-                )
+        _require_markers(
+            "CalcWindowState.xcu",
+            window_state,
+            (
+                "private:resource/toolbar/addon_ru.kves.shifthelper.calc.toolbar.v031",
+                "<value>true</value>",
+                '<value xml:lang="ru-RU">Shift-Helper</value>',
+            ),
+        )
 
         for name in names:
             if name.endswith(".py"):
-                compile(archive.read(name).decode("utf-8"), name, "exec")
+                content = archive.read(name).decode("utf-8")
+                compile(content, name, "exec")
+                if "openpyxl" in content and name.startswith("Scripts/python/"):
+                    raise ExtensionBuildError(
+                        f"LibreOffice runtime payload unexpectedly imports openpyxl: {name}."
+                    )
 
     return names
 
