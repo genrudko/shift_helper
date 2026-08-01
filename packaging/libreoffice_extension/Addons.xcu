@@ -20,7 +20,7 @@
               <value xml:lang="en-US">Enable quick input</value>
             </prop>
             <prop oor:name="URL" oor:type="xs:string">
-              <value>vnd.sun.star.script:shift_helper_auto.py$enable_automatic_input?language=Python&amp;location=uno_packages</value>
+              <value>service:ru.kves.shifthelper.calc.controls?enable</value>
             </prop>
             <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
           </node>
@@ -30,7 +30,7 @@
               <value xml:lang="en-US">Disable quick input</value>
             </prop>
             <prop oor:name="URL" oor:type="xs:string">
-              <value>vnd.sun.star.script:shift_helper_auto.py$disable_automatic_input?language=Python&amp;location=uno_packages</value>
+              <value>service:ru.kves.shifthelper.calc.controls?disable</value>
             </prop>
             <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
           </node>
@@ -40,7 +40,7 @@
               <value xml:lang="en-US">Shift-Helper status</value>
             </prop>
             <prop oor:name="URL" oor:type="xs:string">
-              <value>vnd.sun.star.script:shift_helper_auto.py$automatic_input_status?language=Python&amp;location=uno_packages</value>
+              <value>service:ru.kves.shifthelper.calc.controls?status</value>
             </prop>
             <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
           </node>
@@ -55,7 +55,7 @@
           <value xml:lang="en-US">Shift-Helper: enable quick input</value>
         </prop>
         <prop oor:name="URL" oor:type="xs:string">
-          <value>vnd.sun.star.script:shift_helper_auto.py$enable_automatic_input?language=Python&amp;location=uno_packages</value>
+          <value>service:ru.kves.shifthelper.calc.controls?enable</value>
         </prop>
         <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
         <prop oor:name="Context" oor:type="xs:string">
@@ -68,7 +68,7 @@
           <value xml:lang="en-US">Shift-Helper: disable quick input</value>
         </prop>
         <prop oor:name="URL" oor:type="xs:string">
-          <value>vnd.sun.star.script:shift_helper_auto.py$disable_automatic_input?language=Python&amp;location=uno_packages</value>
+          <value>service:ru.kves.shifthelper.calc.controls?disable</value>
         </prop>
         <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
         <prop oor:name="Context" oor:type="xs:string">
@@ -81,7 +81,7 @@
           <value xml:lang="en-US">Shift-Helper: status</value>
         </prop>
         <prop oor:name="URL" oor:type="xs:string">
-          <value>vnd.sun.star.script:shift_helper_auto.py$automatic_input_status?language=Python&amp;location=uno_packages</value>
+          <value>service:ru.kves.shifthelper.calc.controls?status</value>
         </prop>
         <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
         <prop oor:name="Context" oor:type="xs:string">
@@ -97,7 +97,7 @@
             <value>com.sun.star.sheet.SpreadsheetDocument</value>
           </prop>
           <prop oor:name="URL" oor:type="xs:string">
-            <value>vnd.sun.star.script:shift_helper_auto.py$enable_automatic_input?language=Python&amp;location=uno_packages</value>
+            <value>service:ru.kves.shifthelper.calc.controls?enable</value>
           </prop>
           <prop oor:name="Title" oor:type="xs:string">
             <value xml:lang="ru-RU">Включить быстрый ввод</value>
@@ -110,7 +110,7 @@
             <value>com.sun.star.sheet.SpreadsheetDocument</value>
           </prop>
           <prop oor:name="URL" oor:type="xs:string">
-            <value>vnd.sun.star.script:shift_helper_auto.py$automatic_input_status?language=Python&amp;location=uno_packages</value>
+            <value>service:ru.kves.shifthelper.calc.controls?status</value>
           </prop>
           <prop oor:name="Title" oor:type="xs:string">
             <value xml:lang="ru-RU">Состояние Shift-Helper</value>
@@ -123,7 +123,7 @@
             <value>com.sun.star.sheet.SpreadsheetDocument</value>
           </prop>
           <prop oor:name="URL" oor:type="xs:string">
-            <value>vnd.sun.star.script:shift_helper_auto.py$disable_automatic_input?language=Python&amp;location=uno_packages</value>
+            <value>service:ru.kves.shifthelper.calc.controls?disable</value>
           </prop>
           <prop oor:name="Title" oor:type="xs:string">
             <value xml:lang="ru-RU">Выключить быстрый ввод</value>

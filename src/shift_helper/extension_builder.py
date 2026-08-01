@@ -9,13 +9,16 @@ from pathlib import Path, PurePosixPath
 
 _EXTENSION_NAME = "Shift-Helper-Calc-UNO-001.oxt"
 _FIXED_TIMESTAMP = (2026, 8, 1, 0, 0, 0)
-_VERSION = "0.3.1.dev2"
+_VERSION = "0.3.1.dev3"
 
 _STATIC_FILES = {
     "description.xml": "packaging/libreoffice_extension/description.xml",
     "META-INF/manifest.xml": "packaging/libreoffice_extension/META-INF/manifest.xml",
     "Addons.xcu": "packaging/libreoffice_extension/Addons.xcu",
     "CalcWindowState.xcu": "packaging/libreoffice_extension/CalcWindowState.xcu",
+    "shift_helper_controls.py": (
+        "packaging/libreoffice_extension/shift_helper_controls.py"
+    ),
     "Scripts/python/shift_helper_calc.py": (
         "packaging/libreoffice_extension/Scripts/python/shift_helper_calc.py"
     ),
@@ -88,21 +91,20 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
         missing = sorted(required.difference(names))
         if missing:
             raise ExtensionBuildError(f"В OXT отсутствуют файлы: {missing!r}.")
-        if "shift_helper_controls.py" in names:
-            raise ExtensionBuildError(
-                "Устаревший промежуточный UNO-компонент не должен входить в OXT."
-            )
 
         manifest = archive.read("META-INF/manifest.xml").decode("utf-8")
         if "application/vnd.sun.star.framework-script" not in manifest:
             raise ExtensionBuildError("Manifest не регистрирует Python framework scripts.")
-        for registered in ("Scripts/python", "Addons.xcu", "CalcWindowState.xcu"):
+        for registered in (
+            "Scripts/python",
+            "shift_helper_controls.py",
+            "Addons.xcu",
+            "CalcWindowState.xcu",
+        ):
             if f'manifest:full-path="{registered}"' not in manifest:
                 raise ExtensionBuildError(f"Manifest не регистрирует {registered}.")
-        if "application/vnd.sun.star.uno-component;type=Python" in manifest:
-            raise ExtensionBuildError(
-                "Manifest не должен регистрировать промежуточный Python UNO component."
-            )
+        if "application/vnd.sun.star.uno-component;type=Python" not in manifest:
+            raise ExtensionBuildError("Manifest не регистрирует Python UNO component.")
 
         description = archive.read("description.xml").decode("utf-8")
         if f'<version value="{_VERSION}"/>' not in description:
@@ -112,11 +114,13 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
 
         macro = archive.read("Scripts/python/shift_helper_calc.py").decode("utf-8")
         automatic = archive.read("Scripts/python/shift_helper_auto.py").decode("utf-8")
+        controls = archive.read("shift_helper_controls.py").decode("utf-8")
         addons = archive.read("Addons.xcu").decode("utf-8")
         window_state = archive.read("CalcWindowState.xcu").decode("utf-8")
 
         compile(macro, "Scripts/python/shift_helper_calc.py", "exec")
         compile(automatic, "Scripts/python/shift_helper_auto.py", "exec")
+        compile(controls, "shift_helper_controls.py", "exec")
         _parse_xml("Addons.xcu", addons)
         _parse_xml("CalcWindowState.xcu", window_state)
 
@@ -171,31 +175,50 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
                     f"В автоматическом UNO-кандидате отсутствует {runtime_marker}."
                 )
 
-        script_urls = (
-            "vnd.sun.star.script:shift_helper_auto.py$enable_automatic_input"
-            "?language=Python&amp;location=uno_packages",
-            "vnd.sun.star.script:shift_helper_auto.py$disable_automatic_input"
-            "?language=Python&amp;location=uno_packages",
-            "vnd.sun.star.script:shift_helper_auto.py$automatic_input_status"
-            "?language=Python&amp;location=uno_packages",
-        )
+        for control_marker in (
+            "XJobExecutor",
+            "unohelper.ImplementationHelper",
+            "ru.kves.shifthelper.calc.controls",
+            "importlib.util.spec_from_file_location",
+            'root / "Scripts" / "python"',
+            'scripts / "pythonpath"',
+            "_ScriptContextAdapter",
+            "getCurrentComponent",
+            "runtime.XSCRIPTCONTEXT",
+            "enable_automatic_input",
+            "disable_automatic_input",
+            "automatic_input_status",
+        ):
+            if control_marker not in controls:
+                raise ExtensionBuildError(
+                    f"В direct-runtime control component отсутствует {control_marker}."
+                )
+        for forbidden in (
+            "MasterScriptProviderFactory",
+            "vnd.sun.star.script:",
+            "location=user",
+            "location=uno_packages",
+        ):
+            if forbidden in controls:
+                raise ExtensionBuildError(
+                    f"Control component не должен использовать ScriptProvider: {forbidden}."
+                )
+
         required_ui = (
             "com.sun.star.sheet.SpreadsheetDocument",
+            "service:ru.kves.shifthelper.calc.controls?enable",
+            "service:ru.kves.shifthelper.calc.controls?disable",
+            "service:ru.kves.shifthelper.calc.controls?status",
             "Включить быстрый ввод",
             "Выключить быстрый ввод",
             "Состояние Shift-Helper",
-            *script_urls,
         )
         for marker in required_ui:
             if marker not in addons:
                 raise ExtensionBuildError(f"В Addons.xcu отсутствует {marker}.")
-        if "location=user" in addons:
+        if "vnd.sun.star.script:" in addons:
             raise ExtensionBuildError(
-                "Addons.xcu не должен искать extension-макросы в обычном user-каталоге."
-            )
-        if "service:ru.kves.shifthelper.calc.controls" in addons:
-            raise ExtensionBuildError(
-                "Addons.xcu не должен обращаться к удалённому control component."
+                "Addons.xcu не должен запускать Python через ScriptProvider."
             )
 
         for marker in (
