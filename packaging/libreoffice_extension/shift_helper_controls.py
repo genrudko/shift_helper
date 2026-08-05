@@ -22,33 +22,11 @@ _ACTIONS = {
     "enable": ("auto", "enable_automatic_input"),
     "disable": ("auto", "disable_automatic_input"),
     "status": ("auto", "automatic_input_status"),
-    "report": ("report", "generate_emergency_report"),
+    "prepare": ("report", "prepare_report_input_sheets"),
+    "generation": ("report", "import_generation_from_outlook"),
+    "report": ("report", "generate_full_report"),
 }
 _RUNTIMES: dict[str, ModuleType] = {}
-
-
-class _UnoCompatProxy:
-    """Translate enum members that pyuno does not expose as constants."""
-
-    _PUSH_BUTTON_TYPES = {
-        "com.sun.star.awt.PushButtonType.OK": "OK",
-        "com.sun.star.awt.PushButtonType.CANCEL": "CANCEL",
-    }
-
-    def __init__(self, module: Any) -> None:
-        self._module = module
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._module, name)
-
-    def getConstantByName(self, name: str):  # noqa: N802
-        enum_name = self._PUSH_BUTTON_TYPES.get(name)
-        if enum_name is not None:
-            return self._module.Enum(
-                "com.sun.star.awt.PushButtonType",
-                enum_name,
-            )
-        return self._module.getConstantByName(name)
 
 
 def _desktop(context):
@@ -97,28 +75,20 @@ def _load_runtime(runtime_key: str) -> ModuleType:
     cached = _RUNTIMES.get(runtime_key)
     if cached is not None:
         return cached
-
-    try:
-        module_name, filename = _RUNTIME_FILES[runtime_key]
-    except KeyError as exc:
-        raise RuntimeError(f"Неизвестное ядро Shift-Helper: {runtime_key}.") from exc
-
+    module_name, filename = _RUNTIME_FILES[runtime_key]
     root = _component_root()
     scripts = root / "Scripts" / "python"
     pythonpath = scripts / "pythonpath"
     runtime_path = scripts / filename
     if not runtime_path.is_file():
         raise RuntimeError(f"В установленном расширении отсутствует {runtime_path.name}.")
-
     for directory in (pythonpath, scripts):
         value = str(directory)
         if value not in sys.path:
             sys.path.insert(0, value)
-
     spec = importlib.util.spec_from_file_location(module_name, runtime_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Не удалось создать загрузчик {runtime_path.name}.")
-
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     try:
@@ -126,15 +96,11 @@ def _load_runtime(runtime_key: str) -> ModuleType:
     except Exception:
         sys.modules.pop(module_name, None)
         raise
-    if runtime_key == "report":
-        module.uno = _UnoCompatProxy(uno)
     _RUNTIMES[runtime_key] = module
     return module
 
 
 class _ScriptContextAdapter:
-    """Provide the subset of XScriptContext used by bundled runtimes."""
-
     def __init__(self, context, desktop, document) -> None:
         self._context = context
         self._desktop = desktop
@@ -167,8 +133,6 @@ def _invoke_runtime(context, document, runtime_key: str, function_name: str) -> 
 
 
 class ShiftHelperControls(unohelper.Base, XJobExecutor):
-    """Dispatch Calc UI actions directly into bundled Shift-Helper runtimes."""
-
     def __init__(self, context: Any) -> None:
         self.context = context
 
@@ -180,8 +144,7 @@ class ShiftHelperControls(unohelper.Base, XJobExecutor):
             route = _ACTIONS.get(action)
             if route is None:
                 raise RuntimeError(f"Неизвестная команда Shift-Helper: {event!r}.")
-            runtime_key, function_name = route
-            _invoke_runtime(self.context, document, runtime_key, function_name)
+            _invoke_runtime(self.context, document, route[0], route[1])
         except Exception as exc:
             if document is None:
                 try:
