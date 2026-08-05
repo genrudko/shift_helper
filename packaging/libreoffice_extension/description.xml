@@ -2,10 +2,10 @@
 <description xmlns="http://openoffice.org/extensions/description/2006"
              xmlns:xlink="http://www.w3.org/1999/xlink">
   <identifier value="ru.kves.shifthelper.calc"/>
-  <version value="0.3.2.dev0"/>
+  <version value="0.4.0.dev0"/>
   <display-name>
-    <name lang="ru">Shift-Helper для LibreOffice Calc</name>
-    <name lang="en">Shift-Helper for LibreOffice Calc</name>
+    <name lang="ru">Shift-Helper — полный тестовый контур</name>
+    <name lang="en">Shift-Helper — integrated test candidate</name>
   </display-name>
   <publisher>
     <name lang="ru">Кочубеевская ВЭС</name>
