@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shift-helper"
-version = "0.3.2.dev0"
-description = "Calc-based workbook automation and report generation core"
+version = "0.4.0.dev0"
+description = "Integrated Calc journal automation and full morning report test candidate"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
