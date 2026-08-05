@@ -5,14 +5,14 @@
                     oor:package="org.openoffice.Office.UI">
   <node oor:name="UIElements">
     <node oor:name="States">
-      <node oor:name="private:resource/toolbar/addon_ru.kves.shifthelper.calc.toolbar.v031"
+      <node oor:name="private:resource/toolbar/addon_ru.kves.shifthelper.calc.toolbar.v033"
             oor:op="replace">
         <prop oor:name="ContextSensitive" oor:type="xs:boolean">
           <value>false</value>
         </prop>
         <prop oor:name="UIName" oor:type="xs:string">
-          <value xml:lang="ru-RU">Shift-Helper</value>
-          <value xml:lang="en-US">Shift-Helper</value>
+          <value xml:lang="ru-RU">Shift-Helper — полный тест</value>
+          <value xml:lang="en-US">Shift-Helper — full test</value>
         </prop>
         <prop oor:name="Visible" oor:type="xs:boolean">
           <value>true</value>
