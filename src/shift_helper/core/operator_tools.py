@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Iterable, Sequence
 
 _SPACE_RE = re.compile(r"[\t\r\n\u00a0 ]+")
 _CELL_REF_RE = re.compile(
