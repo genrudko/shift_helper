@@ -11,7 +11,7 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
     "Flask>=3.1,<4",
     "SQLAlchemy>=2.0,<3",
-    "alembic>=1.14,<2",
+    "alembic<2,>=1.14",
     "openpyxl>=3.1,<4",
     "platformdirs>=4.3,<5",
     "waitress>=3.0,<4",
@@ -30,8 +30,7 @@ build = [
 shift-helper = "shift_helper.cli:main"
 
 [tool.setuptools]
-package-dir = {"" = "src"
-}
+package-dir = {"" = "src"}
 include-package-data = true
 
 [tool.setuptools.packages.find]
