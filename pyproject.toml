@@ -11,7 +11,7 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
     "Flask>=3.1,<4",
     "SQLAlchemy>=2.0,<3",
-    "alembic<2,>=1.14",
+    "alembic>=1.14,<2",
     "openpyxl>=3.1,<4",
     "platformdirs>=4.3,<5",
     "waitress>=3.0,<4",
