@@ -66,6 +66,21 @@ def test_exact_runtime_imports_forms_and_hides_external_template_picker() -> Non
         assert marker in source
 
 
+def test_exact_storage_avoids_visible_preparation_columns() -> None:
+    path = ROOT / "src/shift_helper/core/exact_storage_contract.py"
+    source = path.read_text(encoding="utf-8")
+    ast.parse(source)
+    for marker in (
+        "STATUS_NAME_COL = 9",
+        "STATUS_VALUE_COL = 10",
+        "META_KEY_COL = 12",
+        "META_VALUE_COL = 13",
+        "'Подготовка рапорта'.K2:K85",
+        "install_exact_storage_contract",
+    ):
+        assert marker in source
+
+
 def test_exact_tools_runtime_uses_report_state_coordinates() -> None:
     path = ROOT / "src/shift_helper/core/exact_tools_contract.py"
     source = path.read_text(encoding="utf-8")
@@ -84,7 +99,8 @@ def test_controls_install_exact_contracts_for_report_and_tools() -> None:
     source = (
         ROOT / "packaging/libreoffice_extension/shift_helper_controls.py"
     ).read_text(encoding="utf-8")
-    assert "install_exact_report_contract(runtime, root)" in source
+    assert "install_exact_storage_contract(exact_report_contract)" in source
+    assert "exact_report_contract.install_exact_report_contract(runtime, root)" in source
     assert "install_exact_tools_contract(runtime, root)" in source
     assert "install_calc_workspace_repairs" not in source
 
@@ -97,4 +113,5 @@ def test_extension_payload_reconstructs_template_and_registers_runtimes() -> Non
     assert "base64.b64decode" in source
     assert TEMPLATE_SHA256 in source
     assert "exact_report_contract.py" in source
+    assert "exact_storage_contract.py" in source
     assert "exact_tools_contract.py" in source
