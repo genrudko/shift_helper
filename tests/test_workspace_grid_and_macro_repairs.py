@@ -68,23 +68,24 @@ def test_operator_runtime_contains_nonblocking_clipboard_and_stable_sort() -> No
     assert "clipboard.setContents(_CLIPBOARD_TRANSFERABLE, None)" not in source
 
 
-def test_operator_helpers_retain_calendar_and_grid_primitives() -> None:
-    source = (
-        ROOT / "src/shift_helper/core/operator_tools.py"
+def test_exact_forms_replace_legacy_compact_grid_repair() -> None:
+    controls = (
+        ROOT / "packaging/libreoffice_extension/shift_helper_controls.py"
     ).read_text(encoding="utf-8")
-    for marker in (
-        "WORKSPACE-GRID-REPAIR-002",
-        "_workspace_install_calendar_button",
-        "service:ru.kves.shifthelper.calc.controls?calendarprep",
-    ):
-        assert marker in source
+    migration = (
+        ROOT / "src/shift_helper/core/exact_migration_contract.py"
+    ).read_text(encoding="utf-8")
+    assert "install_calc_workspace_repairs" not in controls
+    assert "install_exact_migration_contract" in controls
+    assert "_copy_row_style" in migration
+    assert "_reset_works" in migration
 
 
-def test_uno_component_loads_exact_contracts_and_calendar() -> None:
+def test_uno_component_routes_report_date_calendar() -> None:
     source = (
         ROOT / "packaging/libreoffice_extension/shift_helper_controls.py"
     ).read_text(encoding="utf-8")
-    assert '"calendarprep": ("tools", "show_report_date_calendar")' in source
-    assert "install_exact_report_contract(runtime, root)" in source
-    assert "install_exact_tools_contract(runtime, root)" in source
-    assert "install_calc_workspace_repairs" not in source
+    assert (
+        '"calendarprep": ("tools", "show_report_date_calendar")'
+        in source
+    )
