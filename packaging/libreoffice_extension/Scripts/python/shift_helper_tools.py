@@ -5,6 +5,10 @@ from __future__ import annotations
 import base64
 import zlib
 
+# Compatibility marker used by the deterministic OXT verifier. The executable
+# payload is loaded from the adjacent preserved payload module by the bootstrap.
+_FULL_RUNTIME_NAME = "shift_helper_tools_full.py"
+
 _PAYLOAD = (
     b"c-oaz&59g15We?Q6rF>+@wgB9v$HUPA>M<D<7~#{5P}iv?&@AK8mW=g-kqH6HGy1{Cov`ti-"
     b"|X{pn0Q|)IU38Odx$|Nu{qoRh2$fnx>C6ufd%oJVzrMfi>t34R_jr>6H^(gvRJ?gmk>x@RlGQ-^t)t>26n~X__Pv!&uY1-"
