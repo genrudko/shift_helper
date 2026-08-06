@@ -29,6 +29,8 @@ _ACTIONS = {
     "report": ("report", "generate_full_report"),
 }
 _RUNTIMES: dict[str, ModuleType] = {}
+_REPORT_REPAIRS_MODULE = "_shift_helper_extension_report_repairs"
+_REPORT_REPAIRS_FILE = "shift_helper_calc.py"
 
 
 def _desktop(context):
@@ -73,6 +75,29 @@ def _component_root() -> Path:
     return Path(raw).resolve().parent
 
 
+def _patch_report_runtime(module: ModuleType, scripts: Path) -> None:
+    repairs_path = scripts / _REPORT_REPAIRS_FILE
+    if not repairs_path.is_file():
+        raise RuntimeError(
+            f"В установленном расширении отсутствует {repairs_path.name}."
+        )
+    spec = importlib.util.spec_from_file_location(
+        _REPORT_REPAIRS_MODULE, repairs_path
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(
+            f"Не удалось создать загрузчик {repairs_path.name}."
+        )
+    repairs = importlib.util.module_from_spec(spec)
+    sys.modules[_REPORT_REPAIRS_MODULE] = repairs
+    try:
+        spec.loader.exec_module(repairs)
+        repairs.patch_report_runtime(module)
+    except Exception:
+        sys.modules.pop(_REPORT_REPAIRS_MODULE, None)
+        raise
+
+
 def _load_runtime(runtime_key: str) -> ModuleType:
     cached = _RUNTIMES.get(runtime_key)
     if cached is not None:
@@ -95,6 +120,8 @@ def _load_runtime(runtime_key: str) -> ModuleType:
     sys.modules[module_name] = module
     try:
         spec.loader.exec_module(module)
+        if runtime_key == "report":
+            _patch_report_runtime(module, scripts)
     except Exception:
         sys.modules.pop(module_name, None)
         raise
@@ -180,8 +207,9 @@ def _invoke_runtime(context, document, runtime_key: str, function_name: str) -> 
     if not callable(function):
         raise RuntimeError(f"В ядре Shift-Helper отсутствует функция {function_name}.")
 
-    synchronize_date = (
-        runtime_key == "report" and function_name == "prepare_report_input_sheets"
+    synchronize_date = runtime_key == "report" and function_name in (
+        "prepare_report_input_sheets",
+        "import_generation_from_outlook",
     )
     before_main = (
         _cell_signature(document, _INPUT_MAIN, 1, 1) if synchronize_date else None
@@ -190,6 +218,10 @@ def _invoke_runtime(context, document, runtime_key: str, function_name: str) -> 
         _cell_signature(document, _INPUT_PREP, 1, 2) if synchronize_date else None
     )
     function()
+    if runtime_key == "report" and function_name == "prepare_report_input_sheets":
+        repair = getattr(runtime, "_repair_photo_state_statuses", None)
+        if callable(repair):
+            repair(document)
     if synchronize_date:
         _synchronize_report_date(document, before_main, before_prep)
 
