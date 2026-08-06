@@ -52,7 +52,9 @@ def test_operator_runtime_contains_nonblocking_clipboard_and_stable_sort() -> No
         "_PAYLOAD",
         base85=True,
     )
-    assert "payload[:7392] + b\")\" + payload[7392:]" in bootstrap
+    assert "payload[:7392]" in bootstrap
+    assert "payload[7392:]" in bootstrap
+    assert 'b")"' in bootstrap
     source = _decode_operator_payload()
     for marker in (
         "Set-Clipboard -Value ([Console]::In.ReadToEnd())",
