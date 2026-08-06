@@ -24,6 +24,19 @@ def _collect_statuses(prep) -> dict[str, str]:
     return values
 
 
+def _clear_legacy_statuses(prep) -> None:
+    """Remove old G:H status cells only when they contain legacy service data."""
+
+    for row in range(1, 90):
+        name_cell = prep.getCellByPosition(6, row)
+        status_cell = prep.getCellByPosition(7, row)
+        name = str(name_cell.getString()).strip()
+        status = str(status_cell.getString()).strip()
+        if name.startswith("ВЭУ-") and status in STATUSES:
+            name_cell.setString("")
+            status_cell.setString("")
+
+
 def _collect_meta(prep, keys: tuple[str, ...]) -> dict[str, object]:
     values: dict[str, object] = {}
     for key_col, value_col in ((9, 10), (META_KEY_COL, META_VALUE_COL)):
@@ -40,6 +53,7 @@ def _ensure_service(module: ModuleType, runtime: Any, document) -> None:
     prep = document.getSheets().getByName(runtime.INPUT_PREP)
     statuses = _collect_statuses(prep)
     meta = _collect_meta(prep, tuple(module.META))
+    _clear_legacy_statuses(prep)
 
     prep.getCellByPosition(STATUS_NAME_COL, 0).setString("ВЭУ")
     prep.getCellByPosition(STATUS_VALUE_COL, 0).setString("Статус ВЭУ")
