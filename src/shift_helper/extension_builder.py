@@ -19,7 +19,9 @@ _STATIC_FILES = {
     "META-INF/manifest.xml": "packaging/libreoffice_extension/META-INF/manifest.xml",
     "Addons.xcu": "packaging/libreoffice_extension/Addons.xcu",
     "CalcWindowState.xcu": "packaging/libreoffice_extension/CalcWindowState.xcu",
-    "shift_helper_controls.py": "packaging/libreoffice_extension/shift_helper_controls.py",
+    "shift_helper_controls.py": (
+        "packaging/libreoffice_extension/shift_helper_controls.py"
+    ),
     "Scripts/python/shift_helper_calc.py": (
         "packaging/libreoffice_extension/Scripts/python/shift_helper_calc.py"
     ),
@@ -28,6 +30,9 @@ _STATIC_FILES = {
     ),
     "Scripts/python/shift_helper_report.py": (
         "packaging/libreoffice_extension/Scripts/python/shift_helper_report.py"
+    ),
+    "Scripts/python/shift_helper_tools.py": (
+        "packaging/libreoffice_extension/Scripts/python/shift_helper_tools.py"
     ),
 }
 _SOURCE_FILES = {
@@ -39,6 +44,9 @@ _SOURCE_FILES = {
     ),
     "Scripts/python/pythonpath/shift_helper/core/selection.py": (
         "src/shift_helper/core/selection.py"
+    ),
+    "Scripts/python/pythonpath/shift_helper/core/operator_tools.py": (
+        "src/shift_helper/core/operator_tools.py"
     ),
     "Scripts/python/pythonpath/shift_helper/uno_adapter/calc_selection.py": (
         "src/shift_helper/uno_adapter/calc_selection.py"
@@ -94,9 +102,14 @@ def _require_markers(name: str, content: str, markers: tuple[str, ...]) -> None:
             raise ExtensionBuildError(f"В {name} отсутствует {marker}.")
 
 
-def _decode_integrated_report(loader: str) -> str:
+def _decode_compressed_runtime(
+    loader: str,
+    *,
+    loader_name: str,
+    source_name: str,
+) -> str:
     try:
-        tree = ast.parse(loader, "Scripts/python/shift_helper_report.py")
+        tree = ast.parse(loader, loader_name)
         payload = None
         for node in tree.body:
             if not isinstance(node, ast.Assign):
@@ -110,12 +123,28 @@ def _decode_integrated_report(loader: str) -> str:
         if not isinstance(payload, bytes):
             raise ValueError("_PAYLOAD is missing")
         source = zlib.decompress(base64.b85decode(payload)).decode("utf-8")
-        compile(source, "shift_helper_report_full.py", "exec")
+        compile(source, source_name, "exec")
         return source
     except Exception as exc:
         raise ExtensionBuildError(
-            f"Не удалось проверить встроенный полный runtime: {exc}."
+            f"Не удалось проверить {loader_name}: {exc}."
         ) from exc
+
+
+def _decode_integrated_report(loader: str) -> str:
+    return _decode_compressed_runtime(
+        loader,
+        loader_name="Scripts/python/shift_helper_report.py",
+        source_name="shift_helper_report_full.py",
+    )
+
+
+def _decode_operator_tools(loader: str) -> str:
+    return _decode_compressed_runtime(
+        loader,
+        loader_name="Scripts/python/shift_helper_tools.py",
+        source_name="shift_helper_tools_full.py",
+    )
 
 
 def verify_calc_extension(path: Path) -> tuple[str, ...]:
@@ -125,9 +154,7 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
     with zipfile.ZipFile(path) as archive:
         names = tuple(archive.namelist())
         if len(names) != len(set(names)):
-            raise ExtensionBuildError(
-                "В OXT обнаружены повторяющиеся пути."
-            )
+            raise ExtensionBuildError("В OXT обнаружены повторяющиеся пути.")
         unsafe = [name for name in names if not _safe_member(name)]
         if unsafe:
             raise ExtensionBuildError(
@@ -158,8 +185,19 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
             raise ExtensionBuildError(f"OXT должен иметь версию {_VERSION}.")
 
         macro = archive.read("Scripts/python/shift_helper_calc.py").decode("utf-8")
-        automatic = archive.read("Scripts/python/shift_helper_auto.py").decode("utf-8")
-        report_loader = archive.read("Scripts/python/shift_helper_report.py").decode("utf-8")
+        automatic = archive.read("Scripts/python/shift_helper_auto.py").decode(
+            "utf-8"
+        )
+        report_loader = archive.read(
+            "Scripts/python/shift_helper_report.py"
+        ).decode("utf-8")
+        tools_loader = archive.read(
+            "Scripts/python/shift_helper_tools.py"
+        ).decode("utf-8")
+        tools = _decode_operator_tools(tools_loader)
+        helpers = archive.read(
+            "Scripts/python/pythonpath/shift_helper/core/operator_tools.py"
+        ).decode("utf-8")
         report = _decode_integrated_report(report_loader)
         controls = archive.read("shift_helper_controls.py").decode("utf-8")
         addons = archive.read("Addons.xcu").decode("utf-8")
@@ -171,10 +209,13 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
         compile(automatic, "shift_helper_auto.py", "exec")
         compile(controls, "shift_helper_controls.py", "exec")
         compile(report_loader, "shift_helper_report.py", "exec")
+        compile(tools_loader, "shift_helper_tools.py", "exec")
+        compile(helpers, "operator_tools.py", "exec")
 
         for script_name, script in (
             ("shift_helper_calc.py", macro),
             ("shift_helper_auto.py", automatic),
+            ("shift_helper_tools.py", tools),
         ):
             if "__file__" in script:
                 raise ExtensionBuildError(
@@ -227,25 +268,73 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
             )
 
         _require_markers(
+            "shift_helper_tools.py loader",
+            tools_loader,
+            ("base64.b85decode", "zlib.decompress", "shift_helper_tools_full.py"),
+        )
+        _require_markers(
+            "operator tools runtime",
+            tools,
+            (
+                "show_calendar",
+                "show_time_picker",
+                "auto_fit_selected_rows",
+                "clean_selected_spaces",
+                "merge_and_copy_selection",
+                "sort_selected_rows_by_time",
+                "insert_wtg_maintenance_text",
+                "show_today_inspections",
+                "update_rotor_limits_from_log",
+                "create_outlook_mail_draft",
+                "g_exportedScripts",
+            ),
+        )
+        _require_markers(
+            "operator_tools.py",
+            helpers,
+            (
+                "normalize_spaces",
+                "maintenance_text",
+                "active_rotor_limits",
+                "rotor_repair_power",
+                "absolute_a1_references",
+            ),
+        )
+        _require_markers(
             "shift_helper_controls.py",
             controls,
             (
                 '"prepare": ("report", "prepare_report_input_sheets")',
                 '"generation": ("report", "import_generation_from_outlook")',
                 '"report": ("report", "generate_full_report")',
+                '"calendar": ("tools", "show_calendar")',
+                '"time": ("tools", "show_time_picker")',
+                '"rotor": ("tools", "update_rotor_limits_from_log")',
+                '"mail": ("tools", "create_outlook_mail_draft")',
                 "runtime.XSCRIPTCONTEXT",
             ),
+        )
+        addon_urls = (
+            "prepare",
+            "generation",
+            "report",
+            "calendar",
+            "time",
+            "autofit",
+            "clean",
+            "mergecopy",
+            "sorttime",
+            "maintenance",
+            "inspections",
+            "rotor",
+            "mail",
         )
         _require_markers(
             "Addons.xcu",
             addons,
-            (
-                "service:ru.kves.shifthelper.calc.controls?prepare",
-                "service:ru.kves.shifthelper.calc.controls?generation",
-                "service:ru.kves.shifthelper.calc.controls?report",
-                "Подготовить полный контур рапорта",
-                "Импортировать генерацию",
-                "Сформировать полный утренний рапорт",
+            tuple(
+                f"service:ru.kves.shifthelper.calc.controls?{action}"
+                for action in addon_urls
             ),
         )
         _require_markers(
@@ -253,6 +342,7 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
             window_state,
             (
                 "private:resource/toolbar/addon_ru.kves.shifthelper.calc.toolbar.v033",
+                "private:resource/toolbar/addon_ru.kves.shifthelper.calc.tools.v040",
                 "<value>true</value>",
             ),
         )
@@ -292,7 +382,11 @@ def build_calc_extension(*, repo_root: Path, output: Path) -> Path:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
-    parser.add_argument("--output", type=Path, default=Path("dist") / _EXTENSION_NAME)
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("dist") / _EXTENSION_NAME,
+    )
     return parser
 
 
