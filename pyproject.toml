@@ -55,3 +55,6 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
 "packaging/libreoffice_extension/Scripts/python/shift_helper_report.py" = ["E501"]
+# This compatibility bridge is deliberately dense because it is embedded in the
+# LibreOffice extension and mirrors the accepted report coordinate contract.
+"src/shift_helper/core/exact_report_contract.py" = ["E501", "F401"]
