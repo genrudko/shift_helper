@@ -38,6 +38,9 @@ _SOURCE_PAYLOADS = {
     "Scripts/python/pythonpath/shift_helper/core/exact_storage_contract.py": (
         "src/shift_helper/core/exact_storage_contract.py"
     ),
+    "Scripts/python/pythonpath/shift_helper/core/exact_migration_contract.py": (
+        "src/shift_helper/core/exact_migration_contract.py"
+    ),
     "Scripts/python/pythonpath/shift_helper/core/exact_tools_contract.py": (
         "src/shift_helper/core/exact_tools_contract.py"
     ),
