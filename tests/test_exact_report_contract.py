@@ -95,6 +95,7 @@ def test_exact_migration_preserves_data_and_clears_template_samples() -> None:
         "_reset_violations",
         "needs_rebuild",
         "has_legacy_data",
+        "if needs_rebuild:",
         "без демонстрационных",
         "install_exact_migration_contract",
     ):
