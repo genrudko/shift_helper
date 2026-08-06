@@ -30,7 +30,8 @@ build = [
 shift-helper = "shift_helper.cli:main"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = {"" = "src"
+}
 include-package-data = true
 
 [tool.setuptools.packages.find]
@@ -55,6 +56,7 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
 "packaging/libreoffice_extension/Scripts/python/shift_helper_report.py" = ["E501"]
-# This compatibility bridge is deliberately dense because it is embedded in the
-# LibreOffice extension and mirrors the accepted report coordinate contract.
+# These compatibility bridges are deliberately dense because they are embedded
+# into the LibreOffice extension and mirror the accepted workbook coordinates.
 "src/shift_helper/core/exact_report_contract.py" = ["E501", "F401", "B905"]
+"src/shift_helper/core/exact_migration_contract.py" = ["E501"]
