@@ -17,6 +17,9 @@ _SOURCE_PAYLOADS = {
     "Scripts/python/pythonpath/shift_helper/core/exact_report_contract.py": (
         "src/shift_helper/core/exact_report_contract.py"
     ),
+    "Scripts/python/pythonpath/shift_helper/core/exact_tools_contract.py": (
+        "src/shift_helper/core/exact_tools_contract.py"
+    ),
 }
 
 
