@@ -58,7 +58,6 @@ def test_build_extension_contains_integrated_full_test_payload(tmp_path: Path) -
         assert 'INPUT_PREP = "Подготовка рапорта"' in report
         assert "Смещение времени в готовом рапорте, ч" in report
         assert "DEFAULT_TIME_OFFSET_HOURS = -3.0" in report
-        assert "cell.setFormula(f\"=\'{INPUT_PREP}\'.B3\")" in report
         assert "def _apply_grid" in report
         assert 'uno.createUnoStruct("com.sun.star.table.TableBorder")' in report
         assert "def _normalize_state_row" in report
@@ -78,6 +77,9 @@ def test_build_extension_contains_integrated_full_test_payload(tmp_path: Path) -
         assert '"generation": ("report", "import_generation_from_outlook")' in controls
         assert '"report": ("report", "generate_full_report")' in controls
         assert "runtime.XSCRIPTCONTEXT" in controls
+        assert "def _synchronize_report_date" in controls
+        assert 'main_cell.setFormula(f"=\'{_INPUT_PREP}\'.B3")' in controls
+        assert "main_changed or prep_created or _cell_is_empty(prep_cell)" in controls
 
         assert "service:ru.kves.shifthelper.calc.controls?prepare" in addons
         assert "service:ru.kves.shifthelper.calc.controls?generation" in addons
