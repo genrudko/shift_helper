@@ -105,6 +105,9 @@ def _patch_report_runtime(module: ModuleType, scripts: Path) -> None:
     try:
         spec.loader.exec_module(repairs)
         repairs.patch_report_runtime(module)
+        from shift_helper.core.operator_tools import install_calc_workspace_repairs
+
+        install_calc_workspace_repairs(module)
     except Exception:
         sys.modules.pop(_REPORT_REPAIRS_MODULE, None)
         raise
