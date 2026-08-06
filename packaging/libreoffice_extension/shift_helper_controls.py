@@ -14,6 +14,8 @@ from com.sun.star.task import XJobExecutor
 
 _IMPLEMENTATION_NAME = "ru.kves.shifthelper.calc.controls"
 _CALC_SERVICE = "com.sun.star.sheet.SpreadsheetDocument"
+_INPUT_PREP = "Подготовка рапорта"
+_INPUT_MAIN = "Ввод - Основные"
 _RUNTIME_FILES = {
     "auto": ("_shift_helper_extension_auto", "shift_helper_auto.py"),
     "report": ("_shift_helper_extension_report", "shift_helper_report.py"),
@@ -119,6 +121,54 @@ class _ScriptContextAdapter:
         return self._document
 
 
+def _cell_signature(document, sheet_name: str, column: int, row: int):
+    sheets = document.getSheets()
+    if not sheets.hasByName(sheet_name):
+        return None
+    cell = sheets.getByName(sheet_name).getCellByPosition(column, row)
+    return (str(cell.getFormula()), float(cell.getValue()), str(cell.getString()))
+
+
+def _cell_is_empty(cell) -> bool:
+    return not str(cell.getString()).strip() and not float(cell.getValue())
+
+
+def _copy_date_value(source, target) -> None:
+    value = float(source.getValue())
+    if value:
+        target.setValue(value)
+    else:
+        target.setString(str(source.getString()).strip())
+
+
+def _synchronize_report_date(document, before_main, before_prep) -> None:
+    """Make preparation B3 authoritative after the legacy preparation routine."""
+    sheets = document.getSheets()
+    if not sheets.hasByName(_INPUT_PREP) or not sheets.hasByName(_INPUT_MAIN):
+        return
+
+    prep_cell = sheets.getByName(_INPUT_PREP).getCellByPosition(1, 2)
+    main_cell = sheets.getByName(_INPUT_MAIN).getCellByPosition(1, 1)
+    after_main = _cell_signature(document, _INPUT_MAIN, 1, 1)
+    main_changed = before_main is not None and after_main != before_main
+    prep_created = before_prep is None
+
+    # The integrated runtime imports an old report date into the legacy main cell.
+    # Copy it to B3 only when that import changed the cell, when the workspace was
+    # just created, or when B3 is genuinely empty. Existing operator B3 data wins.
+    if (
+        not _cell_is_empty(main_cell)
+        and (main_changed or prep_created or _cell_is_empty(prep_cell))
+    ):
+        _copy_date_value(main_cell, prep_cell)
+
+    main_cell.setFormula(f"='{_INPUT_PREP}'.B3")
+    try:
+        document.calculateAll()
+    except Exception:
+        pass
+
+
 def _invoke_runtime(context, document, runtime_key: str, function_name: str) -> None:
     runtime = _load_runtime(runtime_key)
     runtime.XSCRIPTCONTEXT = _ScriptContextAdapter(
@@ -129,7 +179,19 @@ def _invoke_runtime(context, document, runtime_key: str, function_name: str) -> 
     function = getattr(runtime, function_name, None)
     if not callable(function):
         raise RuntimeError(f"В ядре Shift-Helper отсутствует функция {function_name}.")
+
+    synchronize_date = (
+        runtime_key == "report" and function_name == "prepare_report_input_sheets"
+    )
+    before_main = (
+        _cell_signature(document, _INPUT_MAIN, 1, 1) if synchronize_date else None
+    )
+    before_prep = (
+        _cell_signature(document, _INPUT_PREP, 1, 2) if synchronize_date else None
+    )
     function()
+    if synchronize_date:
+        _synchronize_report_date(document, before_main, before_prep)
 
 
 class ShiftHelperControls(unohelper.Base, XJobExecutor):
