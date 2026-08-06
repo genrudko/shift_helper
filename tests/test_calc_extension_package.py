@@ -58,6 +58,7 @@ def test_build_extension_contains_integrated_full_test_payload(tmp_path: Path) -
         assert 'INPUT_PREP = "Подготовка рапорта"' in report
         assert "Смещение времени в готовом рапорте, ч" in report
         assert "DEFAULT_TIME_OFFSET_HOURS = -3.0" in report
+        assert "cell.setFormula(f\"=\'{INPUT_PREP}\'.B3\")" in report
         assert "def _apply_grid" in report
         assert 'uno.createUnoStruct("com.sun.star.table.TableBorder")' in report
         assert "def _normalize_state_row" in report
