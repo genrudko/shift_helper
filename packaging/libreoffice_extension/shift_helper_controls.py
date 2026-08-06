@@ -113,9 +113,13 @@ def _load_runtime(key: str) -> ModuleType:
             scripts / "shift_helper_calc.py",
         )
         repairs.patch_report_runtime(runtime)
-        from shift_helper.core.exact_report_contract import install_exact_report_contract
+        from shift_helper.core import exact_report_contract
+        from shift_helper.core.exact_storage_contract import (
+            install_exact_storage_contract,
+        )
 
-        install_exact_report_contract(runtime, root)
+        install_exact_storage_contract(exact_report_contract)
+        exact_report_contract.install_exact_report_contract(runtime, root)
     elif key == "tools":
         from shift_helper.core.exact_tools_contract import install_exact_tools_contract
 
