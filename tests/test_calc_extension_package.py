@@ -55,6 +55,16 @@ def test_build_extension_contains_integrated_full_test_payload(tmp_path: Path) -
         assert "generate_emergency_report" in report
         assert "select_emergency_events" in report
         assert "read_uno_journal" in report
+        assert 'INPUT_PREP = "Подготовка рапорта"' in report
+        assert "Смещение времени в готовом рапорте, ч" in report
+        assert "DEFAULT_TIME_OFFSET_HOURS = -3.0" in report
+        assert "def _apply_grid" in report
+        assert 'uno.createUnoStruct("com.sun.star.table.TableBorder")' in report
+        assert "def _normalize_state_row" in report
+        assert "p_avail = max(p_set - p_repair, 0.0)" in report
+        assert "elapsed_days = max(report_date.day - 1, 0)" in report
+        assert "def _shift_datetime" in report
+        assert "time_offset_hours=time_offset_hours" in report
         assert "Ввод - Основные" in report
         assert "Ввод - Команды" in report
         assert "Ввод - Нарушения" in report
