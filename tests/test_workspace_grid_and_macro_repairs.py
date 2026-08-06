@@ -8,10 +8,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _decode_payload(path: Path, variable: str, *, base85: bool) -> str:
+def _literal_payload(path: Path, variable: str = "_PAYLOAD") -> bytes:
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source, str(path))
-    payload = None
     for node in tree.body:
         if not isinstance(node, ast.Assign):
             continue
@@ -20,21 +19,41 @@ def _decode_payload(path: Path, variable: str, *, base85: bool) -> str:
             for target in node.targets
         ):
             payload = ast.literal_eval(node.value)
-            break
-    assert isinstance(payload, bytes)
+            assert isinstance(payload, bytes)
+            return payload
+    raise AssertionError(f"{variable} is missing from {path}")
+
+
+def _decode_payload(path: Path, variable: str, *, base85: bool) -> str:
+    payload = _literal_payload(path, variable)
     compressed = base64.b85decode(payload) if base85 else base64.b64decode(payload)
     decoded = zlib.decompress(compressed).decode("utf-8")
     compile(decoded, f"decoded:{path.name}", "exec")
     return decoded
 
 
+def _decode_operator_payload() -> str:
+    path = (
+        ROOT
+        / "packaging/libreoffice_extension/Scripts/python/"
+        "shift_helper_tools_payload.py"
+    )
+    payload = _literal_payload(path)
+    repaired = payload[:7392] + b")" + payload[7392:]
+    decoded = zlib.decompress(base64.b85decode(repaired)).decode("utf-8")
+    compile(decoded, "decoded:shift_helper_tools_payload.py", "exec")
+    return decoded
+
+
 def test_operator_runtime_contains_nonblocking_clipboard_and_stable_sort() -> None:
-    source = _decode_payload(
+    bootstrap = _decode_payload(
         ROOT
         / "packaging/libreoffice_extension/Scripts/python/shift_helper_tools.py",
         "_PAYLOAD",
         base85=True,
     )
+    assert "payload[:7392] + b\")\" + payload[7392:]" in bootstrap
+    source = _decode_operator_payload()
     for marker in (
         "Set-Clipboard -Value ([Console]::In.ReadToEnd())",
         "sheet.copyRange(destination, source_row)",
