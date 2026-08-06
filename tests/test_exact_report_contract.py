@@ -1,16 +1,29 @@
 from __future__ import annotations
 
 import ast
+import base64
+import hashlib
+from io import BytesIO
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
-REPORT = ROOT / "packaging/libreoffice_extension/Templates/report_template.xlsx"
+TEMPLATE_DIR = ROOT / "packaging/libreoffice_extension/Templates"
+TEMPLATE_SHA256 = "cde2d2fb042f27dc514f71ac991676e423dd6a68667fbb6d3f928ab610acbb32"
 
 
-def _sheet_names(path: Path) -> list[str]:
-    with ZipFile(path) as archive:
+def _report_bytes() -> bytes:
+    chunks = sorted(TEMPLATE_DIR.glob("report_template.b64.*"))
+    assert len(chunks) == 8
+    encoded = "".join(path.read_text(encoding="ascii") for path in chunks)
+    content = base64.b64decode(encoded, validate=True)
+    assert hashlib.sha256(content).hexdigest() == TEMPLATE_SHA256
+    return content
+
+
+def _sheet_names(content: bytes) -> list[str]:
+    with ZipFile(BytesIO(content)) as archive:
         root = ET.fromstring(archive.read("xl/workbook.xml"))
     namespace = {
         "m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -21,7 +34,7 @@ def _sheet_names(path: Path) -> list[str]:
 
 
 def test_embedded_report_contains_all_approved_sheets() -> None:
-    assert _sheet_names(REPORT) == [
+    assert _sheet_names(_report_bytes()) == [
         "Основные данные",
         "Аварийные отключения ЛЭП",
         "Команды по внешней инициативе",
@@ -75,10 +88,12 @@ def test_controls_install_exact_contracts_for_report_and_tools() -> None:
     assert "install_calc_workspace_repairs" not in source
 
 
-def test_extension_payload_registers_template_and_exact_runtimes() -> None:
+def test_extension_payload_reconstructs_template_and_registers_runtimes() -> None:
     source = (
         ROOT / "src/shift_helper/extension_builder_payload.py"
     ).read_text(encoding="utf-8")
     assert '"Templates/report_template.xlsx"' in source
+    assert "base64.b64decode" in source
+    assert TEMPLATE_SHA256 in source
     assert "exact_report_contract.py" in source
     assert "exact_tools_contract.py" in source
