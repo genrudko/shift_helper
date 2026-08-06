@@ -75,6 +75,7 @@ def test_exact_storage_avoids_visible_preparation_columns() -> None:
         "STATUS_VALUE_COL = 10",
         "META_KEY_COL = 12",
         "META_VALUE_COL = 13",
+        "_clear_legacy_statuses",
         "'Подготовка рапорта'.K2:K85",
         "install_exact_storage_contract",
     ):
