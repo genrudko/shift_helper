@@ -117,7 +117,7 @@ def _load_runtime(key: str) -> ModuleType:
 
         install_exact_report_contract(runtime, root)
     elif key == "tools":
-        from shift_helper.core.exact_report_contract import install_exact_tools_contract
+        from shift_helper.core.exact_tools_contract import install_exact_tools_contract
 
         install_exact_tools_contract(runtime, root)
     _RUNTIMES[key] = runtime
