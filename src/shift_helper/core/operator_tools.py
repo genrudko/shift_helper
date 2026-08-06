@@ -56,9 +56,7 @@ def parse_wtg_numbers(
             continue
         match = _WTG_RE.fullmatch(token)
         if match is None:
-            raise ValueError(
-                f"Не удалось распознать номер ВЭУ: {token!r}."
-            )
+            raise ValueError(f"Не удалось распознать номер ВЭУ: {token!r}.")
         number = int(match.group(1))
         if number < minimum or number > maximum:
             raise ValueError(
@@ -253,3 +251,260 @@ def inspection_message(
             line += f" ({note})"
         lines.append(line)
     return "\n".join(lines)
+
+
+# WORKSPACE-GRID-REPAIR-002 -------------------------------------------------
+
+
+def _workspace_empty_grid(rng, uno_module) -> None:
+    """Remove all visible cell borders from a Calc range."""
+
+    border = uno_module.createUnoStruct("com.sun.star.table.TableBorder")
+    line = uno_module.createUnoStruct("com.sun.star.table.BorderLine")
+    line.Color = 0x000000
+    line.InnerLineWidth = 0
+    line.OuterLineWidth = 0
+    line.LineDistance = 0
+    for field in (
+        "TopLine",
+        "BottomLine",
+        "LeftLine",
+        "RightLine",
+        "HorizontalLine",
+        "VerticalLine",
+    ):
+        setattr(border, field, line)
+    for field in (
+        "IsTopLineValid",
+        "IsBottomLineValid",
+        "IsLeftLineValid",
+        "IsRightLineValid",
+        "IsHorizontalLineValid",
+        "IsVerticalLineValid",
+    ):
+        setattr(border, field, True)
+    rng.setPropertyValue("TableBorder", border)
+
+
+def _workspace_black_grid(rng, uno_module) -> None:
+    """Apply a compact black grid matching the accepted report worksheets."""
+
+    border = uno_module.createUnoStruct("com.sun.star.table.TableBorder")
+    line = uno_module.createUnoStruct("com.sun.star.table.BorderLine")
+    line.Color = 0x000000
+    line.InnerLineWidth = 0
+    line.OuterLineWidth = 18
+    line.LineDistance = 0
+    for field in (
+        "TopLine",
+        "BottomLine",
+        "LeftLine",
+        "RightLine",
+        "HorizontalLine",
+        "VerticalLine",
+    ):
+        setattr(border, field, line)
+    for field in (
+        "IsTopLineValid",
+        "IsBottomLineValid",
+        "IsLeftLineValid",
+        "IsRightLineValid",
+        "IsHorizontalLineValid",
+        "IsVerticalLineValid",
+    ):
+        setattr(border, field, True)
+    rng.setPropertyValue("TableBorder", border)
+
+
+def _workspace_cell_is_meaningful(cell, *, ignore_formula: bool = False) -> bool:
+    formula = str(cell.getFormula())
+    if formula.startswith("="):
+        return not ignore_formula
+    if str(cell.getString()).strip():
+        return True
+    try:
+        return float(cell.getValue()) != 0.0
+    except Exception:
+        return False
+
+
+def _workspace_last_meaningful_row(
+    sheet,
+    column_count: int,
+    ignored_formula_columns: tuple[int, ...] = (),
+) -> int:
+    cursor = sheet.createCursor()
+    cursor.gotoEndOfUsedArea(True)
+    end = max(int(cursor.getRangeAddress().EndRow), 1)
+    for row in range(end, 0, -1):
+        for column in range(column_count):
+            if _workspace_cell_is_meaningful(
+                sheet.getCellByPosition(column, row),
+                ignore_formula=column in ignored_formula_columns,
+            ):
+                return row
+    return 0
+
+
+def _workspace_compact_table(
+    runtime,
+    sheet,
+    column_count: int,
+    ignored_formula_columns: tuple[int, ...] = (),
+    minimum_scan_end: int = 200,
+) -> int:
+    import uno
+
+    used_end = max(runtime._last_used_row(sheet), minimum_scan_end, 1)
+    last_data = _workspace_last_meaningful_row(
+        sheet,
+        column_count,
+        ignored_formula_columns,
+    )
+    visible_end = max(1, last_data + (1 if last_data else 0))
+
+    whole = sheet.getCellRangeByPosition(0, 1, column_count - 1, used_end)
+    _workspace_empty_grid(whole, uno)
+    whole.setPropertyValue("CellBackColor", runtime.WHITE)
+
+    visible = sheet.getCellRangeByPosition(0, 0, column_count - 1, visible_end)
+    visible.setPropertyValue("IsTextWrapped", True)
+    _workspace_black_grid(visible, uno)
+    data = sheet.getCellRangeByPosition(0, 1, column_count - 1, visible_end)
+    data.setPropertyValue("CellBackColor", runtime.INPUT_FILL)
+    try:
+        sheet.getRows().getByIndex(visible_end).Height = 620
+    except Exception:
+        pass
+    return visible_end
+
+
+def _workspace_repair_grids(runtime, document) -> None:
+    """Restrict borders to actual data plus one operator input row."""
+
+    import uno
+
+    sheets = document.getSheets()
+    specs = (
+        (runtime.INPUT_COMMANDS, 6, ()),
+        (runtime.INPUT_VIOLATIONS, 6, ()),
+        (runtime.INPUT_WORKS, 11, (5,)),
+        (runtime.INPUT_DEFECTS, 10, ()),
+    )
+    for name, columns, ignored in specs:
+        if not sheets.hasByName(name):
+            continue
+        _workspace_compact_table(
+            runtime,
+            sheets.getByName(name),
+            columns,
+            ignored,
+        )
+
+    if sheets.hasByName(runtime.INPUT_STATE):
+        state = sheets.getByName(runtime.INPUT_STATE)
+        state_end = max(runtime._last_used_row(state), 84)
+        _workspace_empty_grid(
+            state.getCellRangeByPosition(0, 0, 10, state_end),
+            uno,
+        )
+        _workspace_black_grid(
+            state.getCellRangeByPosition(0, 0, 10, 84),
+            uno,
+        )
+
+    if sheets.hasByName(runtime.INPUT_WORKS):
+        works = sheets.getByName(runtime.INPUT_WORKS)
+        for row in range(1, 201):
+            excel_row = row + 1
+            works.getCellByPosition(5, row).setFormula(
+                f'=IF(COUNTA(D{excel_row}:E{excel_row})=0;"";'
+                f'MAX(D{excel_row}-E{excel_row};0))'
+            )
+
+
+def _workspace_install_calendar_button(runtime, document) -> None:
+    """Install an idempotent calendar button beside preparation-cell B3."""
+
+    import uno
+
+    sheets = document.getSheets()
+    if not sheets.hasByName(runtime.INPUT_PREP):
+        return
+    sheet = sheets.getByName(runtime.INPUT_PREP)
+    draw_page = sheet.getDrawPage()
+    forms = draw_page.getForms()
+    form_name = "ShiftHelperControls"
+    if forms.hasByName(form_name):
+        form = forms.getByName(form_name)
+    else:
+        form = document.createInstance("com.sun.star.form.component.Form")
+        form.setPropertyValue("Name", form_name)
+        forms.insertByName(form_name, form)
+
+    button_name = "ShiftHelperReportDateCalendar"
+    if form.hasByName(button_name):
+        model = form.getByName(button_name)
+    else:
+        model = document.createInstance(
+            "com.sun.star.form.component.CommandButton"
+        )
+        model.setPropertyValue("Name", button_name)
+        form.insertByName(button_name, model)
+    model.setPropertyValue("Label", "Календарь…")
+    model.setPropertyValue(
+        "ButtonType",
+        uno.Enum("com.sun.star.form.FormButtonType", "URL"),
+    )
+    model.setPropertyValue(
+        "TargetURL",
+        "service:ru.kves.shifthelper.calc.controls?calendarprep",
+    )
+    model.setPropertyValue("TargetFrame", "_self")
+    try:
+        model.setPropertyValue("HelpText", "Выбрать дату рапорта в B3")
+    except Exception:
+        pass
+
+    shape = None
+    for index in range(draw_page.getCount()):
+        candidate = draw_page.getByIndex(index)
+        try:
+            control = candidate.getControl()
+            if str(control.getPropertyValue("Name")) == button_name:
+                shape = candidate
+                break
+        except Exception:
+            continue
+    if shape is None:
+        shape = document.createInstance("com.sun.star.drawing.ControlShape")
+        shape.setControl(model)
+        draw_page.add(shape)
+
+    anchor = sheet.getCellByPosition(2, 2)
+    point = uno.createUnoStruct("com.sun.star.awt.Point")
+    point.X = int(anchor.Position.X) + 120
+    point.Y = int(anchor.Position.Y) + 40
+    size = uno.createUnoStruct("com.sun.star.awt.Size")
+    size.Width = 4300
+    size.Height = max(int(anchor.Size.Height) - 80, 650)
+    shape.setPosition(point)
+    shape.setSize(size)
+    runtime._set_col_width(sheet, 2, 4700)
+
+
+def install_calc_workspace_repairs(runtime) -> None:
+    """Patch the integrated report runtime with compact workspace UI repairs."""
+
+    if getattr(runtime, "_WORKSPACE_GRID_REPAIR_002_APPLIED", False):
+        return
+    original_prepare = runtime.prepare_report_input_sheets
+
+    def prepare_report_input_sheets(_args=None) -> None:
+        original_prepare(_args)
+        document = runtime._document()
+        _workspace_repair_grids(runtime, document)
+        _workspace_install_calendar_button(runtime, document)
+
+    runtime.prepare_report_input_sheets = prepare_report_input_sheets
+    runtime._WORKSPACE_GRID_REPAIR_002_APPLIED = True
