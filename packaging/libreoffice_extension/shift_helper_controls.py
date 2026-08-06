@@ -29,6 +29,7 @@ _ACTIONS = {
     "generation": ("report", "import_generation_from_outlook"),
     "report": ("report", "generate_full_report"),
     "calendar": ("tools", "show_calendar"),
+    "calendarprep": ("tools", "show_report_date_calendar"),
     "time": ("tools", "show_time_picker"),
     "autofit": ("tools", "auto_fit_selected_rows"),
     "clean": ("tools", "clean_selected_spaces"),
