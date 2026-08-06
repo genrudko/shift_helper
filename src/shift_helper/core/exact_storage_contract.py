@@ -11,6 +11,29 @@ STATUS_VALUE_COL = 10  # K
 META_KEY_COL = 12  # M
 META_VALUE_COL = 13  # N
 STATUSES = ("Работа", "Останов", "Авария", "Ремонт")
+EXACT_FORM_MARKERS = (
+    (
+        "Основные данные",
+        "Ввод - Основные",
+        "B3",
+        " Установленная мощность ВЭС, МВт",
+    ),
+    ("Команды по внешней инициативе", "Ввод - Команды", "B3", "ГТП"),
+    ("Нарушения ОТиПБ + Экология", "Ввод - Нарушения", "B3", "№"),
+    (
+        "Состояние ВЭУ",
+        "Ввод - Состояние ВЭУ",
+        "D3",
+        "Диспетчерское наименование ВЭУ",
+    ),
+    (
+        "Запланированные работы",
+        "Ввод - Работы",
+        "B3",
+        "Вид заявки\n(диспетчерская / оперативная)",
+    ),
+    ("Дефекты оборудования", "Ввод - Дефекты", "B3", "№"),
+)
 
 
 def _collect_statuses(prep) -> dict[str, str]:
@@ -120,6 +143,10 @@ def install_exact_storage_contract(module: ModuleType) -> None:
     if getattr(module, "_EXACT_STORAGE_CONTRACT_004_APPLIED", False):
         return
 
+    # These are the actual invariant headers in the approved workbook.  The
+    # previous approximate markers caused valid sheets to be replaced again on
+    # every preparation run, which could erase operator-entered values.
+    module.FORMS = EXACT_FORM_MARKERS
     module._ensure_service = lambda runtime, document: _ensure_service(
         module, runtime, document
     )
