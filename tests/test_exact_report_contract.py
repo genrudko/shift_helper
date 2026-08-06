@@ -82,6 +82,24 @@ def test_exact_storage_avoids_visible_preparation_columns() -> None:
         assert marker in source
 
 
+def test_exact_migration_preserves_legacy_operator_data() -> None:
+    path = ROOT / "src/shift_helper/core/exact_migration_contract.py"
+    source = path.read_text(encoding="utf-8")
+    ast.parse(source)
+    for marker in (
+        "_legacy_main",
+        "_legacy_state",
+        "_reset_main",
+        "_reset_state",
+        "_reset_works",
+        "_reset_violations",
+        "install_exact_migration_contract",
+        "Данные старых листов",
+    ):
+        assert marker in source
+    assert "openpyxl" not in source
+
+
 def test_exact_tools_runtime_uses_report_state_coordinates() -> None:
     path = ROOT / "src/shift_helper/core/exact_tools_contract.py"
     source = path.read_text(encoding="utf-8")
@@ -102,6 +120,7 @@ def test_controls_install_exact_contracts_for_report_and_tools() -> None:
     ).read_text(encoding="utf-8")
     assert "install_exact_storage_contract(exact_report_contract)" in source
     assert "exact_report_contract.install_exact_report_contract(runtime, root)" in source
+    assert "install_exact_migration_contract(exact_report_contract, runtime)" in source
     assert "install_exact_tools_contract(runtime, root)" in source
     assert "install_calc_workspace_repairs" not in source
 
@@ -115,4 +134,5 @@ def test_extension_payload_reconstructs_template_and_registers_runtimes() -> Non
     assert TEMPLATE_SHA256 in source
     assert "exact_report_contract.py" in source
     assert "exact_storage_contract.py" in source
+    assert "exact_migration_contract.py" in source
     assert "exact_tools_contract.py" in source
