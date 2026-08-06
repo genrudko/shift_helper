@@ -114,12 +114,16 @@ def _load_runtime(key: str) -> ModuleType:
         )
         repairs.patch_report_runtime(runtime)
         from shift_helper.core import exact_report_contract
+        from shift_helper.core.exact_migration_contract import (
+            install_exact_migration_contract,
+        )
         from shift_helper.core.exact_storage_contract import (
             install_exact_storage_contract,
         )
 
         install_exact_storage_contract(exact_report_contract)
         exact_report_contract.install_exact_report_contract(runtime, root)
+        install_exact_migration_contract(exact_report_contract, runtime)
     elif key == "tools":
         from shift_helper.core.exact_tools_contract import install_exact_tools_contract
 
