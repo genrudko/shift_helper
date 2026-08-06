@@ -1,4 +1,4 @@
-"""One-time migration from legacy input grids to exact report-form sheets."""
+"""Lossless one-time migration from legacy input grids to exact report forms."""
 
 from __future__ import annotations
 
@@ -26,77 +26,83 @@ _MANUAL_MAIN_KEYS = (
 )
 
 
-def _value(runtime: Any, sheet, column: int, row: int, document):
+def _cell_value(runtime: Any, sheet, column: int, row: int, document):
     return runtime._cell_value(sheet.getCellByPosition(column, row), document)
 
 
-def _present(value: object) -> bool:
+def _not_empty(value: object) -> bool:
     return value not in (None, "")
 
 
-def _legacy_rows(
-    runtime: Any,
-    document,
-    sheet_name: str,
-    header: str,
-    columns: int,
-) -> list[list[object]] | None:
+def _legacy_rows(runtime, document, sheet_name, header, columns):
     sheets = document.getSheets()
     if not sheets.hasByName(sheet_name):
         return None
     sheet = sheets.getByName(sheet_name)
     if str(sheet.getCellByPosition(0, 0).getString()).strip() != header:
         return None
-    rows: list[list[object]] = []
+    rows = []
     for row in range(1, runtime._last_used_row(sheet) + 1):
-        values = [_value(runtime, sheet, column, row, document) for column in range(columns)]
-        if any(_present(value) for value in values):
+        values = [
+            _cell_value(runtime, sheet, column, row, document)
+            for column in range(columns)
+        ]
+        if any(_not_empty(value) for value in values):
             rows.append(values)
     return rows
 
 
-def _legacy_main(runtime: Any, document) -> dict[str, object] | None:
+def _legacy_main(runtime, document):
     sheets = document.getSheets()
     if not sheets.hasByName(runtime.INPUT_MAIN):
         return None
     sheet = sheets.getByName(runtime.INPUT_MAIN)
     known = set(getattr(runtime, "_MAIN_KEYS", ()))
-    values: dict[str, object] = {}
+    values = {}
     for row in range(1, max(runtime._last_used_row(sheet), 24) + 1):
         key = str(sheet.getCellByPosition(0, row).getString()).strip()
         if key in known:
-            values[key] = _value(runtime, sheet, 1, row, document)
+            values[key] = _cell_value(runtime, sheet, 1, row, document)
     if len(values) < 3:
         return None
     values["_plans"] = {
         month: float(value)
         for month in range(1, 13)
-        if isinstance((value := _value(runtime, sheet, 4, month, document)), (int, float))
+        if isinstance(
+            (value := _cell_value(runtime, sheet, 4, month, document)),
+            (int, float),
+        )
     }
     values["_facts"] = {
         month: float(value)
         for month in range(1, 13)
-        if isinstance((value := _value(runtime, sheet, 5, month, document)), (int, float))
+        if isinstance(
+            (value := _cell_value(runtime, sheet, 5, month, document)),
+            (int, float),
+        )
     }
     return values
 
 
-def _legacy_state(runtime: Any, document) -> list[list[object]] | None:
+def _legacy_state(runtime, document):
     sheets = document.getSheets()
     if not sheets.hasByName(runtime.INPUT_STATE):
         return None
     sheet = sheets.getByName(runtime.INPUT_STATE)
     if str(sheet.getCellByPosition(2, 0).getString()).strip() != "ВЭУ":
         return None
-    rows: list[list[object]] = []
+    rows = []
     for row in range(1, runtime._last_used_row(sheet) + 1):
-        values = [_value(runtime, sheet, column, row, document) for column in range(11)]
+        values = [
+            _cell_value(runtime, sheet, column, row, document)
+            for column in range(11)
+        ]
         if str(values[2] or "").strip().startswith("ВЭУ-"):
             rows.append(values)
     return rows
 
 
-def _snapshot(runtime: Any, document) -> dict[str, object]:
+def _snapshot(runtime, document):
     return {
         "main": _legacy_main(runtime, document),
         "commands": _legacy_rows(
@@ -115,8 +121,8 @@ def _snapshot(runtime: Any, document) -> dict[str, object]:
     }
 
 
-def _clear(range_) -> None:
-    range_.clearContents(1023)
+def _clear(cell_range) -> None:
+    cell_range.clearContents(1023)
 
 
 def _copy_row_style(sheet, template_row: int, row: int, last_column: int) -> None:
@@ -134,7 +140,7 @@ def _copy_row_style(sheet, template_row: int, row: int, last_column: int) -> Non
 
 
 def _write_row(
-    runtime: Any,
+    runtime,
     document,
     sheet,
     row: int,
@@ -150,7 +156,7 @@ def _write_row(
         )
 
 
-def _reset_main(module, runtime: Any, document, snapshot: dict[str, object] | None) -> None:
+def _restore_main(module, runtime, document, snapshot) -> None:
     sheet = document.getSheets().getByName(runtime.INPUT_MAIN)
     for key in _MANUAL_MAIN_KEYS:
         _clear(module._cell(sheet, module.MAIN[key]))
@@ -158,40 +164,37 @@ def _reset_main(module, runtime: Any, document, snapshot: dict[str, object] | No
     if not snapshot:
         return
     for key in _MANUAL_MAIN_KEYS:
-        value = snapshot.get(key)
-        if _present(value):
+        if _not_empty(value := snapshot.get(key)):
             module._set_main(runtime, sheet, key, value, document)
     for key in ("Дата рапорта", "ФИО НСС"):
-        value = snapshot.get(key)
-        if _present(value):
+        if _not_empty(value := snapshot.get(key)):
             module._set_main(runtime, sheet, key, value, document)
-    for month, value in dict(snapshot.get("_plans", {})).items():
+    for month, value in snapshot.get("_plans", {}).items():
         runtime._write_value(sheet.getCellByPosition(8, int(month) + 3), value)
-    for month, value in dict(snapshot.get("_facts", {})).items():
+    for month, value in snapshot.get("_facts", {}).items():
         runtime._write_value(sheet.getCellByPosition(9, int(month) + 3), value)
 
 
-def _reset_simple(
-    runtime: Any,
+def _restore_simple(
+    runtime,
     document,
-    sheet_name: str,
-    rows: list[list[object]] | None,
+    sheet_name,
+    rows,
     *,
-    data_start: int,
-    template_end: int,
-    last_column: int,
-    start_column: int = 1,
+    data_start,
+    template_end,
+    last_column,
 ) -> None:
     sheet = document.getSheets().getByName(sheet_name)
     end = max(runtime._last_used_row(sheet), template_end, data_start)
-    _clear(sheet.getCellRangeByPosition(start_column, data_start, last_column, end))
+    _clear(sheet.getCellRangeByPosition(1, data_start, last_column, end))
     for index, values in enumerate(rows or []):
         row = data_start + index
         _copy_row_style(sheet, template_end, row, last_column)
-        _write_row(runtime, document, sheet, row, start_column, values)
+        _write_row(runtime, document, sheet, row, 1, values)
 
 
-def _reset_violations(runtime: Any, document, rows: list[list[object]] | None) -> None:
+def _restore_violations(runtime, document, rows) -> None:
     sheet = document.getSheets().getByName(runtime.INPUT_VIOLATIONS)
     positions = {
         "ОТиПБ": iter((3, 4)),
@@ -201,8 +204,7 @@ def _reset_violations(runtime: Any, document, rows: list[list[object]] | None) -
     for first, last in ((3, 4), (7, 8), (11, 12)):
         _clear(sheet.getCellRangeByPosition(1, first, 5, last))
     for values in rows or []:
-        category = str(values[0] or "").strip()
-        target = positions.get(category)
+        target = positions.get(str(values[0] or "").strip())
         if target is None:
             continue
         try:
@@ -212,26 +214,26 @@ def _reset_violations(runtime: Any, document, rows: list[list[object]] | None) -
         _write_row(runtime, document, sheet, row, 1, values[1:6])
 
 
-def _status(module, values: list[object]) -> str:
+def _status(module, values) -> str:
     explicit = str(values[7] or "").strip()
-    if explicit == "Авария":
+    if explicit in _STATUSES:
         return explicit
     inferred = module._infer(values[8], values[6], values[5])
     return inferred if inferred in _STATUSES else "Работа"
 
 
-def _reset_state(module, runtime: Any, document, rows: list[list[object]] | None) -> None:
+def _restore_state(module, runtime, document, rows) -> None:
     sheets = document.getSheets()
     sheet = sheets.getByName(runtime.INPUT_STATE)
-    target: dict[str, int] = {}
+    target = {}
     for row in range(3, max(runtime._last_used_row(sheet), 97) + 1):
         name = str(sheet.getCellByPosition(3, row).getString()).strip()
-        if name.startswith("ВЭУ-"):
-            target[name] = row
-            runtime._write_value(sheet.getCellByPosition(4, row), 2.5)
-            runtime._write_value(sheet.getCellByPosition(5, row), 2.5)
-            runtime._write_value(sheet.getCellByPosition(6, row), 0.0)
-            _clear(sheet.getCellRangeByPosition(8, row, 10, row))
+        if not name.startswith("ВЭУ-"):
+            continue
+        target[name] = row
+        for column, value in ((4, 2.5), (5, 2.5), (6, 0.0)):
+            runtime._write_value(sheet.getCellByPosition(column, row), value)
+        _clear(sheet.getCellRangeByPosition(8, row, 10, row))
     prep = sheets.getByName(runtime.INPUT_PREP)
     for number in range(1, 85):
         prep.getCellByPosition(9, number).setString(f"ВЭУ-{number}")
@@ -244,14 +246,13 @@ def _reset_state(module, runtime: Any, document, rows: list[list[object]] | None
         for column, value in zip((4, 5, 6), values[3:6], strict=True):
             runtime._write_value(sheet.getCellByPosition(column, row), value)
         _write_row(runtime, document, sheet, row, 8, values[8:11])
-        match = re.fullmatch(r"ВЭУ-(\d+)", name)
-        if match:
+        if match := re.fullmatch(r"ВЭУ-(\d+)", name):
             number = int(match.group(1))
             prep.getCellByPosition(9, number).setString(name)
             prep.getCellByPosition(10, number).setString(_status(module, values))
 
 
-def _reset_works(runtime: Any, document, rows: list[list[object]] | None) -> None:
+def _restore_works(runtime, document, rows) -> None:
     sheet = document.getSheets().getByName(runtime.INPUT_WORKS)
     end = max(runtime._last_used_row(sheet), 13)
     _clear(sheet.getCellRangeByPosition(1, 3, 11, end))
@@ -260,15 +261,16 @@ def _reset_works(runtime: Any, document, rows: list[list[object]] | None) -> Non
         _copy_row_style(sheet, 13, row, 11)
         _write_row(runtime, document, sheet, row, 1, values[:5])
         _write_row(runtime, document, sheet, row, 7, values[6:11])
+        excel_row = row + 1
         sheet.getCellByPosition(6, row).setFormula(
-            f'=IF(COUNTA(E{row + 1}:F{row + 1})=0;"";'
-            f'MAX(E{row + 1}-F{row + 1};0))'
+            f'=IF(COUNTA(E{excel_row}:F{excel_row})=0;"";'
+            f'MAX(E{excel_row}-F{excel_row};0))'
         )
 
 
-def _restore(module, runtime: Any, document, snapshot: dict[str, object]) -> None:
-    _reset_main(module, runtime, document, snapshot["main"])
-    _reset_simple(
+def _restore(module, runtime, document, snapshot) -> None:
+    _restore_main(module, runtime, document, snapshot["main"])
+    _restore_simple(
         runtime,
         document,
         runtime.INPUT_COMMANDS,
@@ -277,10 +279,10 @@ def _restore(module, runtime: Any, document, snapshot: dict[str, object]) -> Non
         template_end=5,
         last_column=6,
     )
-    _reset_violations(runtime, document, snapshot["violations"])
-    _reset_state(module, runtime, document, snapshot["state"])
-    _reset_works(runtime, document, snapshot["works"])
-    _reset_simple(
+    _restore_violations(runtime, document, snapshot["violations"])
+    _restore_state(module, runtime, document, snapshot["state"])
+    _restore_works(runtime, document, snapshot["works"])
+    _restore_simple(
         runtime,
         document,
         runtime.INPUT_DEFECTS,
@@ -292,8 +294,8 @@ def _restore(module, runtime: Any, document, snapshot: dict[str, object]) -> Non
     module._apply_formulas(runtime, document)
 
 
-def install_exact_migration_contract(module, runtime: Any) -> None:
-    """Wrap exact preparation with lossless migration of legacy input sheets."""
+def install_exact_migration_contract(module, runtime) -> None:
+    """Wrap exact preparation and migrate only when exact sheets are rebuilt."""
 
     if getattr(runtime, "_EXACT_MIGRATION_CONTRACT_005_APPLIED", False):
         return
@@ -306,20 +308,19 @@ def install_exact_migration_contract(module, runtime: Any) -> None:
             not module._exact(document, target, address, marker)
             for _source, target, address, marker in module.FORMS
         )
-        has_legacy_data = any(value is not None for value in snapshot.values())
+        had_legacy_data = any(value is not None for value in snapshot.values())
         original(_args)
-        if needs_rebuild:
-            _restore(module, runtime, document, snapshot)
-            if has_legacy_data:
-                runtime._message(
-                    "Точные формы рапорта подготовлены. Данные старых листов "
-                    "перенесены без выбора внешнего шаблона."
-                )
-            else:
-                runtime._message(
-                    "Точные формы рапорта подготовлены без демонстрационных "
-                    "значений встроенного шаблона."
-                )
+        if not needs_rebuild:
+            return
+        _restore(module, runtime, document, snapshot)
+        runtime._message(
+            "Точные формы рапорта подготовлены. "
+            + (
+                "Данные старых листов перенесены без выбора внешнего шаблона."
+                if had_legacy_data
+                else "Демонстрационные значения встроенного шаблона очищены."
+            )
+        )
 
     runtime.prepare_report_input_sheets = prepare
     runtime._EXACT_MIGRATION_CONTRACT_005_APPLIED = True
