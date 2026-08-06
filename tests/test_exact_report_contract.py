@@ -82,7 +82,7 @@ def test_exact_storage_avoids_visible_preparation_columns() -> None:
         assert marker in source
 
 
-def test_exact_migration_preserves_legacy_operator_data() -> None:
+def test_exact_migration_preserves_data_and_clears_template_samples() -> None:
     path = ROOT / "src/shift_helper/core/exact_migration_contract.py"
     source = path.read_text(encoding="utf-8")
     ast.parse(source)
@@ -93,8 +93,10 @@ def test_exact_migration_preserves_legacy_operator_data() -> None:
         "_reset_state",
         "_reset_works",
         "_reset_violations",
+        "needs_rebuild",
+        "has_legacy_data",
+        "без демонстрационных",
         "install_exact_migration_contract",
-        "Данные старых листов",
     ):
         assert marker in source
     assert "openpyxl" not in source
