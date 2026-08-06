@@ -1,17 +1,27 @@
-"""Package the preserved operator-runtime payload beside its safe bootstrap."""
+"""Register preserved runtimes and embedded Calc workbook templates."""
 
 from __future__ import annotations
 
 from shift_helper import extension_builder
 
-_PAYLOAD_TARGET = "Scripts/python/shift_helper_tools_payload.py"
-_PAYLOAD_SOURCE = (
-    "packaging/libreoffice_extension/Scripts/python/"
-    "shift_helper_tools_payload.py"
-)
+_STATIC_PAYLOADS = {
+    "Scripts/python/shift_helper_tools_payload.py": (
+        "packaging/libreoffice_extension/Scripts/python/"
+        "shift_helper_tools_payload.py"
+    ),
+    "Templates/report_template.xlsx": (
+        "packaging/libreoffice_extension/Templates/report_template.xlsx"
+    ),
+}
+_SOURCE_PAYLOADS = {
+    "Scripts/python/pythonpath/shift_helper/core/exact_report_contract.py": (
+        "src/shift_helper/core/exact_report_contract.py"
+    ),
+}
 
 
 def install_payload_copy() -> None:
-    """Register the payload copy before building the Calc OXT."""
+    """Register every non-generated OXT payload before build and verification."""
 
-    extension_builder._STATIC_FILES[_PAYLOAD_TARGET] = _PAYLOAD_SOURCE
+    extension_builder._STATIC_FILES.update(_STATIC_PAYLOADS)
+    extension_builder._SOURCE_FILES.update(_SOURCE_PAYLOADS)
