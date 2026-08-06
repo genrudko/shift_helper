@@ -267,34 +267,28 @@ def _reset_works(runtime: Any, document, rows: list[list[object]] | None) -> Non
 
 
 def _restore(module, runtime: Any, document, snapshot: dict[str, object]) -> None:
-    if snapshot["main"] is not None:
-        _reset_main(module, runtime, document, snapshot["main"])
-    if snapshot["commands"] is not None:
-        _reset_simple(
-            runtime,
-            document,
-            runtime.INPUT_COMMANDS,
-            snapshot["commands"],
-            data_start=3,
-            template_end=5,
-            last_column=6,
-        )
-    if snapshot["violations"] is not None:
-        _reset_violations(runtime, document, snapshot["violations"])
-    if snapshot["state"] is not None:
-        _reset_state(module, runtime, document, snapshot["state"])
-    if snapshot["works"] is not None:
-        _reset_works(runtime, document, snapshot["works"])
-    if snapshot["defects"] is not None:
-        _reset_simple(
-            runtime,
-            document,
-            runtime.INPUT_DEFECTS,
-            snapshot["defects"],
-            data_start=3,
-            template_end=17,
-            last_column=10,
-        )
+    _reset_main(module, runtime, document, snapshot["main"])
+    _reset_simple(
+        runtime,
+        document,
+        runtime.INPUT_COMMANDS,
+        snapshot["commands"],
+        data_start=3,
+        template_end=5,
+        last_column=6,
+    )
+    _reset_violations(runtime, document, snapshot["violations"])
+    _reset_state(module, runtime, document, snapshot["state"])
+    _reset_works(runtime, document, snapshot["works"])
+    _reset_simple(
+        runtime,
+        document,
+        runtime.INPUT_DEFECTS,
+        snapshot["defects"],
+        data_start=3,
+        template_end=17,
+        last_column=10,
+    )
     module._apply_formulas(runtime, document)
 
 
@@ -308,14 +302,24 @@ def install_exact_migration_contract(module, runtime: Any) -> None:
     def prepare(_args=None) -> None:
         document = runtime._document()
         snapshot = _snapshot(runtime, document)
-        needs_migration = any(value is not None for value in snapshot.values())
+        needs_rebuild = any(
+            not module._exact(document, target, address, marker)
+            for _source, target, address, marker in module.FORMS
+        )
+        has_legacy_data = any(value is not None for value in snapshot.values())
         original(_args)
-        if needs_migration:
+        if needs_rebuild:
             _restore(module, runtime, document, snapshot)
-            runtime._message(
-                "Точные формы рапорта подготовлены. Данные старых листов "
-                "перенесены без выбора внешнего шаблона."
-            )
+            if has_legacy_data:
+                runtime._message(
+                    "Точные формы рапорта подготовлены. Данные старых листов "
+                    "перенесены без выбора внешнего шаблона."
+                )
+            else:
+                runtime._message(
+                    "Точные формы рапорта подготовлены без демонстрационных "
+                    "значений встроенного шаблона."
+                )
 
     runtime.prepare_report_input_sheets = prepare
     runtime._EXACT_MIGRATION_CONTRACT_005_APPLIED = True
