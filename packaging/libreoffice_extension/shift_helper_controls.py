@@ -19,6 +19,7 @@ _INPUT_MAIN = "Ввод - Основные"
 _RUNTIME_FILES = {
     "auto": ("_shift_helper_extension_auto", "shift_helper_auto.py"),
     "report": ("_shift_helper_extension_report", "shift_helper_report.py"),
+    "tools": ("_shift_helper_extension_tools", "shift_helper_tools.py"),
 }
 _ACTIONS = {
     "enable": ("auto", "enable_automatic_input"),
@@ -27,6 +28,16 @@ _ACTIONS = {
     "prepare": ("report", "prepare_report_input_sheets"),
     "generation": ("report", "import_generation_from_outlook"),
     "report": ("report", "generate_full_report"),
+    "calendar": ("tools", "show_calendar"),
+    "time": ("tools", "show_time_picker"),
+    "autofit": ("tools", "auto_fit_selected_rows"),
+    "clean": ("tools", "clean_selected_spaces"),
+    "mergecopy": ("tools", "merge_and_copy_selection"),
+    "sorttime": ("tools", "sort_selected_rows_by_time"),
+    "maintenance": ("tools", "insert_wtg_maintenance_text"),
+    "inspections": ("tools", "show_today_inspections"),
+    "rotor": ("tools", "update_rotor_limits_from_log"),
+    "mail": ("tools", "create_outlook_mail_draft"),
 }
 _RUNTIMES: dict[str, ModuleType] = {}
 _REPORT_REPAIRS_MODULE = "_shift_helper_extension_report_repairs"
