@@ -47,18 +47,16 @@ def test_operator_runtime_contains_nonblocking_clipboard_and_stable_sort() -> No
     assert "clipboard.setContents(_CLIPBOARD_TRANSFERABLE, None)" not in source
 
 
-def test_report_repair_contains_compact_grids_and_b3_calendar_button() -> None:
-    source = _decode_payload(
-        ROOT
-        / "packaging/libreoffice_extension/Scripts/python/shift_helper_calc.py",
-        "_PHOTO_REPAIR_PAYLOAD",
-        base85=False,
-    )
+def test_operator_helpers_contain_compact_grids_and_b3_calendar_button() -> None:
+    source = (
+        ROOT / "src/shift_helper/core/operator_tools.py"
+    ).read_text(encoding="utf-8")
     for marker in (
         "WORKSPACE-GRID-REPAIR-002",
-        "_repair_workspace_grids",
-        "_compact_input_table",
-        "_install_report_date_calendar_button",
+        "install_calc_workspace_repairs",
+        "_workspace_repair_grids",
+        "_workspace_compact_table",
+        "_workspace_install_calendar_button",
         "service:ru.kves.shifthelper.calc.controls?calendarprep",
         "COUNTA(D{excel_row}:E{excel_row})",
     ):
@@ -73,3 +71,4 @@ def test_uno_component_routes_report_date_calendar() -> None:
         '"calendarprep": ("tools", "show_report_date_calendar")'
         in source
     )
+    assert "install_calc_workspace_repairs(module)" in source
