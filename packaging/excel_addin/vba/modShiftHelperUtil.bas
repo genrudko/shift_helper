@@ -23,6 +23,7 @@ Private Declare Sub CopyMemory Lib "kernel32" Alias "RtlMoveMemory" (ByVal Desti
 
 Private Const CF_UNICODETEXT As Long = 13
 Private Const GMEM_MOVEABLE As Long = &H2&
+Private Const GMEM_ZEROINIT As Long = &H40&
 
 Public Function SH_U(ByVal hexText As String) As String
     Dim i As Long, result As String
@@ -130,7 +131,7 @@ Public Function SH_CopyUnicodeText(ByVal text As String) As Boolean
     If OpenClipboard(0) = 0 Then Exit Function
     On Error GoTo Failed
     EmptyClipboard
-    hMem = GlobalAlloc(GMEM_MOVEABLE, byteCount)
+    hMem = GlobalAlloc(GMEM_MOVEABLE Or GMEM_ZEROINIT, byteCount)
     If hMem = 0 Then GoTo Failed
     pMem = GlobalLock(hMem)
     If pMem = 0 Then GoTo Failed
