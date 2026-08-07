@@ -8,7 +8,8 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from shift_helper.core.selection import event_filter_code, report_window as legacy_report_window
+from shift_helper.core.selection import event_filter_code
+from shift_helper.core.selection import report_window as legacy_report_window
 from shift_helper.core.workbook_contract import (
     APPROVED_REPORT_TEMPLATE_SHA256,
     INPUT_OUTAGES,
