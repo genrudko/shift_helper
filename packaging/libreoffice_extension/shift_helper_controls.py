@@ -26,7 +26,8 @@ _ACTIONS = {
     "generation": ("report", "import_generation_from_outlook"),
     "report": ("report", "generate_full_report"),
     "calendar": ("tools", "show_calendar"),
-    "calendarprep": ("tools", "show_report_date_calendar"),
+    "calendarprep": ("report", "show_report_date_calendar"),
+    "generationsettings": ("report", "show_generation_import_settings"),
     "time": ("tools", "show_time_picker"),
     "autofit": ("tools", "auto_fit_selected_rows"),
     "clean": ("tools", "clean_selected_spaces"),
@@ -114,6 +115,9 @@ def _load_runtime(key: str) -> ModuleType:
         )
         repairs.patch_report_runtime(runtime)
         from shift_helper.core import exact_report_contract
+        from shift_helper.core.acceptance_repairs_006 import (
+            install_acceptance_repairs,
+        )
         from shift_helper.core.exact_migration_contract import (
             install_exact_migration_contract,
         )
@@ -123,6 +127,7 @@ def _load_runtime(key: str) -> ModuleType:
 
         install_exact_storage_contract(exact_report_contract)
         exact_report_contract.install_exact_report_contract(runtime, root)
+        install_acceptance_repairs(exact_report_contract, runtime, root)
         install_exact_migration_contract(exact_report_contract, runtime)
     elif key == "tools":
         from shift_helper.core.exact_tools_contract import install_exact_tools_contract
