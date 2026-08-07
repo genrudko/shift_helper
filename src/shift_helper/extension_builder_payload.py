@@ -44,6 +44,9 @@ _SOURCE_PAYLOADS = {
     "Scripts/python/pythonpath/shift_helper/core/exact_tools_contract.py": (
         "src/shift_helper/core/exact_tools_contract.py"
     ),
+    "Scripts/python/pythonpath/shift_helper/core/acceptance_repairs_006.py": (
+        "src/shift_helper/core/acceptance_repairs_006.py"
+    ),
 }
 _ORIGINAL_PAYLOAD = extension_builder._payload
 _ORIGINAL_VERIFY = extension_builder.verify_calc_extension
