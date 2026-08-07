@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import zipfile
+from io import BytesIO
 from pathlib import Path
 
 from shift_helper.extension_builder import (
@@ -9,6 +10,7 @@ from shift_helper.extension_builder import (
     build_calc_extension,
     verify_calc_extension,
 )
+from shift_helper.extension_builder_payload import _TEMPLATE_ENTRY_SHA256
 
 
 def test_build_extension_contains_integrated_exact_form_payload(tmp_path: Path) -> None:
@@ -88,9 +90,12 @@ def test_build_extension_contains_integrated_exact_form_payload(tmp_path: Path) 
         assert marker in acceptance
     compile(acceptance, "acceptance_repairs_006.py", "exec")
 
-    assert hashlib.sha256(template).hexdigest() == (
-        "cde2d2fb042f27dc514f71ac991676e423dd6a68667fbb6d3f928ab610acbb32"
-    )
+    with zipfile.ZipFile(BytesIO(template)) as template_archive:
+        assert template_archive.testzip() is None
+        assert set(template_archive.namelist()) == set(_TEMPLATE_ENTRY_SHA256)
+        for name, expected in _TEMPLATE_ENTRY_SHA256.items():
+            assert hashlib.sha256(template_archive.read(name)).hexdigest() == expected
+
     assert "service:ru.kves.shifthelper.calc.controls?prepare" in addons
     assert "service:ru.kves.shifthelper.calc.controls?report" in addons
 
