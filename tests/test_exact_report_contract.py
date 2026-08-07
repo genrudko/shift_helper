@@ -8,6 +8,8 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
+from shift_helper.extension_builder_payload import _TEMPLATE_ENTRY_SHA256
+
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_DIR = ROOT / "packaging/libreoffice_extension/Templates"
 TEMPLATE_SHA256 = "cde2d2fb042f27dc514f71ac991676e423dd6a68667fbb6d3f928ab610acbb32"
@@ -18,9 +20,7 @@ def _report_bytes() -> bytes:
     chunks = sorted(TEMPLATE_DIR.glob("report_template.b64.*"))
     assert len(chunks) == 8
     encoded = "".join(path.read_text(encoding="ascii") for path in chunks)
-    content = base64.b64decode(encoded, validate=True)
-    assert hashlib.sha256(content).hexdigest() == TEMPLATE_SHA256
-    return content
+    return base64.b64decode(encoded, validate=True)
 
 
 def _sheet_names(content: bytes) -> list[str]:
@@ -34,8 +34,14 @@ def _sheet_names(content: bytes) -> list[str]:
     return [item.attrib["name"] for item in sheets]
 
 
-def test_embedded_report_contains_all_approved_sheets() -> None:
-    assert _sheet_names(_report_bytes()) == [
+def test_embedded_report_matches_every_approved_workbook_member() -> None:
+    content = _report_bytes()
+    with ZipFile(BytesIO(content)) as archive:
+        assert archive.testzip() is None
+        assert set(archive.namelist()) == set(_TEMPLATE_ENTRY_SHA256)
+        for name, expected in _TEMPLATE_ENTRY_SHA256.items():
+            assert hashlib.sha256(archive.read(name)).hexdigest() == expected
+    assert _sheet_names(content) == [
         "Основные данные",
         "Аварийные отключения ЛЭП",
         "Команды по внешней инициативе",
@@ -76,13 +82,10 @@ def test_final_acceptance_moves_status_to_visible_state_sheet() -> None:
     ast.parse(storage)
     ast.parse(acceptance)
 
-    # M:N remain the only hidden service area in the final acceptance repair.
     assert "META_KEY_COL = 12" in storage
     assert "META_VALUE_COL = 13" in storage
     assert "META_KEY_COLUMN = 12" in acceptance
     assert "META_VALUE_COLUMN = 13" in acceptance
-
-    # The transitional J:K status store is migrated and then removed.
     assert "STATUS_COLUMN = 11" in acceptance
     assert 'header.setString("Статус ВЭУ")' in acceptance
     assert "_clear_legacy_statuses(prep)" in acceptance
@@ -144,6 +147,8 @@ def test_extension_payload_reconstructs_template_and_registers_runtimes() -> Non
     assert '"Templates/report_template.xlsx"' in source
     assert "base64.b64decode" in source
     assert TEMPLATE_SHA256 in source
+    assert "_TEMPLATE_ENTRY_SHA256" in source
+    assert "archive.testzip()" in source
     assert "exact_report_contract.py" in source
     assert "exact_storage_contract.py" in source
     assert "exact_migration_contract.py" in source
