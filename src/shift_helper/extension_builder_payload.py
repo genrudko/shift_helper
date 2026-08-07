@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import re
+import struct
 import xml.etree.ElementTree as ET
 import zipfile
+import zlib
 from io import BytesIO
 from pathlib import Path
 
@@ -74,6 +77,10 @@ _SOURCE_PAYLOADS = {
 }
 _ORIGINAL_PAYLOAD = extension_builder._payload
 _ORIGINAL_VERIFY = extension_builder.verify_calc_extension
+_LOCAL_HEADER = struct.Struct("<4s5H3I2H")
+_LOCAL_SIGNATURE = b"PK\x03\x04"
+_CENTRAL_SIGNATURE = b"PK\x01\x02"
+_END_SIGNATURE = b"PK\x05\x06"
 
 
 def _template_sheet_names(content: bytes) -> tuple[str, ...]:
@@ -145,9 +152,8 @@ def _template_encoded(repo_root: Path) -> str:
             numbered[index] = path
             continue
         # PR #15 also retained 00a/00b/00c historical split artifacts. They
-        # overlap the canonical numbered stream and are not authoritative
-        # payload chunks, so deliberately ignore them. Integrity is enforced
-        # below by exact XLSX member hashes and the approved seven-sheet order.
+        # overlap the numbered stream and therefore must never be concatenated
+        # into the payload a second time.
         if _TEMPLATE_ZERO_SPLIT_RE.fullmatch(path.name) is not None:
             continue
         unknown.append(path.name)
@@ -169,16 +175,133 @@ def _template_encoded(repo_root: Path) -> str:
     return "".join(numbered[index].read_text(encoding="ascii") for index in indexes)
 
 
+def _decode_local_member(method: int, compressed: bytes) -> bytes:
+    if method == zipfile.ZIP_STORED:
+        return compressed
+    if method == zipfile.ZIP_DEFLATED:
+        try:
+            return zlib.decompress(compressed, -zlib.MAX_WBITS)
+        except zlib.error as exc:
+            raise extension_builder.ExtensionBuildError(
+                "Повреждены сжатые данные встроенного шаблона рапорта."
+            ) from exc
+    raise extension_builder.ExtensionBuildError(
+        f"Неподдерживаемый метод сжатия встроенного шаблона: {method}."
+    )
+
+
+def _local_members(content: bytes) -> list[tuple[str, bytes]]:
+    """Read Office ZIP local records without trusting a damaged central directory."""
+
+    offset = 0
+    members: list[tuple[str, bytes]] = []
+    names: set[str] = set()
+    while offset + 4 <= len(content):
+        signature = content[offset : offset + 4]
+        if signature in {_CENTRAL_SIGNATURE, _END_SIGNATURE}:
+            break
+        if signature != _LOCAL_SIGNATURE or offset + _LOCAL_HEADER.size > len(content):
+            raise extension_builder.ExtensionBuildError(
+                "Нарушена структура локальных ZIP-записей шаблона рапорта."
+            )
+        (
+            _signature,
+            _version,
+            flags,
+            method,
+            _mtime,
+            _mdate,
+            expected_crc,
+            compressed_size,
+            uncompressed_size,
+            name_size,
+            extra_size,
+        ) = _LOCAL_HEADER.unpack_from(content, offset)
+        if flags & 0x08:
+            raise extension_builder.ExtensionBuildError(
+                "Шаблон использует ZIP data descriptor; восстановление запрещено."
+            )
+        name_start = offset + _LOCAL_HEADER.size
+        name_end = name_start + name_size
+        data_start = name_end + extra_size
+        data_end = data_start + compressed_size
+        if data_end > len(content):
+            raise extension_builder.ExtensionBuildError(
+                "Обрезаны локальные данные встроенного шаблона рапорта."
+            )
+        encoding = "utf-8" if flags & 0x800 else "cp437"
+        try:
+            name = content[name_start:name_end].decode(encoding)
+        except UnicodeDecodeError as exc:
+            raise extension_builder.ExtensionBuildError(
+                "Повреждено имя файла внутри шаблона рапорта."
+            ) from exc
+        if name in names:
+            raise extension_builder.ExtensionBuildError(
+                f"Дублируется локальная ZIP-запись шаблона: {name}."
+            )
+        payload = _decode_local_member(method, content[data_start:data_end])
+        if len(payload) != uncompressed_size:
+            raise extension_builder.ExtensionBuildError(
+                f"Неверный размер файла внутри шаблона: {name}."
+            )
+        actual_crc = binascii.crc32(payload) & 0xFFFFFFFF
+        if actual_crc != expected_crc:
+            raise extension_builder.ExtensionBuildError(
+                f"Неверная CRC файла внутри шаблона: {name}."
+            )
+        members.append((name, payload))
+        names.add(name)
+        offset = data_end
+
+    if set(names) != set(_TEMPLATE_ENTRY_SHA256):
+        raise extension_builder.ExtensionBuildError(
+            "Локальные ZIP-записи не воспроизводят полный утверждённый шаблон рапорта."
+        )
+    for name, payload in members:
+        actual = hashlib.sha256(payload).hexdigest()
+        if actual != _TEMPLATE_ENTRY_SHA256[name]:
+            raise extension_builder.ExtensionBuildError(
+                f"Локальная ZIP-запись отличается от утверждённого шаблона: {name}."
+            )
+    return members
+
+
+def _rebuild_template_zip(content: bytes) -> bytes:
+    """Rebuild only ZIP metadata after proving every local member byte-for-byte."""
+
+    members = _local_members(content)
+    target = BytesIO()
+    with zipfile.ZipFile(
+        target, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
+    ) as archive:
+        for name, payload in members:
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.create_system = 0
+            info.external_attr = 0
+            archive.writestr(info, payload, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+    rebuilt = target.getvalue()
+    _validate_template(rebuilt)
+    return rebuilt
+
+
 def _template_bytes(repo_root: Path) -> bytes:
     encoded = _template_encoded(repo_root)
     try:
         content = base64.b64decode(encoded, validate=True)
-    except ValueError as exc:
+    except (ValueError, binascii.Error) as exc:
         raise extension_builder.ExtensionBuildError(
             "Встроенный шаблон рапорта повреждён."
         ) from exc
-    _validate_template(content)
-    return content
+    try:
+        _validate_template(content)
+        return content
+    except extension_builder.ExtensionBuildError:
+        # The accepted repository payload contains valid local OOXML members but
+        # damaged ZIP central-directory metadata. Recover metadata only; every
+        # member must still pass the exact accepted SHA-256 contract above.
+        return _rebuild_template_zip(content)
 
 
 def _payload_with_template(repo_root: Path) -> dict[str, bytes]:
