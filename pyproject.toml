@@ -60,3 +60,5 @@ select = ["E", "F", "I", "UP", "B"]
 "src/shift_helper/core/exact_report_contract.py" = ["E501", "F401", "B905"]
 "src/shift_helper/core/exact_migration_contract.py" = ["E501"]
 "src/shift_helper/core/acceptance_repairs_006.py" = ["E501"]
+# The semantic XLSX manifest intentionally keeps one SHA-256 per entry inline.
+"src/shift_helper/extension_builder_payload.py" = ["E501"]
