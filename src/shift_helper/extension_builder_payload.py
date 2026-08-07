@@ -124,7 +124,7 @@ def _validate_template(content: bytes) -> None:
 
 
 def _template_encoded(repo_root: Path) -> str:
-    """Return numbered 00..NN stream and validate historical split aliases."""
+    """Return only the canonical numbered 00..NN Base64 stream."""
 
     paths = sorted(repo_root.glob(_TEMPLATE_GLOB))
     if not paths:
@@ -133,7 +133,6 @@ def _template_encoded(repo_root: Path) -> str:
         )
 
     numbered: dict[int, Path] = {}
-    zero_split: list[Path] = []
     unknown: list[str] = []
     for path in paths:
         numbered_match = _TEMPLATE_CHUNK_RE.fullmatch(path.name)
@@ -145,8 +144,11 @@ def _template_encoded(repo_root: Path) -> str:
                 )
             numbered[index] = path
             continue
+        # PR #15 also retained 00a/00b/00c historical split artifacts. They
+        # overlap the canonical numbered stream and are not authoritative
+        # payload chunks, so deliberately ignore them. Integrity is enforced
+        # below by exact XLSX member hashes and the approved seven-sheet order.
         if _TEMPLATE_ZERO_SPLIT_RE.fullmatch(path.name) is not None:
-            zero_split.append(path)
             continue
         unknown.append(path.name)
 
@@ -164,21 +166,7 @@ def _template_encoded(repo_root: Path) -> str:
         raise extension_builder.ExtensionBuildError(
             f"Нарушена последовательность частей шаблона: {indexes}."
         )
-    canonical = "".join(numbered[index].read_text(encoding="ascii") for index in indexes)
-
-    # PR #15 retained an older three-file split (00a/00b/00c) of the beginning
-    # of the very same Base64 stream. It overlaps 00 and the start of 01, so it
-    # must never be concatenated as an additional payload. Keep it only as
-    # fail-closed evidence that the historical split still matches the prefix.
-    if zero_split:
-        split_prefix = "".join(
-            path.read_text(encoding="ascii") for path in sorted(zero_split)
-        )
-        if not canonical.startswith(split_prefix):
-            raise extension_builder.ExtensionBuildError(
-                "Историческое разбиение 00a/00b/00c расходится с каноническим шаблоном."
-            )
-    return canonical
+    return "".join(numbered[index].read_text(encoding="ascii") for index in indexes)
 
 
 def _template_bytes(repo_root: Path) -> bytes:
