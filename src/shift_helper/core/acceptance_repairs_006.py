@@ -8,7 +8,6 @@ import subprocess
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 import uno
 import unohelper
@@ -97,6 +96,24 @@ def _ensure_status_column(module, runtime, document) -> None:
     except Exception:
         pass
     header = state.getCellByPosition(STATUS_COLUMN, 2)
+    if str(header.getString()).strip() != "Статус ВЭУ":
+        try:
+            source = state.getCellRangeByPosition(
+                10, 2, 10, max(runtime._last_used_row(state), 97)
+            )
+            destination = uno.createUnoStruct("com.sun.star.table.CellAddress")
+            destination.Sheet = source.getRangeAddress().Sheet
+            destination.Column = STATUS_COLUMN
+            destination.Row = 2
+            state.copyRange(destination, source.getRangeAddress())
+            state.getCellRangeByPosition(
+                STATUS_COLUMN,
+                3,
+                STATUS_COLUMN,
+                max(runtime._last_used_row(state), 97),
+            ).clearContents(1023)
+        except Exception:
+            pass
     header.setString("Статус ВЭУ")
     try:
         header.setPropertyValue("CharWeight", 150.0)
@@ -201,7 +218,10 @@ def _apply_formulas(module, runtime, document, original) -> None:
     _ensure_service(module, runtime, document)
     sheets = document.getSheets()
     main = sheets.getByName(runtime.INPUT_MAIN)
+    # Average active load = previous-day generation / 24h, converted from kWh to MW.
     _cell(main, "C6").setFormula('=IFERROR(C10/24000;0)')
+    # Remaining mean power uses the full monthly plan and all hours from 00:00
+    # of the report date through the end of the month, matching the approved report.
     _cell(main, "C15").setFormula(
         '=IFERROR(IF(C13>=0;-1;'
         "(INDEX(I5:I16;MONTH('Подготовка рапорта'.B3))-C11)/"
@@ -225,6 +245,17 @@ def _apply_formulas(module, runtime, document, original) -> None:
         document.calculateAll()
     except Exception:
         pass
+
+
+def _ensure_outage_form(module, runtime, document) -> None:
+    source_name, target_name, address, marker = OUTAGE_FORM
+    if module._exact(document, target_name, address, marker):
+        return
+    source = runtime._open_hidden(module._template(runtime), read_only=True)
+    try:
+        module._import_form(document, source, source_name, target_name)
+    finally:
+        runtime._close(source)
 
 
 def _refresh_outages(runtime, document) -> int:
@@ -361,6 +392,9 @@ class _CalendarButtonListener(unohelper.Base, XActionListener):
 def _install_calendar_button(runtime, document) -> None:
     from shift_helper.core.operator_tools import _workspace_install_calendar_button
 
+    # The existing installer leaves a service: URL as a persistent fallback.
+    # When the live control is available we add a direct listener and only then
+    # switch it to PUSH, avoiding the broken URL dispatch seen in Calc.
     _workspace_install_calendar_button(runtime, document)
     sheet = document.getSheets().getByName(runtime.INPUT_PREP)
     draw_page = sheet.getDrawPage()
@@ -372,19 +406,115 @@ def _install_calendar_button(runtime, document) -> None:
         return
     model = form.getByName("ShiftHelperReportDateCalendar")
     try:
+        control = document.getCurrentController().getControl(model)
+        previous = getattr(runtime, "_EXACT_CALENDAR_LISTENER", None)
+        if previous is not None:
+            try:
+                control.removeActionListener(previous)
+            except Exception:
+                pass
+        listener = _CalendarButtonListener(runtime)
+        control.addActionListener(listener)
+        runtime._EXACT_CALENDAR_LISTENER = listener
         model.setPropertyValue(
             "ButtonType", uno.Enum("com.sun.star.form.FormButtonType", "PUSH")
         )
     except Exception:
+        # Keep the URL button installed by _workspace_install_calendar_button.
+        pass
+
+
+class _SettingsButtonListener(unohelper.Base, XActionListener):
+    def __init__(self, runtime) -> None:
+        self.runtime = runtime
+
+    def actionPerformed(self, _event):  # noqa: N802
+        show_generation_import_settings(self.runtime)
+
+    def disposing(self, _event):
+        return None
+
+
+def _install_generation_settings_button(runtime, document) -> None:
+    sheet = document.getSheets().getByName(runtime.INPUT_PREP)
+    draw_page = sheet.getDrawPage()
+    forms = draw_page.getForms()
+    form_name = "ShiftHelperControls"
+    if forms.hasByName(form_name):
+        form = forms.getByName(form_name)
+    else:
+        form = document.createInstance("com.sun.star.form.component.Form")
+        form.setPropertyValue("Name", form_name)
+        forms.insertByName(form_name, form)
+
+    button_name = "ShiftHelperGenerationSettings"
+    if form.hasByName(button_name):
+        model = form.getByName(button_name)
+    else:
+        model = document.createInstance("com.sun.star.form.component.CommandButton")
+        model.setPropertyValue("Name", button_name)
+        form.insertByName(button_name, model)
+    model.setPropertyValue("Label", "Настройки Outlook…")
+    # URL mode persists with the workbook and remains a fallback after reopen.
+    try:
+        model.setPropertyValue(
+            "ButtonType", uno.Enum("com.sun.star.form.FormButtonType", "URL")
+        )
+        model.setPropertyValue(
+            "TargetURL",
+            "service:ru.kves.shifthelper.calc.controls?generationsettings",
+        )
+        model.setPropertyValue("TargetFrame", "_self")
+    except Exception:
         pass
     try:
-        control = document.getCurrentController().getControl(model)
-        listeners = getattr(runtime, "_EXACT_CALENDAR_LISTENERS", [])
-        listener = _CalendarButtonListener(runtime)
-        control.addActionListener(listener)
-        listeners.append(listener)
-        runtime._EXACT_CALENDAR_LISTENERS = listeners[-8:]
+        model.setPropertyValue(
+            "HelpText", "Настроить поиск письма и вложения с генерацией"
+        )
     except Exception:
+        pass
+
+    shape = None
+    for index in range(draw_page.getCount()):
+        candidate = draw_page.getByIndex(index)
+        try:
+            control = candidate.getControl()
+            if str(control.getPropertyValue("Name")) == button_name:
+                shape = candidate
+                break
+        except Exception:
+            continue
+    if shape is None:
+        shape = document.createInstance("com.sun.star.drawing.ControlShape")
+        shape.setControl(model)
+        draw_page.add(shape)
+
+    anchor = sheet.getCellByPosition(2, 9)
+    point = uno.createUnoStruct("com.sun.star.awt.Point")
+    point.X = int(anchor.Position.X) + 120
+    point.Y = int(anchor.Position.Y) + 40
+    size = uno.createUnoStruct("com.sun.star.awt.Size")
+    size.Width = 5000
+    size.Height = max(int(anchor.Size.Height) - 80, 650)
+    shape.setPosition(point)
+    shape.setSize(size)
+
+    try:
+        control = document.getCurrentController().getControl(model)
+        previous = getattr(runtime, "_EXACT_GENERATION_SETTINGS_LISTENER", None)
+        if previous is not None:
+            try:
+                control.removeActionListener(previous)
+            except Exception:
+                pass
+        listener = _SettingsButtonListener(runtime)
+        control.addActionListener(listener)
+        runtime._EXACT_GENERATION_SETTINGS_LISTENER = listener
+        model.setPropertyValue(
+            "ButtonType", uno.Enum("com.sun.star.form.FormButtonType", "PUSH")
+        )
+    except Exception:
+        # Keep the persistent service: URL fallback.
         pass
 
 
@@ -478,15 +608,19 @@ def show_generation_import_settings(runtime, _args=None) -> None:
         fallback.Label = (
             "Если письмо не найдено — предложить выбрать файл вручную"
         )
-        fallback.State = 1 if float(
-            _setting(
-                runtime,
-                document,
-                "Outlook: ручной выбор при отсутствии",
-                1,
+        fallback.State = (
+            1
+            if float(
+                _setting(
+                    runtime,
+                    document,
+                    "Outlook: ручной выбор при отсутствии",
+                    1,
+                )
+                or 0
             )
-            or 0
-        ) else 0
+            else 0
+        )
         model.insertByName("Fallback", fallback)
 
         ok = model.createInstance("com.sun.star.awt.UnoControlButtonModel")
@@ -522,11 +656,19 @@ def show_generation_import_settings(runtime, _args=None) -> None:
             if int(dialog.execute()) != 1:
                 return
             values = {
-                "Outlook: почтовый ящик": dialog.getControl("Mailbox").getText().strip(),
+                "Outlook: почтовый ящик": dialog.getControl(
+                    "Mailbox"
+                ).getText().strip(),
                 "Outlook: папка": dialog.getControl("Folder").getText().strip(),
-                "Outlook: маска вложения": dialog.getControl("Attachment").getText().strip(),
-                "Outlook: тема содержит": dialog.getControl("Subject").getText().strip(),
-                "Outlook: отправитель содержит": dialog.getControl("Sender").getText().strip(),
+                "Outlook: маска вложения": dialog.getControl(
+                    "Attachment"
+                ).getText().strip(),
+                "Outlook: тема содержит": dialog.getControl(
+                    "Subject"
+                ).getText().strip(),
+                "Outlook: отправитель содержит": dialog.getControl(
+                    "Sender"
+                ).getText().strip(),
                 "Outlook: глубина поиска, дней": float(
                     dialog.getControl("Days").getValue()
                 ),
@@ -563,9 +705,7 @@ def _outlook_attachment(runtime, document, report_date: date) -> Path | None:
             "НСС Кочубеевская ВЭС",
         )
     )
-    folder_path = str(
-        _setting(runtime, document, "Outlook: папка", "Входящие")
-    )
+    folder_path = str(_setting(runtime, document, "Outlook: папка", "Входящие"))
     pattern = str(
         _setting(
             runtime,
@@ -576,9 +716,7 @@ def _outlook_attachment(runtime, document, report_date: date) -> Path | None:
     ).replace(
         "{date}", (report_date - timedelta(days=1)).strftime("%d_%m_%Y")
     )
-    subject = str(
-        _setting(runtime, document, "Outlook: тема содержит", "")
-    )
+    subject = str(_setting(runtime, document, "Outlook: тема содержит", ""))
     sender = str(
         _setting(runtime, document, "Outlook: отправитель содержит", "")
     )
@@ -707,12 +845,8 @@ def import_generation(runtime, _args=None) -> None:
             old_date = old_date.date()
         old_daily = float(values.get("Последняя выработка за сутки") or 0)
         old_own = float(values.get("Последние собственные нужды за сутки") or 0)
-        month_generation = float(
-            values.get("Выработка с начала месяца, кВт*ч") or 0
-        )
-        month_own = float(
-            values.get("Собственные нужды с начала месяца, кВт*ч") or 0
-        )
+        month_generation = float(values.get("Выработка с начала месяца, кВт*ч") or 0)
+        month_own = float(values.get("Собственные нужды с начала месяца, кВт*ч") or 0)
         if isinstance(old_date, date) and old_date == report_date:
             month_generation += daily - old_daily
             month_own += own - old_own
@@ -759,10 +893,12 @@ def import_generation(runtime, _args=None) -> None:
 def _prepare_post(module, runtime, original, _args=None) -> None:
     original(_args)
     document = runtime._document()
+    _ensure_outage_form(module, runtime, document)
     _ensure_service(module, runtime, document)
     _apply_formulas(module, runtime, document, lambda _r, _d: None)
     _refresh_outages(runtime, document)
     _install_calendar_button(runtime, document)
+    _install_generation_settings_button(runtime, document)
 
 
 def install_acceptance_repairs(module, runtime, _extension_root: Path) -> None:
@@ -771,8 +907,6 @@ def install_acceptance_repairs(module, runtime, _extension_root: Path) -> None:
     if getattr(runtime, "_ACCEPTANCE_REPAIRS_006_APPLIED", False):
         return
     runtime._EXACT_REPORT_MODULE = module
-    if OUTAGE_FORM not in module.FORMS:
-        module.FORMS = (*module.FORMS, OUTAGE_FORM)
 
     module._ensure_service = lambda rt, doc: _ensure_service(module, rt, doc)
     module._meta = lambda rt, doc, key, value=...: _meta(
