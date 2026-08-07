@@ -13,20 +13,20 @@ def test_acceptance_repair_source_covers_owner_blockers() -> None:
 
     for marker in (
         'INPUT_OUTAGES = "Ввод - Аварийные отключения"',
-        'STATUS_COLUMN = 11',
+        "STATUS_COLUMN = 11",
         '"Статус ВЭУ"',
-        'C10/24000',
+        "C10/24000",
         "EOMONTH('Подготовка рапорта'.B3;0)",
         "'Ввод - Состояние ВЭУ'.L4:L98",
         '"com.sun.star.awt.UnoControlDateFieldModel"',
-        'field.Dropdown = True',
+        "field.Dropdown = True",
         '"Настройки Outlook…"',
         '"Outlook: почтовый ящик"',
         '"Outlook: папка"',
         '"Outlook: маска вложения"',
         '"Outlook: глубина поиска, дней"',
-        'select_emergency_events',
-        'service:ru.kves.shifthelper.calc.controls?generationsettings',
+        "select_emergency_events",
+        "service:ru.kves.shifthelper.calc.controls?generationsettings",
     ):
         assert marker in source
 
@@ -48,10 +48,14 @@ def test_controls_route_report_specific_dialogs_to_report_runtime() -> None:
         '"generationsettings": ("report", "show_generation_import_settings")'
         in source
     )
-    assert "install_acceptance_repairs(exact_report_contract, runtime, root)" in source
-    assert source.index("install_acceptance_repairs(exact_report_contract, runtime, root)") < source.index(
+    acceptance_install = (
+        "install_acceptance_repairs(exact_report_contract, runtime, root)"
+    )
+    migration_install = (
         "install_exact_migration_contract(exact_report_contract, runtime)"
     )
+    assert acceptance_install in source
+    assert source.index(acceptance_install) < source.index(migration_install)
 
 
 def test_extension_payload_packages_acceptance_runtime() -> None:
