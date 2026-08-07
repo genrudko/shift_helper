@@ -59,3 +59,4 @@ select = ["E", "F", "I", "UP", "B"]
 # into the LibreOffice extension and mirror the accepted workbook coordinates.
 "src/shift_helper/core/exact_report_contract.py" = ["E501", "F401", "B905"]
 "src/shift_helper/core/exact_migration_contract.py" = ["E501"]
+"src/shift_helper/core/acceptance_repairs_006.py" = ["E501"]
