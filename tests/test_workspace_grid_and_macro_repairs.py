@@ -78,7 +78,7 @@ def test_exact_forms_replace_legacy_compact_grid_repair() -> None:
     assert "install_calc_workspace_repairs" not in controls
     assert "install_exact_migration_contract" in controls
     assert "_copy_row_style" in migration
-    assert "_reset_works" in migration
+    assert "_restore_works" in migration
 
 
 def test_uno_component_routes_report_date_calendar() -> None:
@@ -86,6 +86,10 @@ def test_uno_component_routes_report_date_calendar() -> None:
         ROOT / "packaging/libreoffice_extension/shift_helper_controls.py"
     ).read_text(encoding="utf-8")
     assert (
-        '"calendarprep": ("tools", "show_report_date_calendar")'
+        '"calendarprep": ("report", "show_report_date_calendar")'
+        in source
+    )
+    assert (
+        '"generationsettings": ("report", "show_generation_import_settings")'
         in source
     )
