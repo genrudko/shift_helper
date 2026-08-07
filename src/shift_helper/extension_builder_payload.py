@@ -5,22 +5,22 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
-import re
+import struct
 import xml.etree.ElementTree as ET
 import zipfile
+import zlib
 from io import BytesIO
 from pathlib import Path
 
 from shift_helper import extension_builder
 
 _TEMPLATE_TARGET = "Templates/report_template.xlsx"
-# Historical byte-for-byte SHA of the owner-approved XLSX container. XLSX ZIP
-# metadata can change without changing workbook contents, so acceptance is
-# also enforced below with per-member hashes for every file inside the workbook.
+# Byte-for-byte SHA of the owner-approved historical XLSX container.
 _TEMPLATE_SHA256 = "cde2d2fb042f27dc514f71ac991676e423dd6a68667fbb6d3f928ab610acbb32"
-_TEMPLATE_GLOB = "packaging/libreoffice_extension/Templates/report_template.b64.*"
-_TEMPLATE_CHUNK_RE = re.compile(r"report_template\.b64\.(\d{2})$")
-_TEMPLATE_ZERO_SPLIT_RE = re.compile(r"report_template\.b64\.00([a-z]+)$")
+_TEMPLATE_CHUNK_PREFIX = (
+    "packaging/libreoffice_extension/Templates/report_template.b64."
+)
+_TEMPLATE_CHUNK_COUNT = 8
 _TEMPLATE_SHEETS = (
     "Основные данные",
     "Аварийные отключения ЛЭП",
@@ -75,13 +75,17 @@ _SOURCE_PAYLOADS = {
 }
 _ORIGINAL_PAYLOAD = extension_builder._payload
 _ORIGINAL_VERIFY = extension_builder.verify_calc_extension
+_LOCAL_HEADER = struct.Struct("<4s5H3I2H")
+_LOCAL_SIGNATURE = b"PK\x03\x04"
+_CENTRAL_SIGNATURE = b"PK\x01\x02"
+_END_SIGNATURE = b"PK\x05\x06"
 
 
 def _template_sheet_names(content: bytes) -> tuple[str, ...]:
     try:
         with zipfile.ZipFile(BytesIO(content)) as archive:
             workbook = ET.fromstring(archive.read("xl/workbook.xml"))
-    except (KeyError, ET.ParseError, zipfile.BadZipFile) as exc:
+    except (KeyError, ET.ParseError, ValueError, zipfile.BadZipFile) as exc:
         raise extension_builder.ExtensionBuildError(
             "Встроенный шаблон рапорта не является корректной книгой XLSX."
         ) from exc
@@ -114,7 +118,7 @@ def _validate_template(content: bytes) -> None:
                     raise extension_builder.ExtensionBuildError(
                         f"Содержимое встроенного шаблона изменено: {name}."
                     )
-    except zipfile.BadZipFile as exc:
+    except (ValueError, RuntimeError, zipfile.BadZipFile) as exc:
         raise extension_builder.ExtensionBuildError(
             "Встроенный шаблон рапорта не является корректной книгой XLSX."
         ) from exc
@@ -124,146 +128,163 @@ def _validate_template(content: bytes) -> None:
         )
 
 
-def _template_fragments(repo_root: Path) -> tuple[dict[int, str], list[str]]:
-    paths = sorted(repo_root.glob(_TEMPLATE_GLOB))
-    if not paths:
-        raise extension_builder.ExtensionBuildError(
-            "Не найдены части встроенного шаблона рапорта."
-        )
-
-    numbered: dict[int, str] = {}
-    split: dict[str, str] = {}
-    unknown: list[str] = []
-    for path in paths:
-        numbered_match = _TEMPLATE_CHUNK_RE.fullmatch(path.name)
-        if numbered_match is not None:
-            index = int(numbered_match.group(1))
-            if index in numbered:
-                raise extension_builder.ExtensionBuildError(
-                    f"Дублируется часть встроенного шаблона: {index:02d}."
-                )
-            numbered[index] = path.read_text(encoding="ascii")
+def _raw_template_bytes(repo_root: Path) -> bytes:
+    chunks: list[str] = []
+    missing: list[str] = []
+    for index in range(_TEMPLATE_CHUNK_COUNT):
+        path = repo_root / f"{_TEMPLATE_CHUNK_PREFIX}{index:02d}"
+        if not path.is_file():
+            missing.append(path.name)
             continue
-        split_match = _TEMPLATE_ZERO_SPLIT_RE.fullmatch(path.name)
-        if split_match is not None:
-            suffix = split_match.group(1)
-            if suffix in split:
-                raise extension_builder.ExtensionBuildError(
-                    f"Дублируется split-часть шаблона: 00{suffix}."
-                )
-            split[suffix] = path.read_text(encoding="ascii")
-            continue
-        unknown.append(path.name)
-
-    if unknown:
+        chunks.append(path.read_text(encoding="ascii"))
+    if missing:
         raise extension_builder.ExtensionBuildError(
-            f"Неизвестные части встроенного шаблона: {sorted(unknown)}."
+            f"Не найдены канонические части встроенного шаблона: {missing}."
         )
-    if not numbered or 0 not in numbered:
+    try:
+        content = base64.b64decode("".join(chunks), validate=True)
+    except (ValueError, binascii.Error) as exc:
         raise extension_builder.ExtensionBuildError(
-            "Отсутствует нулевая часть встроенного шаблона рапорта."
-        )
-    indexes = sorted(numbered)
-    if indexes != list(range(indexes[-1] + 1)):
+            "Канонические части встроенного шаблона не являются корректным Base64."
+        ) from exc
+    actual_sha = hashlib.sha256(content).hexdigest()
+    if actual_sha != _TEMPLATE_SHA256:
         raise extension_builder.ExtensionBuildError(
-            f"Нарушена последовательность частей шаблона: {indexes}."
+            "Канонический контейнер шаблона не совпадает с утверждённым SHA-256: "
+            f"{actual_sha}."
         )
-    return numbered, [split[key] for key in sorted(split)]
+    return content
 
 
-def _overlap_size(left: str, right: str) -> int:
-    """Return longest suffix(left) == prefix(right) in linear time."""
-
-    limit = min(len(left), len(right))
-    if limit == 0:
-        return 0
-    prefix = right[:limit]
-    probe = prefix + "|" + left[-limit:]
-    table = [0] * len(probe)
-    for index in range(1, len(probe)):
-        match = table[index - 1]
-        while match and probe[index] != probe[match]:
-            match = table[match - 1]
-        if probe[index] == probe[match]:
-            match += 1
-        table[index] = match
-    return min(table[-1], limit)
-
-
-def _stitch(left: str, right: str) -> str:
-    overlap = _overlap_size(left, right)
-    return left + right[overlap:]
-
-
-def _template_encoded_candidates(repo_root: Path) -> list[tuple[str, str]]:
-    numbered, split_parts = _template_fragments(repo_root)
-    indexes = sorted(numbered)
-    candidates: list[tuple[str, str]] = [
-        ("numbered-00..NN", "".join(numbered[index] for index in indexes))
-    ]
-    if not split_parts:
-        return candidates
-
-    split_direct = "".join(split_parts)
-    split_stitched = split_parts[0]
-    for part in split_parts[1:]:
-        split_stitched = _stitch(split_stitched, part)
-    split_variants = [("split-direct", split_direct)]
-    if split_stitched != split_direct:
-        split_variants.append(("split-stitched", split_stitched))
-
-    # The repository contains two historical representations of the beginning
-    # of the same Base64 payload: 00 and 00a/00b/00c. The split representation
-    # can overlap the start of a later numbered chunk, so try each structurally
-    # possible tail boundary both as a direct join and an overlap-aware join.
-    for split_label, split_value in split_variants:
-        for start in indexes[1:]:
-            tail = "".join(numbered[index] for index in indexes if index >= start)
-            candidates.append((f"{split_label}+{start:02d}..NN", split_value + tail))
-            stitched = _stitch(split_value, tail)
-            if stitched != split_value + tail:
-                candidates.append(
-                    (f"{split_label}~{start:02d}..NN", stitched)
-                )
-
-    unique: list[tuple[str, str]] = []
-    seen: set[str] = set()
-    for label, value in candidates:
-        digest = hashlib.sha256(value.encode("ascii")).hexdigest()
-        if digest not in seen:
-            unique.append((label, value))
-            seen.add(digest)
-    return unique
-
-
-def _template_encoded(repo_root: Path) -> str:
-    """Return the first Base64 stream that reproduces the approved XLSX."""
-
-    for _label, encoded in _template_encoded_candidates(repo_root):
+def _decode_member(method: int, compressed: bytes) -> bytes:
+    if method == zipfile.ZIP_STORED:
+        return compressed
+    if method == zipfile.ZIP_DEFLATED:
         try:
-            content = base64.b64decode(encoded, validate=True)
-        except (ValueError, binascii.Error):
-            continue
-        try:
-            _validate_template(content)
-        except extension_builder.ExtensionBuildError:
-            continue
-        return encoded
+            return zlib.decompress(compressed, -zlib.MAX_WBITS)
+        except zlib.error as exc:
+            raise extension_builder.ExtensionBuildError(
+                "Повреждены локальные сжатые данные утверждённого шаблона."
+            ) from exc
     raise extension_builder.ExtensionBuildError(
-        "Ни одна допустимая сборка частей не воспроизводит утверждённый шаблон рапорта."
+        f"Неподдерживаемый метод сжатия шаблона: {method}."
     )
 
 
-def _template_bytes(repo_root: Path) -> bytes:
-    encoded = _template_encoded(repo_root)
-    try:
-        content = base64.b64decode(encoded, validate=True)
-    except (ValueError, binascii.Error) as exc:
+def _verified_local_members(content: bytes) -> list[tuple[str, int, bytes]]:
+    """Read local ZIP records without trusting the historical central directory."""
+
+    offset = 0
+    result: list[tuple[str, int, bytes]] = []
+    seen: set[str] = set()
+    while offset + 4 <= len(content):
+        signature = content[offset : offset + 4]
+        if signature in {_CENTRAL_SIGNATURE, _END_SIGNATURE}:
+            break
+        if signature != _LOCAL_SIGNATURE or offset + _LOCAL_HEADER.size > len(content):
+            raise extension_builder.ExtensionBuildError(
+                "Нарушена последовательность локальных ZIP-записей шаблона."
+            )
+        (
+            _signature,
+            _version,
+            flags,
+            method,
+            _mtime,
+            _mdate,
+            expected_crc,
+            compressed_size,
+            uncompressed_size,
+            name_size,
+            extra_size,
+        ) = _LOCAL_HEADER.unpack_from(content, offset)
+        if flags & 0x08:
+            raise extension_builder.ExtensionBuildError(
+                "Шаблон использует ZIP data descriptor; безопасное восстановление запрещено."
+            )
+        name_start = offset + _LOCAL_HEADER.size
+        name_end = name_start + name_size
+        data_start = name_end + extra_size
+        data_end = data_start + compressed_size
+        if data_end > len(content):
+            raise extension_builder.ExtensionBuildError(
+                "Обрезаны локальные данные утверждённого шаблона."
+            )
+        encoding = "utf-8" if flags & 0x800 else "cp437"
+        try:
+            name = content[name_start:name_end].decode(encoding)
+        except UnicodeDecodeError as exc:
+            raise extension_builder.ExtensionBuildError(
+                "Повреждено имя файла внутри утверждённого шаблона."
+            ) from exc
+        if name in seen:
+            raise extension_builder.ExtensionBuildError(
+                f"Дублируется локальная ZIP-запись шаблона: {name}."
+            )
+        payload = _decode_member(method, content[data_start:data_end])
+        if len(payload) != uncompressed_size:
+            raise extension_builder.ExtensionBuildError(
+                f"Неверный размер файла внутри шаблона: {name}."
+            )
+        actual_crc = binascii.crc32(payload) & 0xFFFFFFFF
+        if actual_crc != expected_crc:
+            raise extension_builder.ExtensionBuildError(
+                f"Неверная CRC файла внутри шаблона: {name}."
+            )
+        expected_sha = _TEMPLATE_ENTRY_SHA256.get(name)
+        if expected_sha is None:
+            raise extension_builder.ExtensionBuildError(
+                f"Неизвестный файл внутри утверждённого шаблона: {name}."
+            )
+        actual_sha = hashlib.sha256(payload).hexdigest()
+        if actual_sha != expected_sha:
+            raise extension_builder.ExtensionBuildError(
+                f"Содержимое файла шаблона отличается от утверждённого: {name}."
+            )
+        result.append((name, method, payload))
+        seen.add(name)
+        offset = data_end
+
+    if seen != set(_TEMPLATE_ENTRY_SHA256):
+        missing = sorted(set(_TEMPLATE_ENTRY_SHA256) - seen)
+        extra = sorted(seen - set(_TEMPLATE_ENTRY_SHA256))
         raise extension_builder.ExtensionBuildError(
-            "Встроенный шаблон рапорта повреждён."
-        ) from exc
-    _validate_template(content)
-    return content
+            "Локальные ZIP-записи не воспроизводят утверждённый шаблон: "
+            f"missing={missing}, extra={extra}."
+        )
+    return result
+
+
+def _repair_template_container(content: bytes) -> bytes:
+    """Rebuild only ZIP metadata after proving every OOXML member exactly."""
+
+    members = _verified_local_members(content)
+    target = BytesIO()
+    with zipfile.ZipFile(target, "w") as archive:
+        for name, method, payload in members:
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = method
+            info.create_system = 0
+            info.external_attr = 0
+            if method == zipfile.ZIP_DEFLATED:
+                archive.writestr(info, payload, compress_type=method, compresslevel=9)
+            else:
+                archive.writestr(info, payload, compress_type=method)
+    repaired = target.getvalue()
+    _validate_template(repaired)
+    return repaired
+
+
+def _template_bytes(repo_root: Path) -> bytes:
+    raw = _raw_template_bytes(repo_root)
+    try:
+        _validate_template(raw)
+        return raw
+    except extension_builder.ExtensionBuildError:
+        # The owner-approved historical XLSX has a central-directory offset
+        # defect. Repair ZIP metadata only; the raw container SHA and every
+        # decompressed OOXML member are independently fail-closed above.
+        return _repair_template_container(raw)
 
 
 def _payload_with_template(repo_root: Path) -> dict[str, bytes]:
