@@ -12,10 +12,11 @@ from pathlib import Path
 from shift_helper import extension_builder
 
 _TEMPLATE_TARGET = "Templates/report_template.xlsx"
+# Historical byte-for-byte SHA of the owner-approved XLSX container.  XLSX ZIP
+# metadata can change without changing workbook contents, so acceptance is
+# enforced below with per-member hashes for every file inside the workbook.
 _TEMPLATE_SHA256 = "cde2d2fb042f27dc514f71ac991676e423dd6a68667fbb6d3f928ab610acbb32"
-_TEMPLATE_GLOB = (
-    "packaging/libreoffice_extension/Templates/report_template.b64.*"
-)
+_TEMPLATE_GLOB = "packaging/libreoffice_extension/Templates/report_template.b64.*"
 _TEMPLATE_SHEETS = (
     "Основные данные",
     "Аварийные отключения ЛЭП",
@@ -25,10 +26,30 @@ _TEMPLATE_SHEETS = (
     "Запланированные работы",
     "Дефекты оборудования",
 )
+_TEMPLATE_ENTRY_SHA256 = {
+    "[Content_Types].xml": "b2ffd7170af2c15392053a4845e071e84e15b97316b13346048ccb1bf7596eb1",
+    "_rels/.rels": "73e5a29f48d5ab979eeda062493bc7e679265c1344ef936978b8becec5549497",
+    "docProps/app.xml": "860cb97fb2919e350002c6f6d4dfb22a8c501652f8aeabc0342002a5cd5dddad",
+    "docProps/core.xml": "4305d9941e41e155c6ebd22df64f54e6113475f6c59592607855bce00078a502",
+    "xl/_rels/workbook.xml.rels": "cba88cc6c179af47ac5f375796dfa0d25cd299ea284b82c1a386db7fc454c342",
+    "xl/calcChain.xml": "cf4915a187379023497c43d06c13c5c231dcb11bdf52426172ced1e137be19ce",
+    "xl/printerSettings/printerSettings1.bin": "e9d7ada1f52b5893834a03932274e72084541655237b77f843bbcdda32d8c940",
+    "xl/sharedStrings.xml": "96ac18e2137e56be3ea261bc95ec295e9ce194224885c0cce47288bfdc90d8b4",
+    "xl/styles.xml": "3681e53a9768d7bd7982c0e136f3bf36c56a375ba28ed6e5b595b290699d4d94",
+    "xl/theme/theme1.xml": "156137ac2d7fae74e0286df47c4d1c75e65d5ef1455ff74c4d46176aef06fe56",
+    "xl/workbook.xml": "0b6c0bed216af244fc7f52db9a3efe932ad523fb2e5d1bd9487f6d66228df72a",
+    "xl/worksheets/_rels/sheet5.xml.rels": "65cefb6727e21f882eb83bb6c10370afa59aafda7f007f531df0c30026dc4684",
+    "xl/worksheets/sheet1.xml": "1def38961c9b8218e9ab0f5e64ff19adacfd05bdfe57d4e484aa57b2682d8fd8",
+    "xl/worksheets/sheet2.xml": "38df0073ddcf6183dfa7c14fbbb2b2293ae2b6458dedb8369a43a7709da79390",
+    "xl/worksheets/sheet3.xml": "46563b1fc91ed0397f635670cde2999a6b2ff79830d9f3ef1de61bc5f5b0587f",
+    "xl/worksheets/sheet4.xml": "c25824c4e75a47485e27af297369c52f0dfcb19870389ebb278138ac0a794c2f",
+    "xl/worksheets/sheet5.xml": "502f80a4b25a8bc5be8a47b44e57f124dc4f1c2fada9b86db9334d9ffd9b8565",
+    "xl/worksheets/sheet6.xml": "8ad81b26e8e9b7099fb01d7e6986ac29297a54c77af8459a1cfffece099118bd",
+    "xl/worksheets/sheet7.xml": "e16dc7cc65e7ccf76abb45f97e6ebdaef6a115189ec2b9ec6fa365c57a4b634a",
+}
 _STATIC_PAYLOADS = {
     "Scripts/python/shift_helper_tools_payload.py": (
-        "packaging/libreoffice_extension/Scripts/python/"
-        "shift_helper_tools_payload.py"
+        "packaging/libreoffice_extension/Scripts/python/shift_helper_tools_payload.py"
     ),
 }
 _SOURCE_PAYLOADS = {
@@ -60,9 +81,7 @@ def _template_sheet_names(content: bytes) -> tuple[str, ...]:
         raise extension_builder.ExtensionBuildError(
             "Встроенный шаблон рапорта не является корректной книгой XLSX."
         ) from exc
-    namespace = {
-        "m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
-    }
+    namespace = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     sheets = workbook.find("m:sheets", namespace)
     if sheets is None:
         raise extension_builder.ExtensionBuildError(
@@ -72,11 +91,29 @@ def _template_sheet_names(content: bytes) -> tuple[str, ...]:
 
 
 def _validate_template(content: bytes) -> None:
-    digest = hashlib.sha256(content).hexdigest()
-    if digest != _TEMPLATE_SHA256:
+    try:
+        with zipfile.ZipFile(BytesIO(content)) as archive:
+            names = tuple(sorted(archive.namelist()))
+            expected_names = tuple(sorted(_TEMPLATE_ENTRY_SHA256))
+            if names != expected_names:
+                raise extension_builder.ExtensionBuildError(
+                    "Состав файлов встроенного шаблона рапорта изменён."
+                )
+            bad = archive.testzip()
+            if bad is not None:
+                raise extension_builder.ExtensionBuildError(
+                    f"Повреждён файл встроенного шаблона: {bad}."
+                )
+            for name, expected in _TEMPLATE_ENTRY_SHA256.items():
+                actual = hashlib.sha256(archive.read(name)).hexdigest()
+                if actual != expected:
+                    raise extension_builder.ExtensionBuildError(
+                        f"Содержимое встроенного шаблона изменено: {name}."
+                    )
+    except zipfile.BadZipFile as exc:
         raise extension_builder.ExtensionBuildError(
-            "Контрольная сумма встроенного шаблона рапорта не совпадает."
-        )
+            "Встроенный шаблон рапорта не является корректной книгой XLSX."
+        ) from exc
     if _template_sheet_names(content) != _TEMPLATE_SHEETS:
         raise extension_builder.ExtensionBuildError(
             "Состав или порядок листов встроенного шаблона изменён."
