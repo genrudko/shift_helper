@@ -124,7 +124,7 @@ def _validate_template(content: bytes) -> None:
 
 
 def _template_encoded(repo_root: Path) -> str:
-    """Return the canonical Base64 stream without concatenating alias split parts."""
+    """Return numbered 00..NN stream and validate historical split aliases."""
 
     paths = sorted(repo_root.glob(_TEMPLATE_GLOB))
     if not paths:
@@ -154,30 +154,31 @@ def _template_encoded(repo_root: Path) -> str:
         raise extension_builder.ExtensionBuildError(
             f"Неизвестные части встроенного шаблона: {sorted(unknown)}."
         )
-
-    split_zero = "".join(path.read_text(encoding="ascii") for path in sorted(zero_split))
-    if 0 in numbered:
-        full_zero = numbered[0].read_text(encoding="ascii")
-        if split_zero and split_zero != full_zero:
-            raise extension_builder.ExtensionBuildError(
-                "Полная и разрезанная части 00 встроенного шаблона расходятся."
-            )
-    elif split_zero:
-        full_zero = split_zero
-    else:
+    if not numbered or 0 not in numbered:
         raise extension_builder.ExtensionBuildError(
             "Отсутствует нулевая часть встроенного шаблона рапорта."
         )
 
-    positive = sorted(index for index in numbered if index > 0)
-    if positive != list(range(1, max(positive, default=0) + 1)):
+    indexes = sorted(numbered)
+    if indexes != list(range(indexes[-1] + 1)):
         raise extension_builder.ExtensionBuildError(
-            f"Нарушена последовательность частей шаблона: {positive}."
+            f"Нарушена последовательность частей шаблона: {indexes}."
         )
+    canonical = "".join(numbered[index].read_text(encoding="ascii") for index in indexes)
 
-    return full_zero + "".join(
-        numbered[index].read_text(encoding="ascii") for index in positive
-    )
+    # PR #15 retained an older three-file split (00a/00b/00c) of the beginning
+    # of the very same Base64 stream. It overlaps 00 and the start of 01, so it
+    # must never be concatenated as an additional payload. Keep it only as
+    # fail-closed evidence that the historical split still matches the prefix.
+    if zero_split:
+        split_prefix = "".join(
+            path.read_text(encoding="ascii") for path in sorted(zero_split)
+        )
+        if not canonical.startswith(split_prefix):
+            raise extension_builder.ExtensionBuildError(
+                "Историческое разбиение 00a/00b/00c расходится с каноническим шаблоном."
+            )
+    return canonical
 
 
 def _template_bytes(repo_root: Path) -> bytes:
