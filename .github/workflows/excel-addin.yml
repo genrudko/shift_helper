@@ -1,0 +1,56 @@
+name: Excel Add-in
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-excel-addin:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install project with Excel build dependency
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev,excel]"
+
+      - name: Ruff
+        run: python -m ruff check .
+
+      - name: Excel contract tests
+        run: python -m pytest tests/test_excel_client_contract.py tests/test_excel_addin_build.py
+
+      - name: Build XLAM
+        run: python scripts/build_excel_addin.py --output dist/Shift-Helper-Excel.xlam
+
+      - name: Verify built XLAM again
+        shell: python
+        run: |
+          from pathlib import Path
+          from shift_helper.excel_builder import verify_excel_addin
+          print(verify_excel_addin(Path.cwd(), Path("dist/Shift-Helper-Excel.xlam")))
+
+      - name: Copy installation note into artifact
+        shell: pwsh
+        run: Copy-Item docs/EXCEL_INSTALL.md dist/EXCEL_INSTALL.md
+
+      - name: Upload Excel acceptance package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Shift-Helper-Excel-${{ github.sha }}
+          path: |
+            dist/Shift-Helper-Excel.xlam
+            dist/Shift-Helper-Excel.xlam.sha256
+            dist/EXCEL_INSTALL.md
+          if-no-files-found: error

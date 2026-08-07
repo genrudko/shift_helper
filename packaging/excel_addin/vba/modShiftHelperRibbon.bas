@@ -1,0 +1,46 @@
+Attribute VB_Name = "modShiftHelperRibbon"
+Option Explicit
+
+Public Sub SH_RibbonSort(ByVal control As IRibbonControl)
+    SH_SortJournalByTime
+End Sub
+
+Public Sub SH_RibbonMergeCopy(ByVal control As IRibbonControl)
+    SH_MergeAndCopy
+End Sub
+
+Public Sub SH_RibbonCleanSpaces(ByVal control As IRibbonControl)
+    SH_CleanSpaces
+End Sub
+
+Public Sub SH_RibbonRowHeight(ByVal control As IRibbonControl)
+    SH_SetRowHeight
+End Sub
+
+Public Sub SH_RibbonPrepare(ByVal control As IRibbonControl)
+    SH_PrepareReportContour
+End Sub
+
+Public Sub SH_RibbonCalendar(ByVal control As IRibbonControl)
+    SH_ShowCalendar
+End Sub
+
+Public Sub SH_RibbonGenerate(ByVal control As IRibbonControl)
+    SH_GenerateFullReport
+End Sub
+
+Public Sub SH_RibbonImportGeneration(ByVal control As IRibbonControl)
+    SH_ImportGeneration
+End Sub
+
+Public Sub SH_RibbonOutlookSettings(ByVal control As IRibbonControl)
+    SH_ShowOutlookSettings
+End Sub
+
+Public Sub SH_RibbonRotorLimits(ByVal control As IRibbonControl)
+    SH_UpdateRotorLimits
+End Sub
+
+Public Sub SH_RibbonCurrentShift(ByVal control As IRibbonControl)
+    SH_GotoCurrentInspectionShift
+End Sub

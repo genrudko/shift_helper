@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui">
+  <ribbon>
+    <tabs>
+      <tab id="tabShiftHelper" label="Shift-Helper">
+        <group id="grpJournal" label="Журнал">
+          <button id="btnSort" label="Сортировать по времени" size="large" onAction="SH_RibbonSort"/>
+          <button id="btnMergeCopy" label="Объединить и копировать" size="large" onAction="SH_RibbonMergeCopy"/>
+          <button id="btnClean" label="Очистить пробелы" onAction="SH_RibbonCleanSpaces"/>
+          <button id="btnRows" label="Высота строк" onAction="SH_RibbonRowHeight"/>
+        </group>
+        <group id="grpReport" label="Рапорт">
+          <button id="btnPrepare" label="Подготовить полный контур рапорта" size="large" onAction="SH_RibbonPrepare"/>
+          <button id="btnCalendar" label="Календарь" onAction="SH_RibbonCalendar"/>
+          <button id="btnGenerate" label="Сформировать полный утренний рапорт" size="large" onAction="SH_RibbonGenerate"/>
+          <button id="btnGeneration" label="Импортировать генерацию" onAction="SH_RibbonImportGeneration"/>
+          <button id="btnOutlook" label="Настройки Outlook" onAction="SH_RibbonOutlookSettings"/>
+        </group>
+        <group id="grpWtg" label="ВЭУ">
+          <button id="btnRotor" label="Ограничение по оборотам / мощности" size="large" onAction="SH_RibbonRotorLimits"/>
+        </group>
+        <group id="grpShift" label="Смена">
+          <button id="btnShift" label="Текущий день / текущая смена" size="large" onAction="SH_RibbonCurrentShift"/>
+        </group>
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>
