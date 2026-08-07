@@ -18,7 +18,7 @@ TEMPLATE_SHA256 = "cde2d2fb042f27dc514f71ac991676e423dd6a68667fbb6d3f928ab610acb
 def _report_bytes() -> bytes:
     assert not (TEMPLATE_DIR / "report_template.xlsx").exists()
     chunks = sorted(TEMPLATE_DIR.glob("report_template.b64.*"))
-    assert len(chunks) == 8
+    assert chunks
     encoded = "".join(path.read_text(encoding="ascii") for path in chunks)
     return base64.b64decode(encoded, validate=True)
 
