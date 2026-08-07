@@ -17,7 +17,7 @@ def test_acceptance_repair_source_covers_owner_blockers() -> None:
         '"Статус ВЭУ"',
         "C10/24000",
         "EOMONTH('Подготовка рапорта'.B3;0)",
-        "'Ввод - Состояние ВЭУ'.L4:L98",
+        "COUNTIF",
         '"com.sun.star.awt.UnoControlDateFieldModel"',
         "field.Dropdown = True",
         '"Настройки Outlook…"',
@@ -26,6 +26,8 @@ def test_acceptance_repair_source_covers_owner_blockers() -> None:
         '"Outlook: маска вложения"',
         '"Outlook: глубина поиска, дней"',
         "select_emergency_events",
+        "_refresh_outages",
+        "_outlook_attachment",
         "service:ru.kves.shifthelper.calc.controls?generationsettings",
     ):
         assert marker in source
@@ -35,6 +37,7 @@ def test_acceptance_repair_source_covers_owner_blockers() -> None:
     # and restore operator data.
     assert "module.FORMS =" not in source
     assert "_ensure_outage_form(module, runtime, document)" in source
+    assert "_clear_legacy_statuses(prep)" in source
 
 
 def test_controls_route_report_specific_dialogs_to_report_runtime() -> None:
