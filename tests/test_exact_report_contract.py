@@ -94,15 +94,59 @@ def test_exact_migration_preserves_legacy_data_before_form_rebuild() -> None:
     ast.parse(source)
     for marker in (
         "_legacy_main",
-        "_legacy_command_rows",
-        "_legacy_violation_rows",
-        "_legacy_defect_rows",
-        "_legacy_state_rows",
-        "_legacy_work_rows",
-        "_restore_command_rows",
-        "_restore_violation_rows",
-        "_restore_defect_rows",
-        "_restore_state_rows",
-        "_restore_work_rows",
+        "_legacy_state",
+        "_restore_main",
+        "_restore_state",
+        "_restore_works",
+        "_restore_violations",
+        "needs_rebuild",
+        "had_legacy_data",
+        "if not needs_rebuild:",
+        "Данные старых листов перенесены",
+        "Демонстрационные значения встроенного шаблона очищены",
+        "install_exact_migration_contract",
     ):
         assert marker in source
+    assert "openpyxl" not in source
+
+
+def test_exact_tools_runtime_uses_report_state_coordinates() -> None:
+    path = ROOT / "src/shift_helper/core/exact_tools_contract.py"
+    source = path.read_text(encoding="utf-8")
+    ast.parse(source)
+    for marker in (
+        "getCellByPosition(3, row)",
+        "getCellByPosition(6, row)",
+        "getCellByPosition(7, row)",
+        "update_rotor_limits_from_log",
+        "install_exact_tools_contract",
+    ):
+        assert marker in source
+
+
+def test_controls_install_final_report_contracts_in_order() -> None:
+    source = (
+        ROOT / "packaging/libreoffice_extension/shift_helper_controls.py"
+    ).read_text(encoding="utf-8")
+    assert "install_exact_storage_contract(exact_report_contract)" in source
+    assert "exact_report_contract.install_exact_report_contract(runtime, root)" in source
+    assert "install_acceptance_repairs(exact_report_contract, runtime, root)" in source
+    assert "install_exact_migration_contract(exact_report_contract, runtime)" in source
+    assert "install_exact_tools_contract(runtime, root)" in source
+    assert "install_calc_workspace_repairs" not in source
+
+
+def test_extension_payload_reconstructs_template_and_registers_runtimes() -> None:
+    source = (
+        ROOT / "src/shift_helper/extension_builder_payload.py"
+    ).read_text(encoding="utf-8")
+    assert '"Templates/report_template.xlsx"' in source
+    assert "base64.b64decode" in source
+    assert TEMPLATE_SHA256 in source
+    assert "_TEMPLATE_ENTRY_SHA256" in source
+    assert "archive.testzip()" in source
+    assert "exact_report_contract.py" in source
+    assert "exact_storage_contract.py" in source
+    assert "exact_migration_contract.py" in source
+    assert "exact_tools_contract.py" in source
+    assert "acceptance_repairs_006.py" in source
