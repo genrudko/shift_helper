@@ -81,7 +81,6 @@ _ORIGINAL_VERIFY = extension_builder.verify_calc_extension
 _LOCAL_HEADER = struct.Struct("<4s5H3I2H")
 _LOCAL_SIGNATURE = b"PK\x03\x04"
 _CENTRAL_SIGNATURE = b"PK\x01\x02"
-_END_SIGNATURE = b"PK\x05\x06"
 
 
 def _template_sheet_names(content: bytes) -> tuple[str, ...]:
@@ -160,29 +159,51 @@ def _decode_member(method: int, compressed: bytes) -> bytes:
             return zlib.decompress(compressed, -zlib.MAX_WBITS)
         except zlib.error as exc:
             raise extension_builder.ExtensionBuildError(
-                "Повреждены локальные сжатые данные встроенного шаблона."
+                "Повреждены сжатые данные встроенного шаблона."
             ) from exc
     raise extension_builder.ExtensionBuildError(
         f"Неподдерживаемый метод сжатия шаблона: {method}."
     )
 
 
-def _verified_local_members(content: bytes) -> list[tuple[str, int, bytes]]:
-    """Read ZIP local records while ignoring potentially stale central offsets."""
+def _record_offsets(content: bytes) -> tuple[list[int], int]:
+    """Locate local records and the first central-directory record."""
 
-    offset = 0
+    central_offset = content.find(_CENTRAL_SIGNATURE)
+    if central_offset < 0:
+        raise extension_builder.ExtensionBuildError(
+            "Во встроенном шаблоне не найден ZIP central directory."
+        )
+    offsets: list[int] = []
+    cursor = 0
+    while cursor < central_offset:
+        offset = content.find(_LOCAL_SIGNATURE, cursor, central_offset)
+        if offset < 0:
+            break
+        offsets.append(offset)
+        cursor = offset + len(_LOCAL_SIGNATURE)
+    if len(offsets) != len(_TEMPLATE_ENTRY_SHA256):
+        raise extension_builder.ExtensionBuildError(
+            "Число локальных ZIP-записей шаблона не совпадает с утверждённым: "
+            f"{len(offsets)}."
+        )
+    return offsets, central_offset
+
+
+def _verified_local_members(content: bytes) -> list[tuple[str, int, bytes]]:
+    """Recover members despite stale local extra-length/central-offset metadata."""
+
+    offsets, central_offset = _record_offsets(content)
     result: list[tuple[str, int, bytes]] = []
     seen: set[str] = set()
-    while offset + 4 <= len(content):
-        signature = content[offset : offset + 4]
-        if signature in {_CENTRAL_SIGNATURE, _END_SIGNATURE}:
-            break
-        if signature != _LOCAL_SIGNATURE or offset + _LOCAL_HEADER.size > len(content):
+
+    for index, offset in enumerate(offsets):
+        if offset + _LOCAL_HEADER.size > len(content):
             raise extension_builder.ExtensionBuildError(
-                "Нарушена последовательность локальных ZIP-записей шаблона."
+                "Обрезан локальный ZIP-заголовок встроенного шаблона."
             )
         (
-            _signature,
+            signature,
             _version,
             flags,
             method,
@@ -192,20 +213,27 @@ def _verified_local_members(content: bytes) -> list[tuple[str, int, bytes]]:
             compressed_size,
             uncompressed_size,
             name_size,
-            extra_size,
+            _declared_extra_size,
         ) = _LOCAL_HEADER.unpack_from(content, offset)
+        if signature != _LOCAL_SIGNATURE:
+            raise extension_builder.ExtensionBuildError(
+                "Повреждена сигнатура локальной ZIP-записи шаблона."
+            )
         if flags & 0x08:
             raise extension_builder.ExtensionBuildError(
                 "Шаблон использует ZIP data descriptor; безопасное восстановление запрещено."
             )
+
         name_start = offset + _LOCAL_HEADER.size
         name_end = name_start + name_size
-        data_start = name_end + extra_size
-        data_end = data_start + compressed_size
-        if data_end > len(content):
+        boundary = offsets[index + 1] if index + 1 < len(offsets) else central_offset
+        data_end = boundary
+        data_start = data_end - compressed_size
+        if data_start < name_end or data_end > len(content):
             raise extension_builder.ExtensionBuildError(
-                "Обрезаны локальные данные встроенного шаблона."
+                "Невозможно однозначно восстановить границы ZIP-member шаблона."
             )
+
         encoding = "utf-8" if flags & 0x800 else "cp437"
         try:
             name = content[name_start:name_end].decode(encoding)
@@ -217,7 +245,9 @@ def _verified_local_members(content: bytes) -> list[tuple[str, int, bytes]]:
             raise extension_builder.ExtensionBuildError(
                 f"Дублируется локальная ZIP-запись шаблона: {name}."
             )
-        payload = _decode_member(method, content[data_start:data_end])
+
+        compressed = content[data_start:data_end]
+        payload = _decode_member(method, compressed)
         if len(payload) != uncompressed_size:
             raise extension_builder.ExtensionBuildError(
                 f"Неверный размер файла внутри шаблона: {name}."
@@ -238,7 +268,6 @@ def _verified_local_members(content: bytes) -> list[tuple[str, int, bytes]]:
             )
         result.append((name, method, payload))
         seen.add(name)
-        offset = data_end
 
     if seen != set(_TEMPLATE_ENTRY_SHA256):
         missing = sorted(set(_TEMPLATE_ENTRY_SHA256) - seen)
@@ -276,9 +305,9 @@ def _template_bytes(repo_root: Path) -> bytes:
         _validate_template(raw)
         return raw
     except extension_builder.ExtensionBuildError:
-        # EXACT-FORMS-006 preserved the approved OOXML members while its ZIP
-        # container metadata may carry stale central-directory offsets. Repair
-        # metadata only; every member is independently SHA/CRC checked first.
+        # EXACT-FORMS-006 preserved the approved OOXML members but carries stale
+        # ZIP alignment metadata. Recover member boundaries from the next local
+        # record and compressed_size, then accept only exact CRC/SHA matches.
         return _repair_template_container(raw)
 
 
