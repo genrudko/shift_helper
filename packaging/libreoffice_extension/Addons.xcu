@@ -14,6 +14,142 @@
           <value>com.sun.star.sheet.SpreadsheetDocument</value>
         </prop>
         <node oor:name="Submenu">
+          <node oor:name="Prepare" oor:op="replace">
+            <prop oor:name="Title" oor:type="xs:string">
+              <value xml:lang="ru-RU">Подготовить полный контур рапорта</value>
+              <value xml:lang="en-US">Prepare full report workspace</value>
+            </prop>
+            <prop oor:name="URL" oor:type="xs:string">
+              <value>service:ru.kves.shifthelper.calc.controls?prepare</value>
+            </prop>
+            <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+          </node>
+          <node oor:name="Generation" oor:op="replace">
+            <prop oor:name="Title" oor:type="xs:string">
+              <value xml:lang="ru-RU">Импортировать генерацию</value>
+              <value xml:lang="en-US">Import generation data</value>
+            </prop>
+            <prop oor:name="URL" oor:type="xs:string">
+              <value>service:ru.kves.shifthelper.calc.controls?generation</value>
+            </prop>
+            <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+          </node>
+          <node oor:name="Report" oor:op="replace">
+            <prop oor:name="Title" oor:type="xs:string">
+              <value xml:lang="ru-RU">Сформировать полный утренний рапорт</value>
+              <value xml:lang="en-US">Generate full morning report</value>
+            </prop>
+            <prop oor:name="URL" oor:type="xs:string">
+              <value>service:ru.kves.shifthelper.calc.controls?report</value>
+            </prop>
+            <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+          </node>
+          <node oor:name="Separator1" oor:op="replace">
+            <prop oor:name="URL" oor:type="xs:string"><value>private:separator</value></prop>
+          </node>
+          <node oor:name="Calendar" oor:op="replace">
+            <prop oor:name="Title" oor:type="xs:string">
+              <value xml:lang="ru-RU">Календарь — вставить дату</value>
+              <value xml:lang="en-US">Calendar — insert date</value>
+            </prop>
+            <prop oor:name="URL" oor:type="xs:string">
+              <value>service:ru.kves.shifthelper.calc.controls?calendar</value>
+            </prop>
+            <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+          </node>
+          <node oor:name="Time" oor:op="replace">
+            <prop oor:name="Title" oor:type="xs:string">
+              <value xml:lang="ru-RU">Часы — вставить время</value>
+              <value xml:lang="en-US">Time picker — insert time</value>
+            </prop>
+            <prop oor:name="URL" oor:type="xs:string">
+              <value>service:ru.kves.shifthelper.calc.controls?time</value>
+            </prop>
+            <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+          </node>
+          <node oor:name="AutoFit" oor:op="replace">
+            <prop oor:name="Title" oor:type="xs:string">
+              <value xml:lang="ru-RU">Подогнать высоту строк</value>
+              <value xml:lang="en-US">Auto-fit row height</value>
+            </prop>
+            <prop oor:name="URL" oor:type="xs:string">
+              <value>service:ru.kves.shifthelper.calc.controls?autofit</value>
+            </prop>
+            <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+          </node>
+          <node oor:name="Clean" oor:op="replace">
+            <prop oor:name="Title" oor:type="xs:string">
+              <value xml:lang="ru-RU">Очистить лишние пробелы</value>
+              <value xml:lang="en-US">Clean extra spaces</value>
+            </prop>
+            <prop oor:name="URL" oor:type="xs:string">
+              <value>service:ru.kves.shifthelper.calc.controls?clean</value>
+            </prop>
+            <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+          </node>
+          <node oor:name="MergeCopy" oor:op="replace">
+            <prop oor:name="Title" oor:type="xs:string">
+              <value xml:lang="ru-RU">Объединить текст и скопировать</value>
+              <value xml:lang="en-US">Merge text and copy</value>
+            </prop>
+            <prop oor:name="URL" oor:type="xs:string">
+              <value>service:ru.kves.shifthelper.calc.controls?mergecopy</value>
+            </prop>
+            <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+          </node>
+          <node oor:name="SortTime" oor:op="replace">
+            <prop oor:name="Title" oor:type="xs:string">
+              <value xml:lang="ru-RU">Сортировать строки по времени</value>
+              <value xml:lang="en-US">Sort rows by time</value>
+            </prop>
+            <prop oor:name="URL" oor:type="xs:string">
+              <value>service:ru.kves.shifthelper.calc.controls?sorttime</value>
+            </prop>
+            <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+          </node>
+          <node oor:name="Maintenance" oor:op="replace">
+            <prop oor:name="Title" oor:type="xs:string">
+              <value xml:lang="ru-RU">Вставить текст ТО ВЭУ</value>
+              <value xml:lang="en-US">Insert WTG maintenance text</value>
+            </prop>
+            <prop oor:name="URL" oor:type="xs:string">
+              <value>service:ru.kves.shifthelper.calc.controls?maintenance</value>
+            </prop>
+            <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+          </node>
+          <node oor:name="Inspections" oor:op="replace">
+            <prop oor:name="Title" oor:type="xs:string">
+              <value xml:lang="ru-RU">Показать осмотры на текущую смену</value>
+              <value xml:lang="en-US">Show current-shift inspections</value>
+            </prop>
+            <prop oor:name="URL" oor:type="xs:string">
+              <value>service:ru.kves.shifthelper.calc.controls?inspections</value>
+            </prop>
+            <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+          </node>
+          <node oor:name="Rotor" oor:op="replace">
+            <prop oor:name="Title" oor:type="xs:string">
+              <value xml:lang="ru-RU">Обновить ограничения по оборотам</value>
+              <value xml:lang="en-US">Update rotor limits</value>
+            </prop>
+            <prop oor:name="URL" oor:type="xs:string">
+              <value>service:ru.kves.shifthelper.calc.controls?rotor</value>
+            </prop>
+            <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+          </node>
+          <node oor:name="Mail" oor:op="replace">
+            <prop oor:name="Title" oor:type="xs:string">
+              <value xml:lang="ru-RU">Создать черновик письма Outlook</value>
+              <value xml:lang="en-US">Create Outlook mail draft</value>
+            </prop>
+            <prop oor:name="URL" oor:type="xs:string">
+              <value>service:ru.kves.shifthelper.calc.controls?mail</value>
+            </prop>
+            <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+          </node>
+          <node oor:name="Separator2" oor:op="replace">
+            <prop oor:name="URL" oor:type="xs:string"><value>private:separator</value></prop>
+          </node>
           <node oor:name="Enable" oor:op="replace">
             <prop oor:name="Title" oor:type="xs:string">
               <value xml:lang="ru-RU">Включить быстрый ввод</value>
@@ -21,16 +157,6 @@
             </prop>
             <prop oor:name="URL" oor:type="xs:string">
               <value>service:ru.kves.shifthelper.calc.controls?enable</value>
-            </prop>
-            <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
-          </node>
-          <node oor:name="Disable" oor:op="replace">
-            <prop oor:name="Title" oor:type="xs:string">
-              <value xml:lang="ru-RU">Выключить быстрый ввод</value>
-              <value xml:lang="en-US">Disable quick input</value>
-            </prop>
-            <prop oor:name="URL" oor:type="xs:string">
-              <value>service:ru.kves.shifthelper.calc.controls?disable</value>
             </prop>
             <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
           </node>
@@ -44,91 +170,100 @@
             </prop>
             <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
           </node>
+          <node oor:name="Disable" oor:op="replace">
+            <prop oor:name="Title" oor:type="xs:string">
+              <value xml:lang="ru-RU">Выключить быстрый ввод</value>
+              <value xml:lang="en-US">Disable quick input</value>
+            </prop>
+            <prop oor:name="URL" oor:type="xs:string">
+              <value>service:ru.kves.shifthelper.calc.controls?disable</value>
+            </prop>
+            <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+          </node>
         </node>
-      </node>
-    </node>
-
-    <node oor:name="AddonMenu">
-      <node oor:name="ru.kves.shifthelper.calc.enable" oor:op="replace">
-        <prop oor:name="Title" oor:type="xs:string">
-          <value xml:lang="ru-RU">Shift-Helper: включить быстрый ввод</value>
-          <value xml:lang="en-US">Shift-Helper: enable quick input</value>
-        </prop>
-        <prop oor:name="URL" oor:type="xs:string">
-          <value>service:ru.kves.shifthelper.calc.controls?enable</value>
-        </prop>
-        <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
-        <prop oor:name="Context" oor:type="xs:string">
-          <value>com.sun.star.sheet.SpreadsheetDocument</value>
-        </prop>
-      </node>
-      <node oor:name="ru.kves.shifthelper.calc.disable" oor:op="replace">
-        <prop oor:name="Title" oor:type="xs:string">
-          <value xml:lang="ru-RU">Shift-Helper: выключить быстрый ввод</value>
-          <value xml:lang="en-US">Shift-Helper: disable quick input</value>
-        </prop>
-        <prop oor:name="URL" oor:type="xs:string">
-          <value>service:ru.kves.shifthelper.calc.controls?disable</value>
-        </prop>
-        <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
-        <prop oor:name="Context" oor:type="xs:string">
-          <value>com.sun.star.sheet.SpreadsheetDocument</value>
-        </prop>
-      </node>
-      <node oor:name="ru.kves.shifthelper.calc.status" oor:op="replace">
-        <prop oor:name="Title" oor:type="xs:string">
-          <value xml:lang="ru-RU">Shift-Helper: состояние</value>
-          <value xml:lang="en-US">Shift-Helper: status</value>
-        </prop>
-        <prop oor:name="URL" oor:type="xs:string">
-          <value>service:ru.kves.shifthelper.calc.controls?status</value>
-        </prop>
-        <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
-        <prop oor:name="Context" oor:type="xs:string">
-          <value>com.sun.star.sheet.SpreadsheetDocument</value>
-        </prop>
       </node>
     </node>
 
     <node oor:name="OfficeToolBar">
-      <node oor:name="ru.kves.shifthelper.calc.toolbar.v031" oor:op="replace">
-        <node oor:name="Enable" oor:op="replace">
-          <prop oor:name="Context" oor:type="xs:string">
-            <value>com.sun.star.sheet.SpreadsheetDocument</value>
-          </prop>
-          <prop oor:name="URL" oor:type="xs:string">
-            <value>service:ru.kves.shifthelper.calc.controls?enable</value>
-          </prop>
-          <prop oor:name="Title" oor:type="xs:string">
-            <value xml:lang="ru-RU">Включить быстрый ввод</value>
-            <value xml:lang="en-US">Enable quick input</value>
-          </prop>
+      <node oor:name="ru.kves.shifthelper.calc.toolbar.v033" oor:op="replace">
+        <node oor:name="Prepare" oor:op="replace">
+          <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.sheet.SpreadsheetDocument</value></prop>
+          <prop oor:name="URL" oor:type="xs:string"><value>service:ru.kves.shifthelper.calc.controls?prepare</value></prop>
+          <prop oor:name="Title" oor:type="xs:string"><value xml:lang="ru-RU">Подготовить контур рапорта</value></prop>
           <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
         </node>
-        <node oor:name="Status" oor:op="replace">
-          <prop oor:name="Context" oor:type="xs:string">
-            <value>com.sun.star.sheet.SpreadsheetDocument</value>
-          </prop>
-          <prop oor:name="URL" oor:type="xs:string">
-            <value>service:ru.kves.shifthelper.calc.controls?status</value>
-          </prop>
-          <prop oor:name="Title" oor:type="xs:string">
-            <value xml:lang="ru-RU">Состояние Shift-Helper</value>
-            <value xml:lang="en-US">Shift-Helper status</value>
-          </prop>
+        <node oor:name="Generation" oor:op="replace">
+          <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.sheet.SpreadsheetDocument</value></prop>
+          <prop oor:name="URL" oor:type="xs:string"><value>service:ru.kves.shifthelper.calc.controls?generation</value></prop>
+          <prop oor:name="Title" oor:type="xs:string"><value xml:lang="ru-RU">Импорт генерации</value></prop>
           <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
         </node>
-        <node oor:name="Disable" oor:op="replace">
-          <prop oor:name="Context" oor:type="xs:string">
-            <value>com.sun.star.sheet.SpreadsheetDocument</value>
-          </prop>
-          <prop oor:name="URL" oor:type="xs:string">
-            <value>service:ru.kves.shifthelper.calc.controls?disable</value>
-          </prop>
-          <prop oor:name="Title" oor:type="xs:string">
-            <value xml:lang="ru-RU">Выключить быстрый ввод</value>
-            <value xml:lang="en-US">Disable quick input</value>
-          </prop>
+        <node oor:name="Report" oor:op="replace">
+          <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.sheet.SpreadsheetDocument</value></prop>
+          <prop oor:name="URL" oor:type="xs:string"><value>service:ru.kves.shifthelper.calc.controls?report</value></prop>
+          <prop oor:name="Title" oor:type="xs:string"><value xml:lang="ru-RU">Сформировать полный рапорт</value></prop>
+          <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+        </node>
+      </node>
+      <node oor:name="ru.kves.shifthelper.calc.tools.v040" oor:op="replace">
+        <node oor:name="Calendar" oor:op="replace">
+          <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.sheet.SpreadsheetDocument</value></prop>
+          <prop oor:name="URL" oor:type="xs:string"><value>service:ru.kves.shifthelper.calc.controls?calendar</value></prop>
+          <prop oor:name="Title" oor:type="xs:string"><value xml:lang="ru-RU">Календарь</value></prop>
+          <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+        </node>
+        <node oor:name="Time" oor:op="replace">
+          <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.sheet.SpreadsheetDocument</value></prop>
+          <prop oor:name="URL" oor:type="xs:string"><value>service:ru.kves.shifthelper.calc.controls?time</value></prop>
+          <prop oor:name="Title" oor:type="xs:string"><value xml:lang="ru-RU">Часы</value></prop>
+          <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+        </node>
+        <node oor:name="AutoFit" oor:op="replace">
+          <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.sheet.SpreadsheetDocument</value></prop>
+          <prop oor:name="URL" oor:type="xs:string"><value>service:ru.kves.shifthelper.calc.controls?autofit</value></prop>
+          <prop oor:name="Title" oor:type="xs:string"><value xml:lang="ru-RU">Высота строк</value></prop>
+          <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+        </node>
+        <node oor:name="Clean" oor:op="replace">
+          <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.sheet.SpreadsheetDocument</value></prop>
+          <prop oor:name="URL" oor:type="xs:string"><value>service:ru.kves.shifthelper.calc.controls?clean</value></prop>
+          <prop oor:name="Title" oor:type="xs:string"><value xml:lang="ru-RU">Очистить пробелы</value></prop>
+          <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+        </node>
+        <node oor:name="MergeCopy" oor:op="replace">
+          <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.sheet.SpreadsheetDocument</value></prop>
+          <prop oor:name="URL" oor:type="xs:string"><value>service:ru.kves.shifthelper.calc.controls?mergecopy</value></prop>
+          <prop oor:name="Title" oor:type="xs:string"><value xml:lang="ru-RU">Объединить и копировать</value></prop>
+          <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+        </node>
+        <node oor:name="SortTime" oor:op="replace">
+          <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.sheet.SpreadsheetDocument</value></prop>
+          <prop oor:name="URL" oor:type="xs:string"><value>service:ru.kves.shifthelper.calc.controls?sorttime</value></prop>
+          <prop oor:name="Title" oor:type="xs:string"><value xml:lang="ru-RU">Сортировать по времени</value></prop>
+          <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+        </node>
+        <node oor:name="Maintenance" oor:op="replace">
+          <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.sheet.SpreadsheetDocument</value></prop>
+          <prop oor:name="URL" oor:type="xs:string"><value>service:ru.kves.shifthelper.calc.controls?maintenance</value></prop>
+          <prop oor:name="Title" oor:type="xs:string"><value xml:lang="ru-RU">Текст ТО ВЭУ</value></prop>
+          <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+        </node>
+        <node oor:name="Inspections" oor:op="replace">
+          <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.sheet.SpreadsheetDocument</value></prop>
+          <prop oor:name="URL" oor:type="xs:string"><value>service:ru.kves.shifthelper.calc.controls?inspections</value></prop>
+          <prop oor:name="Title" oor:type="xs:string"><value xml:lang="ru-RU">Осмотры смены</value></prop>
+          <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+        </node>
+        <node oor:name="Rotor" oor:op="replace">
+          <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.sheet.SpreadsheetDocument</value></prop>
+          <prop oor:name="URL" oor:type="xs:string"><value>service:ru.kves.shifthelper.calc.controls?rotor</value></prop>
+          <prop oor:name="Title" oor:type="xs:string"><value xml:lang="ru-RU">Ограничения оборотов</value></prop>
+          <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
+        </node>
+        <node oor:name="Mail" oor:op="replace">
+          <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.sheet.SpreadsheetDocument</value></prop>
+          <prop oor:name="URL" oor:type="xs:string"><value>service:ru.kves.shifthelper.calc.controls?mail</value></prop>
+          <prop oor:name="Title" oor:type="xs:string"><value xml:lang="ru-RU">Письмо Outlook</value></prop>
           <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
         </node>
       </node>

@@ -12,6 +12,18 @@ from pathlib import Path
 from typing import Any
 
 
+def _register_calc_payload() -> None:
+    """Keep every public Calc-extension build path complete and deterministic."""
+
+    from .extension_builder_payload import install_payload_copy
+
+    install_payload_copy()
+
+
+_register_calc_payload()
+del _register_calc_payload
+
+
 def create_app(*, testing: bool = False, data_root: Path | None = None) -> Any:
     """Load the frozen pre-pivot Flask application lazily for compatibility tests."""
 

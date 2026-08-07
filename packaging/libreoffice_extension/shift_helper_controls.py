@@ -1,5 +1,4 @@
 """UNO component exposing Shift-Helper controls to LibreOffice Calc UI."""
-
 from __future__ import annotations
 
 import importlib.util
@@ -14,13 +13,32 @@ from com.sun.star.task import XJobExecutor
 
 _IMPLEMENTATION_NAME = "ru.kves.shifthelper.calc.controls"
 _CALC_SERVICE = "com.sun.star.sheet.SpreadsheetDocument"
-_RUNTIME_MODULE_NAME = "_shift_helper_extension_auto"
-_ACTIONS = {
-    "enable": "enable_automatic_input",
-    "disable": "disable_automatic_input",
-    "status": "automatic_input_status",
+_RUNTIME_FILES = {
+    "auto": ("_shift_helper_extension_auto", "shift_helper_auto.py"),
+    "report": ("_shift_helper_extension_report", "shift_helper_report.py"),
+    "tools": ("_shift_helper_extension_tools", "shift_helper_tools.py"),
 }
-_RUNTIME: ModuleType | None = None
+_ACTIONS = {
+    "enable": ("auto", "enable_automatic_input"),
+    "disable": ("auto", "disable_automatic_input"),
+    "status": ("auto", "automatic_input_status"),
+    "prepare": ("report", "prepare_report_input_sheets"),
+    "generation": ("report", "import_generation_from_outlook"),
+    "report": ("report", "generate_full_report"),
+    "calendar": ("tools", "show_calendar"),
+    "calendarprep": ("report", "show_report_date_calendar"),
+    "generationsettings": ("report", "show_generation_import_settings"),
+    "time": ("tools", "show_time_picker"),
+    "autofit": ("tools", "auto_fit_selected_rows"),
+    "clean": ("tools", "clean_selected_spaces"),
+    "mergecopy": ("tools", "merge_and_copy_selection"),
+    "sorttime": ("tools", "sort_selected_rows_by_time"),
+    "maintenance": ("tools", "insert_wtg_maintenance_text"),
+    "inspections": ("tools", "show_today_inspections"),
+    "rotor": ("tools", "update_rotor_limits_from_log"),
+    "mail": ("tools", "create_outlook_mail_draft"),
+}
+_RUNTIMES: dict[str, ModuleType] = {}
 
 
 def _desktop(context):
@@ -29,34 +47,29 @@ def _desktop(context):
     )
 
 
-def _current_calc(context):
+def _document(context):
     document = _desktop(context).getCurrentComponent()
     if document is None or not document.supportsService(_CALC_SERVICE):
         raise RuntimeError("Откройте книгу LibreOffice Calc.")
     return document
 
 
-def _message(context, document, text: str, *, error: bool = False) -> None:
+def _message(context, document, text: str) -> None:
     toolkit = context.getServiceManager().createInstanceWithContext(
         "com.sun.star.awt.Toolkit", context
     )
     parent = document.getCurrentController().getFrame().getContainerWindow()
-    box_type = uno.Enum(
-        "com.sun.star.awt.MessageBoxType",
-        "ERRORBOX" if error else "INFOBOX",
-    )
-    buttons = uno.getConstantByName("com.sun.star.awt.MessageBoxButtons.BUTTONS_OK")
     box = toolkit.createMessageBox(
         parent,
-        box_type,
-        buttons,
+        uno.Enum("com.sun.star.awt.MessageBoxType", "ERRORBOX"),
+        uno.getConstantByName("com.sun.star.awt.MessageBoxButtons.BUTTONS_OK"),
         "Shift-Helper",
         text.replace("\n", "\r\n"),
     )
     box.execute()
 
 
-def _component_root() -> Path:
+def _root() -> Path:
     raw = str(globals().get("__file__", "")).strip()
     if not raw:
         raise RuntimeError("LibreOffice не передал путь установленного расширения.")
@@ -65,96 +78,109 @@ def _component_root() -> Path:
     return Path(raw).resolve().parent
 
 
-def _load_runtime() -> ModuleType:
-    global _RUNTIME
-    if _RUNTIME is not None:
-        return _RUNTIME
+def _load_file(module_name: str, path: Path) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Не удалось создать загрузчик {path.name}.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(module_name, None)
+        raise
+    return module
 
-    root = _component_root()
+
+def _load_runtime(key: str) -> ModuleType:
+    cached = _RUNTIMES.get(key)
+    if cached is not None:
+        return cached
+    module_name, filename = _RUNTIME_FILES[key]
+    root = _root()
     scripts = root / "Scripts" / "python"
     pythonpath = scripts / "pythonpath"
-    runtime_path = scripts / "shift_helper_auto.py"
-    if not runtime_path.is_file():
-        raise RuntimeError(
-            "В установленном расширении отсутствует Scripts/python/shift_helper_auto.py."
-        )
-
     for directory in (pythonpath, scripts):
         value = str(directory)
         if value not in sys.path:
             sys.path.insert(0, value)
+    path = scripts / filename
+    if not path.is_file():
+        raise RuntimeError(f"В расширении отсутствует {filename}.")
+    runtime = _load_file(module_name, path)
+    if key == "report":
+        repairs = _load_file(
+            "_shift_helper_extension_report_repairs",
+            scripts / "shift_helper_calc.py",
+        )
+        repairs.patch_report_runtime(runtime)
+        from shift_helper.core import exact_report_contract
+        from shift_helper.core.acceptance_repairs_006 import (
+            install_acceptance_repairs,
+        )
+        from shift_helper.core.exact_migration_contract import (
+            install_exact_migration_contract,
+        )
+        from shift_helper.core.exact_storage_contract import (
+            install_exact_storage_contract,
+        )
 
-    spec = importlib.util.spec_from_file_location(_RUNTIME_MODULE_NAME, runtime_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Не удалось создать загрузчик ядра Shift-Helper.")
+        install_exact_storage_contract(exact_report_contract)
+        exact_report_contract.install_exact_report_contract(runtime, root)
+        install_acceptance_repairs(exact_report_contract, runtime, root)
+        install_exact_migration_contract(exact_report_contract, runtime)
+    elif key == "tools":
+        from shift_helper.core.exact_tools_contract import install_exact_tools_contract
 
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[_RUNTIME_MODULE_NAME] = module
-    try:
-        spec.loader.exec_module(module)
-    except Exception:
-        sys.modules.pop(_RUNTIME_MODULE_NAME, None)
-        raise
-    _RUNTIME = module
-    return module
+        install_exact_tools_contract(runtime, root)
+    _RUNTIMES[key] = runtime
+    return runtime
 
 
-class _ScriptContextAdapter:
-    """Provide the subset of XScriptContext used by the accepted UNO-001 runtime."""
-
-    def __init__(self, context, desktop, document) -> None:
-        self._context = context
-        self._desktop = desktop
-        self._document = document
+class _ScriptContext:
+    def __init__(self, context, document) -> None:
+        self.context = context
+        self.desktop = _desktop(context)
+        self.document = document
 
     def getComponentContext(self):  # noqa: N802
-        return self._context
+        return self.context
 
     def getDesktop(self):  # noqa: N802
-        return self._desktop
+        return self.desktop
 
     def getDocument(self):  # noqa: N802
-        return self._document
+        return self.document
 
     def getInvocationContext(self):  # noqa: N802
-        return self._document
+        return self.document
 
 
-def _invoke_runtime(context, document, function_name: str) -> None:
-    runtime = _load_runtime()
-    runtime.XSCRIPTCONTEXT = _ScriptContextAdapter(
-        context,
-        _desktop(context),
-        document,
-    )
-    function = getattr(runtime, function_name, None)
+def _invoke(context, document, key: str, name: str) -> None:
+    runtime = _load_runtime(key)
+    runtime.XSCRIPTCONTEXT = _ScriptContext(context, document)
+    function = getattr(runtime, name, None)
     if not callable(function):
-        raise RuntimeError(f"В ядре Shift-Helper отсутствует функция {function_name}.")
+        raise RuntimeError(f"В ядре Shift-Helper отсутствует функция {name}.")
     function()
 
 
 class ShiftHelperControls(unohelper.Base, XJobExecutor):
-    """Dispatch Calc UI actions directly into the bundled UNO-001 runtime."""
-
     def __init__(self, context: Any) -> None:
         self.context = context
 
     def trigger(self, event: str) -> None:
         document = None
         try:
-            document = _current_calc(self.context)
+            document = _document(self.context)
             action = str(event).strip().lower()
-            function_name = _ACTIONS.get(action)
-            if function_name is None:
+            if action not in _ACTIONS:
                 raise RuntimeError(f"Неизвестная команда Shift-Helper: {event!r}.")
-            _invoke_runtime(self.context, document, function_name)
+            key, name = _ACTIONS[action]
+            _invoke(self.context, document, key, name)
         except Exception as exc:
-            if document is None:
-                try:
-                    document = _current_calc(self.context)
-                except Exception:
-                    return
-            _message(self.context, document, str(exc), error=True)
+            if document is not None:
+                _message(self.context, document, str(exc))
 
 
 g_ImplementationHelper = unohelper.ImplementationHelper()

@@ -5,21 +5,25 @@
                     oor:package="org.openoffice.Office.UI">
   <node oor:name="UIElements">
     <node oor:name="States">
-      <node oor:name="private:resource/toolbar/addon_ru.kves.shifthelper.calc.toolbar.v031"
+      <node oor:name="private:resource/toolbar/addon_ru.kves.shifthelper.calc.toolbar.v033"
             oor:op="replace">
-        <prop oor:name="ContextSensitive" oor:type="xs:boolean">
-          <value>false</value>
-        </prop>
+        <prop oor:name="ContextSensitive" oor:type="xs:boolean"><value>false</value></prop>
         <prop oor:name="UIName" oor:type="xs:string">
-          <value xml:lang="ru-RU">Shift-Helper</value>
-          <value xml:lang="en-US">Shift-Helper</value>
+          <value xml:lang="ru-RU">Shift-Helper — рапорт</value>
+          <value xml:lang="en-US">Shift-Helper — report</value>
         </prop>
-        <prop oor:name="Visible" oor:type="xs:boolean">
-          <value>true</value>
+        <prop oor:name="Visible" oor:type="xs:boolean"><value>true</value></prop>
+        <prop oor:name="Docked" oor:type="xs:boolean"><value>true</value></prop>
+      </node>
+      <node oor:name="private:resource/toolbar/addon_ru.kves.shifthelper.calc.tools.v040"
+            oor:op="replace">
+        <prop oor:name="ContextSensitive" oor:type="xs:boolean"><value>false</value></prop>
+        <prop oor:name="UIName" oor:type="xs:string">
+          <value xml:lang="ru-RU">Shift-Helper — инструменты</value>
+          <value xml:lang="en-US">Shift-Helper — tools</value>
         </prop>
-        <prop oor:name="Docked" oor:type="xs:boolean">
-          <value>true</value>
-        </prop>
+        <prop oor:name="Visible" oor:type="xs:boolean"><value>true</value></prop>
+        <prop oor:name="Docked" oor:type="xs:boolean"><value>true</value></prop>
       </node>
     </node>
   </node>

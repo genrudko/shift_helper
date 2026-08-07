@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shift-helper"
-version = "0.3.1.dev3"
-description = "Calc-based workbook automation and report generation core"
+version = "0.4.0.dev0"
+description = "Integrated Calc journal automation and full morning report test candidate"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
@@ -52,3 +52,13 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"packaging/libreoffice_extension/Scripts/python/shift_helper_report.py" = ["E501"]
+# These compatibility bridges are deliberately dense because they are embedded
+# into the LibreOffice extension and mirror the accepted workbook coordinates.
+"src/shift_helper/core/exact_report_contract.py" = ["E501", "F401", "B905"]
+"src/shift_helper/core/exact_migration_contract.py" = ["E501"]
+"src/shift_helper/core/acceptance_repairs_006.py" = ["E501"]
+# The semantic XLSX manifest intentionally keeps one SHA-256 per entry inline.
+"src/shift_helper/extension_builder_payload.py" = ["E501"]

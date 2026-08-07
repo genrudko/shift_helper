@@ -103,21 +103,21 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Build deterministic Calc extension
+      - name: Build deterministic integrated Calc extension
         shell: bash
         run: PYTHONPATH=src python scripts/build_calc_extension.py
 
-      - name: Verify Calc extension
+      - name: Verify integrated Calc extension
         shell: bash
         run: >-
           PYTHONPATH=src python -c
           "from pathlib import Path;
           from shift_helper.extension_builder import verify_calc_extension;
-          print(verify_calc_extension(Path('dist/Shift-Helper-Calc-UNO-001.oxt')))"
+          print(verify_calc_extension(Path('dist/Shift-Helper-Calc-FULL-TEST-001.oxt')))"
 
-      - name: Upload Calc extension
+      - name: Upload integrated Calc extension
         uses: actions/upload-artifact@v4
         with:
-          name: Shift-Helper-Calc-UNO-001
-          path: dist/Shift-Helper-Calc-UNO-001.oxt
+          name: Shift-Helper-Calc-FULL-TEST-001
+          path: dist/Shift-Helper-Calc-FULL-TEST-001.oxt
           if-no-files-found: error
