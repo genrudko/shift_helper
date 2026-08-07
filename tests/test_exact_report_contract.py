@@ -66,37 +66,45 @@ def test_exact_runtime_imports_forms_and_hides_external_template_picker() -> Non
         assert marker in source
 
 
-def test_exact_storage_avoids_visible_preparation_columns() -> None:
-    path = ROOT / "src/shift_helper/core/exact_storage_contract.py"
-    source = path.read_text(encoding="utf-8")
-    ast.parse(source)
-    for marker in (
-        "STATUS_NAME_COL = 9",
-        "STATUS_VALUE_COL = 10",
-        "META_KEY_COL = 12",
-        "META_VALUE_COL = 13",
-        "_clear_legacy_statuses",
-        "'Подготовка рапорта'.K2:K85",
-        "install_exact_storage_contract",
-    ):
-        assert marker in source
+def test_final_acceptance_moves_status_to_visible_state_sheet() -> None:
+    storage = (
+        ROOT / "src/shift_helper/core/exact_storage_contract.py"
+    ).read_text(encoding="utf-8")
+    acceptance = (
+        ROOT / "src/shift_helper/core/acceptance_repairs_006.py"
+    ).read_text(encoding="utf-8")
+    ast.parse(storage)
+    ast.parse(acceptance)
+
+    # M:N remain the only hidden service area in the final acceptance repair.
+    assert "META_KEY_COL = 12" in storage
+    assert "META_VALUE_COL = 13" in storage
+    assert "META_KEY_COLUMN = 12" in acceptance
+    assert "META_VALUE_COLUMN = 13" in acceptance
+
+    # The transitional J:K status store is migrated and then removed.
+    assert "STATUS_COLUMN = 11" in acceptance
+    assert 'header.setString("Статус ВЭУ")' in acceptance
+    assert "_clear_legacy_statuses(prep)" in acceptance
+    assert "getCellByPosition(STATUS_COLUMN, row)" in acceptance
 
 
-def test_exact_migration_preserves_data_and_clears_template_samples() -> None:
+def test_exact_migration_preserves_legacy_data_before_form_rebuild() -> None:
     path = ROOT / "src/shift_helper/core/exact_migration_contract.py"
     source = path.read_text(encoding="utf-8")
     ast.parse(source)
     for marker in (
         "_legacy_main",
         "_legacy_state",
-        "_reset_main",
-        "_reset_state",
-        "_reset_works",
-        "_reset_violations",
+        "_restore_main",
+        "_restore_state",
+        "_restore_works",
+        "_restore_violations",
         "needs_rebuild",
-        "has_legacy_data",
-        "if needs_rebuild:",
-        "без демонстрационных",
+        "had_legacy_data",
+        "if not needs_rebuild:",
+        "Данные старых листов перенесены",
+        "Демонстрационные значения встроенного шаблона очищены",
         "install_exact_migration_contract",
     ):
         assert marker in source
@@ -117,12 +125,13 @@ def test_exact_tools_runtime_uses_report_state_coordinates() -> None:
         assert marker in source
 
 
-def test_controls_install_exact_contracts_for_report_and_tools() -> None:
+def test_controls_install_final_report_contracts_in_order() -> None:
     source = (
         ROOT / "packaging/libreoffice_extension/shift_helper_controls.py"
     ).read_text(encoding="utf-8")
     assert "install_exact_storage_contract(exact_report_contract)" in source
     assert "exact_report_contract.install_exact_report_contract(runtime, root)" in source
+    assert "install_acceptance_repairs(exact_report_contract, runtime, root)" in source
     assert "install_exact_migration_contract(exact_report_contract, runtime)" in source
     assert "install_exact_tools_contract(runtime, root)" in source
     assert "install_calc_workspace_repairs" not in source
@@ -139,3 +148,4 @@ def test_extension_payload_reconstructs_template_and_registers_runtimes() -> Non
     assert "exact_storage_contract.py" in source
     assert "exact_migration_contract.py" in source
     assert "exact_tools_contract.py" in source
+    assert "acceptance_repairs_006.py" in source
