@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import zipfile
 from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
@@ -11,7 +12,6 @@ from openpyxl import load_workbook
 from shift_helper.core.selection import event_filter_code
 from shift_helper.core.selection import report_window as legacy_report_window
 from shift_helper.core.workbook_contract import (
-    APPROVED_REPORT_TEMPLATE_SHA256,
     INPUT_OUTAGES,
     INPUT_SHEETS,
     PREP_SHEET,
@@ -28,7 +28,7 @@ from shift_helper.core.workbook_contract import (
     required_remaining_mean_power_kw,
     shifted_report_timestamp,
 )
-from shift_helper.extension_builder_payload import _template_bytes
+from shift_helper.extension_builder_payload import _TEMPLATE_ENTRY_SHA256, _template_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -89,9 +89,12 @@ def test_emergency_filter_is_not_replaced_by_keyword_guessing() -> None:
     assert event_filter_code("Аварийное отключение", "-") == "skip.empty_reason"
 
 
-def test_approved_report_template_is_exact_embedded_seven_sheet_source() -> None:
+def test_approved_report_template_rebuild_preserves_every_exact_member() -> None:
     payload = _template_bytes(ROOT)
-    assert hashlib.sha256(payload).hexdigest() == APPROVED_REPORT_TEMPLATE_SHA256
+    with zipfile.ZipFile(BytesIO(payload)) as archive:
+        assert set(archive.namelist()) == set(_TEMPLATE_ENTRY_SHA256)
+        for name, expected in _TEMPLATE_ENTRY_SHA256.items():
+            assert hashlib.sha256(archive.read(name)).hexdigest() == expected
     workbook = load_workbook(BytesIO(payload), read_only=True, data_only=False)
     try:
         assert tuple(workbook.sheetnames) == REPORT_SHEETS

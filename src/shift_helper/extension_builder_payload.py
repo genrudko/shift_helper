@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import struct
 import xml.etree.ElementTree as ET
 import zipfile
+import zlib
 from io import BytesIO
 from pathlib import Path
 
 from shift_helper import extension_builder
 
 _TEMPLATE_TARGET = "Templates/report_template.xlsx"
-# Historical byte-for-byte SHA of the owner-approved XLSX container.  XLSX ZIP
+# Historical byte-for-byte SHA of the owner-approved XLSX container. XLSX ZIP
 # metadata can change without changing workbook contents, so acceptance is
 # enforced below with per-member hashes for every file inside the workbook.
 _TEMPLATE_SHA256 = "cde2d2fb042f27dc514f71ac991676e423dd6a68667fbb6d3f928ab610acbb32"
@@ -71,6 +73,8 @@ _SOURCE_PAYLOADS = {
 }
 _ORIGINAL_PAYLOAD = extension_builder._payload
 _ORIGINAL_VERIFY = extension_builder.verify_calc_extension
+_LOCAL_HEADER = struct.Struct("<IHHHHHIIIHH")
+_LOCAL_FILE_SIGNATURE = 0x04034B50
 
 
 def _template_sheet_names(content: bytes) -> tuple[str, ...]:
@@ -120,6 +124,90 @@ def _validate_template(content: bytes) -> None:
         )
 
 
+def _recover_template_archive(content: bytes) -> bytes:
+    """Rebuild a valid ZIP central directory from verified local ZIP members."""
+
+    position = 0
+    members: dict[str, bytes] = {}
+    while position + _LOCAL_HEADER.size <= len(content):
+        fields = _LOCAL_HEADER.unpack_from(content, position)
+        signature = fields[0]
+        if signature != _LOCAL_FILE_SIGNATURE:
+            break
+        flags = fields[2]
+        method = fields[3]
+        crc32_expected = fields[6]
+        compressed_size = fields[7]
+        uncompressed_size = fields[8]
+        name_length = fields[9]
+        extra_length = fields[10]
+        if flags & 0x08:
+            raise extension_builder.ExtensionBuildError(
+                "Невозможно восстановить шаблон с ZIP data descriptor."
+            )
+        name_start = position + _LOCAL_HEADER.size
+        name_end = name_start + name_length
+        data_start = name_end + extra_length
+        data_end = data_start + compressed_size
+        if data_end > len(content):
+            raise extension_builder.ExtensionBuildError(
+                "Повреждена локальная запись встроенного шаблона."
+            )
+        encoding = "utf-8" if flags & 0x0800 else "cp437"
+        name = content[name_start:name_end].decode(encoding)
+        compressed = content[data_start:data_end]
+        if method == zipfile.ZIP_STORED:
+            raw = compressed
+        elif method == zipfile.ZIP_DEFLATED:
+            raw = zlib.decompress(compressed, -zlib.MAX_WBITS)
+        else:
+            raise extension_builder.ExtensionBuildError(
+                f"Неподдерживаемый метод ZIP-сжатия шаблона: {method}."
+            )
+        if len(raw) != uncompressed_size:
+            raise extension_builder.ExtensionBuildError(
+                f"Размер файла шаблона не совпадает: {name}."
+            )
+        if zlib.crc32(raw) & 0xFFFFFFFF != crc32_expected:
+            raise extension_builder.ExtensionBuildError(
+                f"CRC файла шаблона не совпадает: {name}."
+            )
+        if name in members:
+            raise extension_builder.ExtensionBuildError(
+                f"Дублируется файл встроенного шаблона: {name}."
+            )
+        members[name] = raw
+        position = data_end
+
+    expected_names = set(_TEMPLATE_ENTRY_SHA256)
+    if set(members) != expected_names:
+        missing = sorted(expected_names - set(members))
+        extra = sorted(set(members) - expected_names)
+        raise extension_builder.ExtensionBuildError(
+            f"Не удалось восстановить состав шаблона; missing={missing}, extra={extra}."
+        )
+    for name, expected in _TEMPLATE_ENTRY_SHA256.items():
+        actual = hashlib.sha256(members[name]).hexdigest()
+        if actual != expected:
+            raise extension_builder.ExtensionBuildError(
+                f"Восстановленный файл шаблона изменён: {name}."
+            )
+
+    rebuilt = BytesIO()
+    with zipfile.ZipFile(
+        rebuilt,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=9,
+    ) as archive:
+        for name in sorted(members):
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o600 << 16
+            archive.writestr(info, members[name])
+    return rebuilt.getvalue()
+
+
 def _template_bytes(repo_root: Path) -> bytes:
     chunks = sorted(repo_root.glob(_TEMPLATE_GLOB))
     if not chunks:
@@ -133,7 +221,11 @@ def _template_bytes(repo_root: Path) -> bytes:
         raise extension_builder.ExtensionBuildError(
             "Встроенный шаблон рапорта повреждён."
         ) from exc
-    _validate_template(content)
+    try:
+        _validate_template(content)
+    except extension_builder.ExtensionBuildError:
+        content = _recover_template_archive(content)
+        _validate_template(content)
     return content
 
 

@@ -8,8 +8,7 @@ import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from shift_helper.core.workbook_contract import APPROVED_REPORT_TEMPLATE_SHA256
-from shift_helper.extension_builder_payload import _template_bytes
+from shift_helper.extension_builder_payload import _template_bytes, _validate_template
 
 _CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
 _REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -165,7 +164,7 @@ def _rewrite_zip(path: Path, replacements: dict[str, bytes]) -> None:
 
 
 def build_excel_addin(repo_root: Path, output: Path) -> Path:
-    """Create a real XLAM with native VBA, Ribbon and embedded exact template."""
+    """Create a real XLAM with native VBA, Ribbon and exact internal template."""
 
     try:
         from pyopenvba import ExcelFile, VBAModuleKind
@@ -175,8 +174,6 @@ def build_excel_addin(repo_root: Path, output: Path) -> Path:
     repo_root = repo_root.resolve()
     output = output.resolve()
     template = _template_bytes(repo_root)
-    if hashlib.sha256(template).hexdigest() != APPROVED_REPORT_TEMPLATE_SHA256:
-        raise RuntimeError("Approved embedded report template hash drifted.")
     sources = _vba_sources(repo_root)
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -241,8 +238,7 @@ def verify_excel_addin(repo_root: Path, path: Path) -> dict[str, object]:
         if not required <= names:
             raise RuntimeError(f"XLAM is missing required parts: {sorted(required - names)}")
         embedded = archive.read(_TEMPLATE_PART)
-        if hashlib.sha256(embedded).hexdigest() != APPROVED_REPORT_TEMPLATE_SHA256:
-            raise RuntimeError("Embedded report template payload drifted.")
+        _validate_template(embedded)
         ribbon = archive.read("customUI/customUI14.xml").decode("utf-8")
         callbacks = set(re.findall(r'onAction="([A-Za-z0-9_]+)"', ribbon))
         implemented = "\n".join(sources.values())
@@ -262,5 +258,5 @@ def verify_excel_addin(repo_root: Path, path: Path) -> dict[str, object]:
     return {
         "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "modules": sorted(sources),
-        "embedded_template_sha256": APPROVED_REPORT_TEMPLATE_SHA256,
+        "embedded_template_members": 19,
     }
