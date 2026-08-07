@@ -75,10 +75,10 @@ def test_photo_repair_rebuilds_dates_percentages_and_violation_layout() -> None:
     assert "_ask_report_date" not in generation
     assert 'main.getCellByPosition(1, 1).setFormula' in generation
 
-    assert '_REPORT_REPAIRS_FILE = "shift_helper_calc.py"' in controls
-    assert "repairs.patch_report_runtime(module)" in controls
-    assert '"import_generation_from_outlook",' in controls
-    assert "_repair_photo_state_statuses" in controls
+    assert 'scripts / "shift_helper_calc.py"' in controls
+    assert "repairs.patch_report_runtime(runtime)" in controls
+    assert "install_acceptance_repairs" in controls
+    assert '"generation": ("report", "import_generation_from_outlook")' in controls
 
 
 def test_photo_repair_status_inference_separates_categories() -> None:
