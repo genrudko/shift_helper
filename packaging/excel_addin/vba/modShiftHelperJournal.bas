@@ -74,16 +74,14 @@ Failed:
     MsgBox Err.Description, vbExclamation, "Shift-Helper"
 End Sub
 
-Public Sub SH_SetRowHeight()
+Public Sub SH_AutoFitRows()
     On Error GoTo Failed
-    Dim wb As Workbook, target As Range, answer As Variant, heightValue As Double
+    Dim wb As Workbook, target As Range, area As Range
     Set wb = SH_JournalBook()
     Set target = SH_SelectionRange(wb)
-    answer = Application.InputBox(SH_T("ROW_HEIGHT_PROMPT"), SH_T("ROW_HEIGHT_TITLE"), 18, Type:=1)
-    If VarType(answer) = vbBoolean Then If answer = False Then Exit Sub
-    heightValue = CDbl(answer)
-    If heightValue < 5 Or heightValue > 200 Then Err.Raise vbObjectError + 524, , "5..200"
-    target.EntireRow.RowHeight = heightValue
+    For Each area In target.Areas
+        area.EntireRow.AutoFit
+    Next area
     Exit Sub
 Failed:
     MsgBox Err.Description, vbExclamation, "Shift-Helper"
