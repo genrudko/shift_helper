@@ -59,6 +59,7 @@ def test_station_profile_remains_compatible_with_kochubeevskaya_layout() -> None
 
 def test_report_actions_use_station_aware_contour_and_visible_station_selector() -> None:
     station = _source("modShiftHelperStation.bas")
+    station_import = _source("modShiftHelperStationImport.bas")
     ribbon = _source("modShiftHelperRibbon.bas")
     output = _source("modShiftHelperReportOutput.bas")
     custom_ui = (ROOT / "packaging" / "excel_addin" / "customUI14.xml").read_text(
@@ -73,7 +74,9 @@ def test_report_actions_use_station_aware_contour_and_visible_station_selector()
 
     assert "SH_PrepareStationReportContour" in ribbon
     assert "SH_ShowStationCalendar" in ribbon
-    assert "SH_ImportStationGeneration" in ribbon
+    assert "SH_ImportStationGenerationSelected" in ribbon
+    assert "SH_ImportGenerationUniversal" in station_import
+    assert 'SH_U("041A04430437")' in station_import
     assert "SH_UpdateStationRotorLimits" in ribbon
     assert "SH_RibbonStationMenu" in ribbon
     assert "SH_RibbonSetStation" in ribbon
@@ -82,11 +85,13 @@ def test_report_actions_use_station_aware_contour_and_visible_station_selector()
     assert 'getContent="SH_RibbonStationMenu"' in custom_ui
 
 
-def test_kuzminskaya_state_profile_keeps_status_service_only() -> None:
+def test_kuzminskaya_state_profile_keeps_status_service_only_and_merged_gtp_blocks() -> None:
     station = _source("modShiftHelperStation.bas")
     output = _source("modShiftHelperReportOutput.bas")
 
     assert "state.Cells(rowNumber, 12).Value = SH_StatusText(1)" in station
     assert 'state.Rows("75:98").Delete Shift:=xlUp' in station
+    assert '.Range("B" & CStr(groupRow) & ":B" & CStr(rowNumber - 1)).Merge' in station
+    assert '.Range("C" & CStr(groupRow) & ":C" & CStr(rowNumber - 1)).Merge' in station
     assert "SH_OutputRemoveWtgServiceColumns target" in output
     assert "target.Columns(12).Delete" in output
