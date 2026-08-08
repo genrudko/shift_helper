@@ -1,82 +1,73 @@
-# Shift-Helper for Microsoft Excel — installation and acceptance
+# Shift-Helper — Microsoft Excel Desktop
 
-## Target
+## Files
 
-- Windows x64;
-- desktop Microsoft Excel from Microsoft 365 / a current perpetual release;
-- classic Outlook Desktop is optional and is used only for generation import.
+Excel runtime uses:
 
-The shared journal remains an ordinary macro-free `.xlsx`. Do not convert it to `.xlsm`.
+- the shared journal workbook (`.xlsx` or an existing working copy opened by the operator);
+- `Shift-Helper-Excel.xlam` as the Excel add-in.
 
-## Install or replace the add-in
+The add-in must not be embedded into the shared journal. The journal remains the common workbook used by Excel and LibreOffice Calc.
 
-1. Close Excel completely before replacing an existing acceptance build.
-2. Keep `Shift-Helper-Excel.xlam` in a stable local folder, for example `Documents\Shift-Helper`.
-3. Replace the previous acceptance XLAM with the new file.
-4. If Windows shows **Unblock / Разблокировать** in the file properties, apply it.
-5. In Excel open **File → Options → Add-ins**.
-6. At the bottom select **Manage: Excel Add-ins → Go… → Browse…**.
-7. Choose `Shift-Helper-Excel.xlam` and enable it.
-8. Reopen the journal if it was already open.
-9. Confirm that the **Shift-Helper** Ribbon tab is visible and its commands have icons.
+## Installation
 
-If your organization blocks unsigned VBA add-ins, use the Office Trust Center policy approved by your administrator. Do not weaken system-wide macro security just for testing.
+1. Fully close every Microsoft Excel window.
+2. Copy `Shift-Helper-Excel.xlam` to a stable local folder.
+3. If Windows file Properties shows **Unblock / Разблокировать**, enable it and apply the change.
+4. Start Excel.
+5. Open **File → Options → Add-ins**.
+6. At the bottom choose **Manage: Excel Add-ins → Go**.
+7. Choose **Browse**, select `Shift-Helper-Excel.xlam` and enable it.
+8. Reopen the working Shift-Helper journal.
+9. Confirm that the **Shift-Helper** Ribbon tab appears.
 
-## Live runtime repair checkpoint
+When replacing an acceptance build, first disable/remove the old XLAM, fully close Excel, replace the file, then start Excel again. Excel can cache Ribbon/VBA state for an already loaded add-in.
 
-The acceptance build after the first real Excel parity test contains a dedicated repair for the previously observed long wait followed by **Type mismatch** in both **Подготовить полный контур** and **Импортировать генерацию**.
+## Current live-acceptance focus
 
-The repaired path now:
+The current candidate contains the live-Excel repairs found during owner testing:
 
-- switches Excel calculation to manual while report formulas are being reapplied, then restores the user's previous calculation mode;
-- disables application events and screen repaint only for the bounded operation and always restores them;
-- reads the journal event block `B:J` into one in-memory VBA array instead of thousands of per-cell Excel COM calls;
-- safely ignores empty/error date, time and text cells instead of converting Excel error variants through `CStr`, `CDbl` or `IsDate` unsafely;
-- calculates only the seven report input sheets rather than issuing `Workbook.Calculate` for the complete operational workbook;
-- uses a separate hardened generation-import runtime with safe metadata conversion and a received-time-bounded Outlook search;
-- preserves the original error number before cleanup;
-- reports the exact failing stage in any remaining runtime error.
+- no temporary workbook is used for Calendar or Outlook settings;
+- report preparation, generation import and Calendar date application no longer use invalid `Workbook.Calculate` calls;
+- report input recalculation is bounded to the seven report-input worksheets;
+- formula application is performed while Excel calculation/events/screen repaint are temporarily suspended and then restored;
+- journal event scans used by report outages and WTG rotor limits read bounded worksheet arrays instead of thousands of cell-by-cell calls;
+- Excel Error/Null/Empty values are guarded before text/date/numeric conversion;
+- remaining runtime failures include `[#error] Stage [...]` diagnostics;
+- WTG rotor-limit refresh uses the same bounded calculation path and exact accepted limit mapping.
 
-For this build, test these two commands first:
+## Immediate verification sequence
 
-1. **Подготовить полный контур рапорта**. On an already prepared acceptance journal it should finish promptly and must not reconstruct the embedded template unnecessarily.
-2. **Импортировать генерацию**. Outlook search is sorted by received time and stops when the configured search horizon is crossed; if no matching attachment exists and manual fallback is enabled, the file picker should appear.
+After loading the newest XLAM:
 
-If either operation still fails, record the complete Shift-Helper dialog. It now contains an error number and `Stage [...]` marker, which identifies the exact runtime section.
+1. Open **Shift-Helper → Рапорт → Календарь**.
+2. Select a different report date and verify that `Подготовка рапорта!B3` changes with no error 438.
+3. Run **Подготовить полный контур рапорта** and confirm that it completes without the previous multi-minute wait / `Type mismatch`.
+4. Run **Импортировать генерацию**. If Outlook cannot supply the expected file, verify the configured manual `.xlsx` fallback instead of a crash.
+5. Run **Ограничение по оборотам / мощности ВЭУ** and verify that it completes without `Object doesn't support this property or method`.
+6. Continue the full report-generation and operator-tool acceptance sequence.
 
-## Runtime UI contract
+If any of these operations still fails, capture the complete Shift-Helper message including the numeric error and `Stage [...]` text. That diagnostic identifies the remaining runtime boundary directly.
 
-- **Календарь** opens a compact native Windows month-calendar above Excel. It must show an actual month grid with normal month navigation and must not create a temporary Excel workbook.
-- **Настройки Outlook** is an in-Ribbon settings menu. Editing one value may use a standard Excel input dialog, but it must never create a temporary Excel workbook or window.
-- **Автовысота строк** applies Excel AutoFit to the selected rows from their cell contents. It must not ask the operator to enter a numeric row height.
-- every top-level Shift-Helper Ribbon command has an icon; the add-in obtains Office-native images at runtime and has a safe built-in fallback.
-- **Подготовить полный контур рапорта** creates missing Shift-Helper report/input sheets inside the current journal when required.
-- journal commands operate only in the active Shift-Helper journal context.
-- automatic quick input is limited to `ЖС` columns B/C/I/J and does not insert VBA into the journal.
-- a separate workbook is expected only for a genuine user document, such as the generated final morning report, or a generation source opened read-only during import.
+## Ribbon scope
 
-## Full acceptance sequence
+The add-in exposes operator functions for:
 
-Prefer the accepted `Shift-Helper-Journal-ACCEPTANCE-006.xlsx` baseline for controlled acceptance, then repeat the relevant checks on the real operational journal.
+- journal time sorting;
+- merge-and-copy;
+- whitespace cleanup;
+- automatic row height;
+- date and time input;
+- full report-contour preparation;
+- report-date Calendar;
+- full morning report generation;
+- classic-Outlook generation import and settings;
+- Outlook draft creation;
+- WTG maintenance text;
+- WTG rotor/power-limit refresh;
+- current-day/current-shift inspection navigation;
+- automatic quick-input enable/status/disable.
 
-1. Open the journal and leave its original workbook format unchanged.
-2. Run **Подготовить полный контур рапорта** and verify that it completes without a long hang or Type mismatch.
-3. Run **Импортировать генерацию** and verify Outlook search/manual fallback behavior.
-4. Verify that the **Shift-Helper** Ribbon shows icons for all commands.
-5. Press **Календарь** and verify a compact calendar window with a month grid, normal month navigation and no second workbook.
-6. Open **Настройки Outlook**. Verify settings stay in the Ribbon, persist after editing, and no Outlook workbook appears.
-7. Select journal rows with short and wrapped/multiline text and run **Автовысота строк**. Verify native AutoFit and no numeric prompt.
-8. Verify automatic quick input on `ЖС` B/C/I/J, including `.`, `!`, `+N`, compact dates/times and midnight rollover.
-9. Verify `Ввод - Основные!C6 = C10 / 24000` and the accepted C15 remaining-power calculation.
-10. Verify all 84 WTG rows on `Ввод - Состояние ВЭУ`, visible `Статус ВЭУ`, `P расп. = MAX(P уставка - P ремонт, 0)` and GTP sums.
-11. Run the WTG rotor/power-limit action and verify only corresponding WTG state rows change, including the accepted discrete repair-power mapping.
-12. Check `Ввод - Аварийные отключения` for the selected 07:00→07:00 window.
-13. Generate the full morning report. No report-template picker must appear. The output workbook must contain exactly the approved seven sheets.
-14. With a non-zero `Подготовка рапорта!B6`, compare source and output timestamps; the source journal must remain unchanged.
-15. Exercise A:R time sorting, merge-and-copy, whitespace cleanup, date/time insertion and maintenance text on real rows.
-16. Create an Outlook draft and verify Shift-Helper displays it rather than sending automatically.
-17. On `График осмотров КТП`, run **Текущий день / текущая смена** and verify navigation to the current schedule row.
-18. Save and close the shared journal. Confirm the `.xlsx` still contains no VBA/ActiveX/customUI parts.
-19. Open the same saved `.xlsx` in LibreOffice Calc and verify structure, formulas, formats and the existing Calc extension workflow.
+## Shared workbook contract
 
-A green GitHub build proves package structure and cross-platform contracts. It does **not** replace the live Excel Desktop acceptance gate.
+The XLAM may modify values, formulas, formatting and worksheets required by the accepted Shift-Helper workflow, but it must not save VBA, ActiveX or Ribbon parts into the shared journal. Report generation creates a separate `.xlsx` output workbook from the embedded approved seven-sheet report template. The normal operator flow never asks for an external report template.
