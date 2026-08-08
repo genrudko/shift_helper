@@ -90,7 +90,6 @@ def test_calc_operator_tool_parity_is_exposed_on_excel_ribbon() -> None:
         "btnCalendar": "SH_RibbonCalendar",
         "btnGenerate": "SH_RibbonGenerate",
         "btnGeneration": "SH_RibbonImportGeneration",
-        "btnMailDraft": "SH_RibbonMailDraft",
         "btnMaintenance": "SH_RibbonMaintenance",
         "btnRotor": "SH_RibbonRotorLimits",
         "btnShift": "SH_RibbonCurrentShift",
@@ -103,6 +102,12 @@ def test_calc_operator_tool_parity_is_exposed_on_excel_ribbon() -> None:
         assert control is not None, control_id
         assert control.attrib["onAction"] == callback
         assert f"Public Sub {callback}" in callbacks
+
+    mailing = root.find(".//ui:dynamicMenu[@id='btnMailing']", NS)
+    assert mailing is not None
+    assert mailing.attrib["getContent"] == "SH_RibbonMailingMenu"
+    assert "Public Sub SH_RibbonMailingMenu" in callbacks
+    assert "Public Sub SH_RibbonMailingDraft" in callbacks
 
 
 def test_report_bootstrap_extracts_template_only_when_input_form_is_missing() -> None:
