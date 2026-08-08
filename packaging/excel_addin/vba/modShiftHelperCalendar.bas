@@ -7,15 +7,14 @@ Public Function SH_CalendarMenuXml() As String
     On Error GoTo Failed
     Dim wb As Workbook, prep As Worksheet, currentValue As Variant, selectedDate As Date
     Dim xml As String, offset As Long, monthStart As Date, monthEnd As Date
-    Dim d As Date, weekStart As Date, weekEnd As Date, token As String
+    Dim weekStart As Date, weekEnd As Date, daySerial As Long, d As Date, token As String
     Set wb = SH_JournalBook()
-    Set prep = SH_EnsurePrepSheet(wb)
-    currentValue = prep.Range(SH_ReportDateCell()).Value
-    If IsDate(currentValue) Or IsNumeric(currentValue) Then
-        selectedDate = CDate(currentValue)
-    Else
-        selectedDate = Date
+    If SH_HasSheet(wb, SH_PrepSheetName()) Then
+        Set prep = wb.Worksheets(SH_PrepSheetName())
+        currentValue = prep.Range(SH_ReportDateCell()).Value
+        If IsDate(currentValue) Or IsNumeric(currentValue) Then selectedDate = CDate(currentValue)
     End If
+    If selectedDate = 0 Then selectedDate = Date
 
     xml = "<menu xmlns=""" & SH_MENU_NS & """>"
     xml = xml & "<button id=""calToday"" label=""" & SH_XmlEscape(SH_T("CAL_TODAY")) & _
@@ -35,9 +34,10 @@ Public Function SH_CalendarMenuXml() As String
             xml = xml & "<menu id=""calWeek" & token & Format$(weekStart, "dd") & _
                 """ label=""" & SH_XmlEscape(SH_T("CAL_WEEK") & Format$(weekStart, "d") & _
                 "-" & Format$(weekEnd, "d")) & """>"
-            For d = weekStart To weekEnd
+            For daySerial = CLng(weekStart) To CLng(weekEnd)
+                d = CDate(daySerial)
                 xml = xml & SH_CalendarDayXml(d, selectedDate)
-            Next d
+            Next daySerial
             xml = xml & "</menu>"
             weekStart = DateAdd("d", 7, weekStart)
         Loop
