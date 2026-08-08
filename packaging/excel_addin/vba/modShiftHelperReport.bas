@@ -3,29 +3,57 @@ Option Explicit
 
 Public Sub SH_PrepareReportContour()
     On Error GoTo Failed
-    Dim wb As Workbook, errDescription As String
+    Dim wb As Workbook, errDescription As String, errNumber As Long
     Set wb = SH_JournalBook()
     SH_EnsureReportContour wb
     MsgBox SH_T("OK_PREP") & vbCrLf & SH_T("NO_TEMPLATE_PICK"), vbInformation, "Shift-Helper"
     Exit Sub
 Failed:
+    errNumber = Err.Number
     errDescription = Err.Description
-    If Len(errDescription) = 0 Then errDescription = "Report contour preparation failed (" & CStr(Err.Number) & ")."
-    MsgBox SH_T("ERR_PREP") & errDescription, vbExclamation, "Shift-Helper"
+    If Len(errDescription) = 0 Then errDescription = "Report contour preparation failed."
+    MsgBox SH_T("ERR_PREP") & "[#" & CStr(errNumber) & "] " & errDescription, vbExclamation, "Shift-Helper"
 End Sub
 
 Public Sub SH_EnsureReportContour(ByVal wb As Workbook)
     On Error GoTo Failed
     Dim template As Workbook, templatePath As String, prep As Worksheet
     Dim i As Long, inputName As String, reportName As String, needsTemplate As Boolean
-    Dim errNumber As Long, errDescription As String
+    Dim errNumber As Long, errDescription As String, stage As String
+    Dim oldCalculation As XlCalculation, oldEvents As Boolean, oldScreenUpdating As Boolean
+    Dim appStateCaptured As Boolean
+
+    stage = "capture Excel state"
+    oldCalculation = Application.Calculation
+    oldEvents = Application.EnableEvents
+    oldScreenUpdating = Application.ScreenUpdating
+    appStateCaptured = True
+    Application.EnableEvents = False
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+
+    stage = "prepare service sheet"
     Set prep = SH_EnsurePrepSheet(wb)
+
+    stage = "check report forms"
     For i = 1 To SH_ReportSheetCount()
-        If Not SH_HasSheet(wb, SH_InputSheetName(i)) Then needsTemplate = True: Exit For
+        If Not SH_HasSheet(wb, SH_InputSheetName(i)) Then
+            needsTemplate = True
+            Exit For
+        End If
     Next i
+
     If needsTemplate Then
+        stage = "restore embedded report template"
         templatePath = SH_ExtractEmbeddedReportTemplate()
-        Set template = Workbooks.Open(Filename:=templatePath, UpdateLinks:=0, ReadOnly:=True, AddToMru:=False)
+        stage = "open embedded report template"
+        Set template = Workbooks.Open( _
+            Filename:=templatePath, _
+            UpdateLinks:=0, _
+            ReadOnly:=True, _
+            AddToMru:=False _
+        )
+        stage = "copy missing report forms"
         For i = 1 To SH_ReportSheetCount()
             inputName = SH_InputSheetName(i)
             reportName = SH_ReportSheetName(i)
@@ -37,18 +65,41 @@ Public Sub SH_EnsureReportContour(ByVal wb As Workbook)
         template.Close SaveChanges:=False
         Set template = Nothing
     End If
+
+    stage = "apply report formulas"
     SH_ApplyCriticalFormulas wb
+    stage = "refresh emergency outages"
     SH_RefreshEmergencyOutages wb
-    wb.Calculate
+    stage = "calculate report sheets"
+    SH_CalculateReportInputs wb
+
+    Application.Calculation = oldCalculation
+    Application.EnableEvents = oldEvents
+    Application.ScreenUpdating = oldScreenUpdating
     Exit Sub
 Failed:
     errNumber = Err.Number
     errDescription = Err.Description
     On Error Resume Next
     If Not template Is Nothing Then template.Close SaveChanges:=False
+    If appStateCaptured Then
+        Application.Calculation = oldCalculation
+        Application.EnableEvents = oldEvents
+        Application.ScreenUpdating = oldScreenUpdating
+    End If
     On Error GoTo 0
+    If errNumber = 0 Then errNumber = vbObjectError + 542
     If Len(errDescription) = 0 Then errDescription = "Report contour bootstrap failed."
-    Err.Raise errNumber, , errDescription
+    Err.Raise errNumber, , "Stage [" & stage & "]: " & errDescription
+End Sub
+
+Public Sub SH_CalculateReportInputs(ByVal wb As Workbook)
+    Dim order As Variant, item As Variant, ws As Worksheet
+    order = Array(5, 6, 2, 3, 4, 7, 1)
+    For Each item In order
+        Set ws = SH_RequireSheet(wb, SH_InputSheetName(CLng(item)))
+        ws.Calculate
+    Next item
 End Sub
 
 Public Sub SH_ApplyCriticalFormulas(ByVal wb As Workbook)
@@ -56,6 +107,7 @@ Public Sub SH_ApplyCriticalFormulas(ByVal wb As Workbook)
     Dim groups As Collection, r As Long, lastRow As Long, i As Long
     Dim groupRow As Long, firstChild As Long, lastChild As Long, nextGroup As Long
     Dim col As Variant, q As String, prepName As String
+    Dim stateGroup As String, stateAsset As String, stateStatus As String
     q = Chr$(34)
     prepName = SH_PrepSheetName()
     Set main = SH_RequireSheet(wb, SH_InputSheetName(1))
@@ -96,12 +148,16 @@ Public Sub SH_ApplyCriticalFormulas(ByVal wb As Workbook)
 
     Set groups = New Collection
     lastRow = Application.Max(SH_LastRow(state, 3), SH_LastRow(state, 4), 98)
+    If lastRow > 5000 Then Err.Raise vbObjectError + 543, , "WTG state sheet has an implausible data boundary."
     For r = 4 To lastRow
-        If Len(CStr(state.Cells(r, 3).Value2)) > 0 And Len(CStr(state.Cells(r, 4).Value2)) = 0 Then
+        stateGroup = SH_ReportSafeText(state.Cells(r, 3).Value2)
+        stateAsset = SH_ReportSafeText(state.Cells(r, 4).Value2)
+        If Len(stateGroup) > 0 And Len(stateAsset) = 0 Then
             groups.Add r
-        ElseIf Left$(CStr(state.Cells(r, 4).Value2), 4) = SH_U("0412042D0423002D") Then
+        ElseIf Left$(stateAsset, 4) = SH_U("0412042D0423002D") Then
             state.Cells(r, 8).Formula = "=MAX(F" & r & "-G" & r & ",0)"
-            If Not SH_ValidStatus(CStr(state.Cells(r, 12).Value2)) Then state.Cells(r, 12).Value = SH_InferStatus(state, r)
+            stateStatus = SH_ReportSafeText(state.Cells(r, 12).Value2)
+            If Not SH_ValidStatus(stateStatus) Then state.Cells(r, 12).Value = SH_InferStatus(state, r)
         End If
     Next r
     For i = 1 To groups.Count
@@ -123,15 +179,17 @@ Public Sub SH_ApplyCriticalFormulas(ByVal wb As Workbook)
     main.Range("F7").Formula = "=COUNTIF('" & state.Name & "'!L4:L98," & q & SH_StatusText(4) & q & ")"
 
     lastRow = Application.Max(SH_LastRow(works, 4), SH_LastRow(works, 5), 200)
+    If lastRow > 10000 Then Err.Raise vbObjectError + 544, , "Planned-work sheet has an implausible data boundary."
     For r = 4 To lastRow
         works.Cells(r, 7).Formula = "=IF(COUNTA(E" & r & ":F" & r & ")=0," & q & q & ",MAX(E" & r & "-F" & r & ",0))"
     Next r
 End Sub
 
 Private Sub SH_EnsureStatusColumn(ByVal state As Worksheet)
-    Dim r As Long, lastRow As Long
+    Dim r As Long, lastRow As Long, assetText As String
     lastRow = Application.Max(SH_LastRow(state, 4), 98)
-    If CStr(state.Cells(3, 12).Value2) <> SH_U("04210442043004420443044100200412042D0423") Then
+    If lastRow > 5000 Then Err.Raise vbObjectError + 545, , "WTG state sheet has an implausible status boundary."
+    If SH_ReportSafeText(state.Cells(3, 12).Value2) <> SH_U("04210442043004420443044100200412042D0423") Then
         state.Range("K3:K" & lastRow).Copy
         state.Range("L3:L" & lastRow).PasteSpecial Paste:=xlPasteFormats
         Application.CutCopyMode = False
@@ -139,22 +197,26 @@ Private Sub SH_EnsureStatusColumn(ByVal state As Worksheet)
         state.Cells(3, 12).Value = SH_U("04210442043004420443044100200412042D0423")
     End If
     For r = 4 To lastRow
-        If Left$(CStr(state.Cells(r, 4).Value2), 4) <> SH_U("0412042D0423002D") Then state.Cells(r, 12).ClearContents
+        assetText = SH_ReportSafeText(state.Cells(r, 4).Value2)
+        If Left$(assetText, 4) <> SH_U("0412042D0423002D") Then state.Cells(r, 12).ClearContents
     Next r
 End Sub
 
 Private Function SH_ValidStatus(ByVal value As String) As Boolean
     Dim i As Long
     For i = 1 To 4
-        If StrComp(Trim$(value), SH_StatusText(i), vbTextCompare) = 0 Then SH_ValidStatus = True: Exit Function
+        If StrComp(Trim$(value), SH_StatusText(i), vbTextCompare) = 0 Then
+            SH_ValidStatus = True
+            Exit Function
+        End If
     Next i
 End Function
 
 Private Function SH_InferStatus(ByVal state As Worksheet, ByVal r As Long) As String
     Dim reason As String, available As Double, repair As Double
-    reason = LCase$(CStr(state.Cells(r, 9).Value2))
-    available = Val(CStr(state.Cells(r, 8).Value2))
-    repair = Val(CStr(state.Cells(r, 7).Value2))
+    reason = LCase$(SH_ReportSafeText(state.Cells(r, 9).Value2))
+    available = SH_ReportSafeDouble(state.Cells(r, 8).Value2)
+    repair = SH_ReportSafeDouble(state.Cells(r, 7).Value2)
     If InStr(reason, SH_U("0430043204300440")) > 0 Or InStr(reason, SH_U("043E0442043A04300437")) > 0 Or InStr(reason, SH_U("043F043E04320440043504360434")) > 0 Or InStr(reason, SH_U("043D043504380441043F044004300432")) > 0 Or InStr(reason, SH_U("043E044804380431043A")) > 0 Then
         SH_InferStatus = SH_StatusText(3)
     ElseIf InStr(reason, SH_U("04400435043C043E043D0442")) > 0 Then
@@ -182,36 +244,43 @@ End Function
 
 Public Function SH_RefreshEmergencyOutages(ByVal wb As Workbook) As Long
     Dim source As Worksheet, target As Worksheet, reportDate As Date, windowStart As Date, windowEnd As Date
-    Dim lastRow As Long, r As Long, outRow As Long, eventTime As Variant, endTime As Variant
-    Dim description As String, reason As String, asset As String
+    Dim lastRow As Long, index As Long, outRow As Long, eventTime As Variant, endTime As Variant
+    Dim description As String, reason As String, asset As String, data As Variant
     Set source = SH_RequireSheet(wb, SH_JournalSheetName())
     Set target = SH_RequireSheet(wb, SH_InputSheetName(2))
     reportDate = SH_ReportDate(wb)
     windowEnd = DateSerial(Year(reportDate), Month(reportDate), Day(reportDate)) + TimeSerial(7, 0, 0)
     windowStart = windowEnd - 1
     target.Range("B4:F" & Application.Max(200, SH_LastRow(target, 2))).ClearContents
-    lastRow = Application.Max(SH_LastRow(source, 2), SH_LastRow(source, 3))
+    lastRow = Application.Max(SH_LastRow(source, 1), SH_LastRow(source, 2), SH_LastRow(source, 3))
+    If lastRow < 2 Then Exit Function
+    If lastRow > 250000 Then Err.Raise vbObjectError + 546, , "Journal data boundary is implausibly large."
+
+    data = source.Range("B2:J" & lastRow).Value2
     outRow = 4
-    For r = 2 To lastRow
-        eventTime = SH_CellDateTime(source, r)
+    For index = 1 To UBound(data, 1)
+        eventTime = SH_CombineDateTime(data(index, 1), data(index, 2))
         If Not IsEmpty(eventTime) Then
             If CDbl(eventTime) >= CDbl(windowStart) And CDbl(eventTime) < CDbl(windowEnd) Then
-                description = Trim$(CStr(source.Cells(r, 5).Value2))
-                reason = Trim$(CStr(source.Cells(r, 6).Value2))
+                description = Trim$(SH_ReportSafeText(data(index, 4)))
+                reason = Trim$(SH_ReportSafeText(data(index, 5)))
                 If SH_SelectEmergency(description, reason) Then
-                    asset = CStr(source.Cells(r, 4).Value2)
+                    asset = SH_ReportSafeText(data(index, 3))
                     target.Cells(outRow, 2).Value = SH_U("0412042D042300202116") & asset
                     target.Cells(outRow, 3).Value2 = CDbl(eventTime)
                     target.Cells(outRow, 3).NumberFormat = "dd.mm.yyyy hh:mm"
                     target.Cells(outRow, 4).Value = reason
                     target.Cells(outRow, 5).Value = description
-                    endTime = SH_EndDateTime(source, r)
-                    If Not IsEmpty(endTime) Then target.Cells(outRow, 6).Value2 = CDbl(endTime): target.Cells(outRow, 6).NumberFormat = "dd.mm.yyyy hh:mm"
+                    endTime = SH_CombineDateTime(data(index, 8), data(index, 9))
+                    If Not IsEmpty(endTime) Then
+                        target.Cells(outRow, 6).Value2 = CDbl(endTime)
+                        target.Cells(outRow, 6).NumberFormat = "dd.mm.yyyy hh:mm"
+                    End If
                     outRow = outRow + 1
                 End If
             End If
         End If
-    Next r
+    Next index
     SH_RefreshEmergencyOutages = outRow - 4
 End Function
 
@@ -229,33 +298,76 @@ Private Function SH_SelectEmergency(ByVal description As String, ByVal reason As
         SH_U("043F043504400435043A043B044E04470435043D04380439"))
         If InStr(1, eText, CStr(marker), vbTextCompare) > 0 Then Exit Function
     Next marker
-    If InStr(1, eText, SH_U("043E044804380431043A0430002004320020044004300431043E04420435"), vbTextCompare) > 0 Then SH_SelectEmergency = True: Exit Function
+    If InStr(1, eText, SH_U("043E044804380431043A0430002004320020044004300431043E04420435"), vbTextCompare) > 0 Then
+        SH_SelectEmergency = True
+        Exit Function
+    End If
     If InStr(1, eText, SH_U("04320020044004300431043E04420435"), vbTextCompare) > 0 Then Exit Function
     SH_SelectEmergency = True
 End Function
 
-Private Function SH_EndDateTime(ByVal ws As Worksheet, ByVal rowNumber As Long) As Variant
-    Dim d As Variant, t As Variant
-    d = ws.Cells(rowNumber, 9).Value2
-    t = ws.Cells(rowNumber, 10).Value2
-    If (IsDate(d) Or IsNumeric(d)) And (IsDate(t) Or IsNumeric(t)) Then
-        SH_EndDateTime = Int(CDbl(d)) + (CDbl(t) - Int(CDbl(t)))
-    Else
-        SH_EndDateTime = Empty
+Private Function SH_CombineDateTime(ByVal dateValue As Variant, ByVal timeValue As Variant) As Variant
+    Dim dateSerial As Double, timeSerial As Double
+    If Not SH_ReportTrySerial(dateValue, dateSerial) Then
+        SH_CombineDateTime = Empty
+        Exit Function
     End If
+    If Not SH_ReportTrySerial(timeValue, timeSerial) Then
+        SH_CombineDateTime = Empty
+        Exit Function
+    End If
+    SH_CombineDateTime = Int(dateSerial) + (timeSerial - Int(timeSerial))
+End Function
+
+Private Function SH_ReportTrySerial(ByVal value As Variant, ByRef serial As Double) As Boolean
+    On Error GoTo Failed
+    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+    If VarType(value) = vbString Then
+        If Len(Trim$(CStr(value))) = 0 Then Exit Function
+    End If
+    If IsNumeric(value) Then
+        serial = CDbl(value)
+        SH_ReportTrySerial = True
+        Exit Function
+    End If
+    If IsDate(value) Then
+        serial = CDbl(CDate(value))
+        SH_ReportTrySerial = True
+    End If
+    Exit Function
+Failed:
+    SH_ReportTrySerial = False
+End Function
+
+Private Function SH_ReportSafeText(ByVal value As Variant) As String
+    On Error GoTo Failed
+    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+    SH_ReportSafeText = CStr(value)
+    Exit Function
+Failed:
+    SH_ReportSafeText = ""
+End Function
+
+Private Function SH_ReportSafeDouble(ByVal value As Variant) As Double
+    On Error GoTo Failed
+    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+    If IsNumeric(value) Then SH_ReportSafeDouble = CDbl(value)
+    Exit Function
+Failed:
+    SH_ReportSafeDouble = 0#
 End Function
 
 Public Sub SH_GenerateFullReport()
     On Error GoTo Failed
     Dim wb As Workbook, outWb As Workbook, templatePath As String, i As Long
     Dim reportDate As Date, offsetHours As Double, suggested As String, outputPath As Variant, outputFolder As String
-    Dim errDescription As String
+    Dim errDescription As String, errNumber As Long
     Set wb = SH_JournalBook()
     SH_EnsureReportContour wb
     reportDate = SH_ReportDate(wb)
     offsetHours = SH_ReportOffset(wb)
     SH_RefreshEmergencyOutages wb
-    wb.Calculate
+    SH_CalculateReportInputs wb
     templatePath = SH_ExtractEmbeddedReportTemplate()
     Set outWb = Workbooks.Open(Filename:=templatePath, UpdateLinks:=0, ReadOnly:=False, AddToMru:=False)
     If outWb.Worksheets.Count <> SH_ReportSheetCount() Then Err.Raise vbObjectError + 540, , "Embedded report template sheet count mismatch."
@@ -268,7 +380,10 @@ Public Sub SH_GenerateFullReport()
     If Len(outputFolder) = 0 Then outputFolder = Application.DefaultFilePath
     suggested = outputFolder & Application.PathSeparator & "Shift-Helper-Report-" & Format$(reportDate, "yyyy-mm-dd") & ".xlsx"
     outputPath = Application.GetSaveAsFilename(suggested, "Excel Workbook (*.xlsx),*.xlsx", , SH_T("SAVE_REPORT"))
-    If VarType(outputPath) = vbBoolean And outputPath = False Then outWb.Close SaveChanges:=False: Exit Sub
+    If VarType(outputPath) = vbBoolean And outputPath = False Then
+        outWb.Close SaveChanges:=False
+        Exit Sub
+    End If
     Application.DisplayAlerts = False
     outWb.SaveAs Filename:=CStr(outputPath), FileFormat:=xlOpenXMLWorkbook
     outWb.Close SaveChanges:=False
@@ -276,13 +391,14 @@ Public Sub SH_GenerateFullReport()
     MsgBox SH_T("OK_REPORT") & CStr(outputPath), vbInformation, "Shift-Helper"
     Exit Sub
 Failed:
+    errNumber = Err.Number
     errDescription = Err.Description
     Application.DisplayAlerts = True
     On Error Resume Next
     If Not outWb Is Nothing Then outWb.Close SaveChanges:=False
     On Error GoTo 0
-    If Len(errDescription) = 0 Then errDescription = "Report generation failed (" & CStr(Err.Number) & ")."
-    MsgBox SH_T("ERR_REPORT") & errDescription, vbExclamation, "Shift-Helper"
+    If Len(errDescription) = 0 Then errDescription = "Report generation failed."
+    MsgBox SH_T("ERR_REPORT") & "[#" & CStr(errNumber) & "] " & errDescription, vbExclamation, "Shift-Helper"
 End Sub
 
 Private Sub SH_CopyValuesIntoTemplate(ByVal source As Worksheet, ByVal target As Worksheet)
@@ -303,12 +419,12 @@ Private Sub SH_ApplyReportOffset(ByVal wb As Workbook, ByVal offsetHours As Doub
 End Sub
 
 Private Sub SH_ShiftDateColumns(ByVal ws As Worksheet, ByVal columns As Variant, ByVal firstRow As Long, ByVal offsetHours As Double)
-    Dim col As Variant, r As Long, lastRow As Long, value As Variant
+    Dim col As Variant, r As Long, lastRow As Long, value As Variant, serial As Double
     lastRow = ws.UsedRange.Row + ws.UsedRange.Rows.Count - 1
     For Each col In columns
         For r = firstRow To lastRow
             value = ws.Range(CStr(col) & r).Value2
-            If Len(CStr(value)) > 0 And IsNumeric(value) Then ws.Range(CStr(col) & r).Value2 = CDbl(value) + offsetHours / 24#
+            If SH_ReportTrySerial(value, serial) Then ws.Range(CStr(col) & r).Value2 = serial + offsetHours / 24#
         Next r
     Next col
 End Sub
