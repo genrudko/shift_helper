@@ -91,12 +91,14 @@ Private Function SH_ParseRotorLimit(ByVal text As String) As Double
 End Function
 
 Private Function SH_RotorRepairPower(ByVal limitValue As Double) As Double
-    If limitValue < 0.7 Then SH_RotorRepairPower = 2.5: Exit Function
-    If limitValue >= 0.95 Then SH_RotorRepairPower = 0#: Exit Function
-    If limitValue >= 0.9 Then SH_RotorRepairPower = 0.55: Exit Function
-    If limitValue >= 0.85 Then SH_RotorRepairPower = 0.75: Exit Function
-    If limitValue >= 0.8 Then SH_RotorRepairPower = 1#: Exit Function
-    If limitValue >= 0.75 Then SH_RotorRepairPower = 1.2: Exit Function
-    If limitValue >= 0.7 Then SH_RotorRepairPower = 1.4: Exit Function
+    Dim value As Double
+    value = Round(limitValue, 2)
+    If value < 0.7 Then SH_RotorRepairPower = 2.5: Exit Function
+    If value >= 0.95 Then SH_RotorRepairPower = 0#: Exit Function
+    If value = 0.9 Then SH_RotorRepairPower = 0.55: Exit Function
+    If value = 0.85 Then SH_RotorRepairPower = 0.75: Exit Function
+    If value = 0.8 Then SH_RotorRepairPower = 1#: Exit Function
+    If value = 0.75 Then SH_RotorRepairPower = 1.2: Exit Function
+    If value = 0.7 Then SH_RotorRepairPower = 1.4: Exit Function
     SH_RotorRepairPower = 0.45
 End Function
