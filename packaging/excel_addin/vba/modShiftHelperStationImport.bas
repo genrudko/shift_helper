@@ -21,6 +21,8 @@ Public Sub SH_ImportStationGenerationSelected()
 
     If changed Then SH_SetMetaValue wb, SH_Label(3), oldPattern
     SH_EnsureStationReportContour wb
+    SH_ApplyStationHistoricalFacts wb
+    SH_CalculateReportInputs wb
     Exit Sub
 Failed:
     errNumber = Err.Number
