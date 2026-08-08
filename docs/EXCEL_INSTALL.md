@@ -28,7 +28,7 @@ When replacing an acceptance build, first disable/remove the old XLAM, fully clo
 The current candidate contains the live-Excel repairs found during owner testing:
 
 - no temporary workbook is used for Calendar or Outlook settings;
-- report preparation, generation import and Calendar date application no longer use invalid `Workbook.Calculate` calls;
+- report preparation, generation import, Calendar date application and WTG rotor-limit processing do not use invalid `Workbook.Calculate` calls;
 - report input recalculation is bounded to the seven report-input worksheets;
 - formula application is performed while Excel calculation/events/screen repaint are temporarily suspended and then restored;
 - journal event scans used by report outages and WTG rotor limits read bounded worksheet arrays instead of thousands of cell-by-cell calls;
