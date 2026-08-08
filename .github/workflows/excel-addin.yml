@@ -29,7 +29,7 @@ jobs:
         run: python -m ruff check .
 
       - name: Excel contract tests
-        run: python -m pytest tests/test_excel_client_contract.py tests/test_excel_addin_build.py
+        run: python -m pytest tests/test_excel_client_contract.py tests/test_excel_addin_build.py tests/test_excel_runtime_ui_contract.py
 
       - name: Build XLAM
         run: python scripts/build_excel_addin.py --output dist/Shift-Helper-Excel.xlam
