@@ -3,23 +3,21 @@ Option Explicit
 
 Public Sub SH_SortJournalByTime()
     On Error GoTo Failed
-    Dim wb As Workbook, ws As Worksheet, firstRow As Long, lastRow As Long, lastCol As Long
-    Dim sortRange As Range
+    Dim wb As Workbook, ws As Worksheet, selected As Range
+    Dim firstRow As Long, lastRow As Long, lastCol As Long, sortRange As Range
     Set wb = SH_JournalBook()
-    Set ws = wb.Worksheets(SH_JournalSheetName())
-    If ActiveSheet.Name <> ws.Name Then ws.Activate
+    Set ws = SH_RequireSheet(wb, SH_JournalSheetName())
 
+    firstRow = 2
+    lastRow = Application.Max(SH_LastRow(ws, 2), SH_LastRow(ws, 3))
     If TypeName(Selection) = "Range" Then
-        If Selection.Rows.Count > 1 Then
-            firstRow = Application.Max(2, Selection.Row)
-            lastRow = Selection.Row + Selection.Rows.Count - 1
-        Else
-            firstRow = 2
-            lastRow = Application.Max(SH_LastRow(ws, 2), SH_LastRow(ws, 3))
+        Set selected = Selection
+        If selected.Worksheet.Parent Is wb Then
+            If selected.Worksheet.Name = ws.Name And selected.Rows.Count > 1 Then
+                firstRow = Application.Max(2, selected.Row)
+                lastRow = Application.Min(lastRow, selected.Row + selected.Rows.Count - 1)
+            End If
         End If
-    Else
-        firstRow = 2
-        lastRow = Application.Max(SH_LastRow(ws, 2), SH_LastRow(ws, 3))
     End If
     If lastRow <= firstRow Then Exit Sub
     lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
@@ -42,9 +40,9 @@ End Sub
 
 Public Sub SH_MergeAndCopy()
     On Error GoTo Failed
-    Dim target As Range, cell As Range, merged As String, part As String
-    If TypeName(Selection) <> "Range" Then Err.Raise vbObjectError + 520, , SH_T("ERR_SELECTION")
-    Set target = Selection
+    Dim wb As Workbook, target As Range, cell As Range, merged As String, part As String
+    Set wb = SH_JournalBook()
+    Set target = SH_SelectionRange(wb)
     For Each cell In target.Cells
         If cell.MergeCells Then
             If cell.Address <> cell.MergeArea.Cells(1, 1).Address Then GoTo NextCell
@@ -65,9 +63,10 @@ End Sub
 
 Public Sub SH_CleanSpaces()
     On Error GoTo Failed
-    Dim cell As Range
-    If TypeName(Selection) <> "Range" Then Err.Raise vbObjectError + 522, , SH_T("ERR_SELECTION")
-    For Each cell In Selection.Cells
+    Dim wb As Workbook, target As Range, cell As Range
+    Set wb = SH_JournalBook()
+    Set target = SH_SelectionRange(wb)
+    For Each cell In target.Cells
         If Not cell.HasFormula And VarType(cell.Value2) = vbString Then cell.Value = SH_NormalizeSpaces(cell.Value2)
     Next cell
     Exit Sub
@@ -77,13 +76,14 @@ End Sub
 
 Public Sub SH_SetRowHeight()
     On Error GoTo Failed
-    Dim answer As Variant, heightValue As Double
-    If TypeName(Selection) <> "Range" Then Err.Raise vbObjectError + 523, , SH_T("ERR_SELECTION")
+    Dim wb As Workbook, target As Range, answer As Variant, heightValue As Double
+    Set wb = SH_JournalBook()
+    Set target = SH_SelectionRange(wb)
     answer = Application.InputBox(SH_T("ROW_HEIGHT_PROMPT"), SH_T("ROW_HEIGHT_TITLE"), 18, Type:=1)
     If VarType(answer) = vbBoolean Then If answer = False Then Exit Sub
     heightValue = CDbl(answer)
     If heightValue < 5 Or heightValue > 200 Then Err.Raise vbObjectError + 524, , "5..200"
-    Selection.EntireRow.RowHeight = heightValue
+    target.EntireRow.RowHeight = heightValue
     Exit Sub
 Failed:
     MsgBox Err.Description, vbExclamation, "Shift-Helper"
