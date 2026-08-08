@@ -71,7 +71,7 @@ Public Sub SH_RibbonCalendar(ByVal control As IRibbonControl)
 End Sub
 
 Public Sub SH_RibbonGenerate(ByVal control As IRibbonControl)
-    SH_GenerateFullReport
+    SH_GeneratePreparedReport
 End Sub
 
 Public Sub SH_RibbonImportGeneration(ByVal control As IRibbonControl)
