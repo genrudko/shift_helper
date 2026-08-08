@@ -24,6 +24,7 @@ Private Function SH_RibbonImageId(ByVal controlId As String) As String
         Case "btnInsertDate", "btnCalendar": SH_RibbonImageId = "CalendarInsert"
         Case "btnTime": SH_RibbonImageId = "InsertTime"
         Case "btnPrepare": SH_RibbonImageId = "TableInsertRowsAbove"
+        Case "btnStation": SH_RibbonImageId = "BuildingBlocksOrganizer"
         Case "btnGenerate": SH_RibbonImageId = "FileSaveAs"
         Case "btnGeneration": SH_RibbonImageId = "RefreshAll"
         Case "btnOutlook": SH_RibbonImageId = "Outlook"
@@ -63,11 +64,19 @@ Public Sub SH_RibbonTime(ByVal control As IRibbonControl)
 End Sub
 
 Public Sub SH_RibbonPrepare(ByVal control As IRibbonControl)
-    SH_PrepareReportContour
+    SH_PrepareStationReportContour
 End Sub
 
 Public Sub SH_RibbonCalendar(ByVal control As IRibbonControl)
-    SH_ShowCalendar
+    SH_ShowStationCalendar
+End Sub
+
+Public Sub SH_RibbonStationMenu(ByVal control As IRibbonControl, ByRef returnedVal)
+    returnedVal = SH_StationMenuXml()
+End Sub
+
+Public Sub SH_RibbonSetStation(ByVal control As IRibbonControl)
+    SH_SetReportStation CLng(control.Tag)
 End Sub
 
 Public Sub SH_RibbonGenerate(ByVal control As IRibbonControl)
@@ -75,7 +84,7 @@ Public Sub SH_RibbonGenerate(ByVal control As IRibbonControl)
 End Sub
 
 Public Sub SH_RibbonImportGeneration(ByVal control As IRibbonControl)
-    SH_ImportGenerationUniversal
+    SH_ImportStationGeneration
 End Sub
 
 Public Sub SH_RibbonOutlookMenu(ByVal control As IRibbonControl, ByRef returnedVal)
@@ -95,7 +104,7 @@ Public Sub SH_RibbonMaintenance(ByVal control As IRibbonControl)
 End Sub
 
 Public Sub SH_RibbonRotorLimits(ByVal control As IRibbonControl)
-    SH_UpdateRotorLimits
+    SH_UpdateStationRotorLimits
 End Sub
 
 Public Sub SH_RibbonCurrentShift(ByVal control As IRibbonControl)
