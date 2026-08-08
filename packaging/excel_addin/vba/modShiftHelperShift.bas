@@ -5,7 +5,7 @@ Public Sub SH_GotoCurrentInspectionShift()
     On Error GoTo Failed
     Dim wb As Workbook, ws As Worksheet, found As Range, wanted As String, r As Long, targetRow As Long
     Set wb = SH_JournalBook()
-    Set ws = wb.Worksheets(SH_InspectionSheetName())
+    Set ws = SH_RequireSheet(wb, SH_InspectionSheetName())
     If Hour(Now) >= 8 And Hour(Now) < 20 Then wanted = SH_T("SHIFT_DAY") Else wanted = SH_T("SHIFT_NIGHT")
     Set found = ws.UsedRange.Find(What:=CDbl(Date), LookIn:=xlValues, LookAt:=xlWhole, SearchOrder:=xlByRows)
     If found Is Nothing Then GoTo NotFound
