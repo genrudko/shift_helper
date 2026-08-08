@@ -26,6 +26,7 @@ def test_report_contour_avoids_full_workbook_recalculation_and_cellwise_journal_
 def test_generation_import_uses_hardened_runtime_and_bounded_outlook_scan() -> None:
     generation = _source("modShiftHelperGenProfiles.bas")
     ribbon = _source("modShiftHelperRibbon.bas")
+    station = _source("modShiftHelperStation.bas")
 
     assert "Public Sub SH_ImportGenerationUniversal" in generation
     assert "Application.Calculation = xlCalculationManual" in generation
@@ -40,7 +41,8 @@ def test_generation_import_uses_hardened_runtime_and_bounded_outlook_scan() -> N
     assert "SH_G2TryDate(received, receivedDate)" in generation
     assert "If receivedDate < cutoff Then Exit For" in generation
     assert "SH_G2TryDate(received, cutoff)" not in generation
-    assert "SH_ImportGenerationUniversal" in ribbon
+    assert "SH_ImportStationGeneration" in ribbon
+    assert "SH_ImportGenerationUniversal" in station
 
 
 def test_generation_search_resolves_real_inbox_and_reports_search_evidence() -> None:
