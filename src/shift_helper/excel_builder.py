@@ -105,7 +105,6 @@ def _template_payload_source(template: bytes) -> str:
         "    Dim payload As String",
     ]
     for index, chunk in enumerate(chunks):
-        operator = "=" if index == 0 else "= payload &"
         if index == 0:
             lines.append(f'    payload = "{chunk}"')
         else:
