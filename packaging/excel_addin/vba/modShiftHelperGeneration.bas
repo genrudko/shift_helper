@@ -128,7 +128,7 @@ End Function
 Private Function SH_GenFindOutlookFile(ByVal wb As Workbook, ByVal reportDate As Date) As String
     On Error GoTo Unavailable
     Dim outlook As Object, ns As Object, folder As Object, items As Object
-    Dim item As Object, att As Object, received As Variant
+    Dim item As Object, att As Object, received As Variant, receivedDate As Date
     Dim mailbox As String, folderPath As String, pattern As String
     Dim subjectFilter As String, senderFilter As String, senderText As String
     Dim depthDays As Long, cutoff As Date, tempRoot As String, target As String
@@ -171,8 +171,8 @@ Private Function SH_GenFindOutlookFile(ByVal wb As Workbook, ByVal reportDate As
             GoTo NextItem
         End If
         On Error GoTo Unavailable
-        If SH_GenTryDate(received, cutoff) Then
-            If CDate(received) < cutoff Then Exit For
+        If SH_GenTryDate(received, receivedDate) Then
+            If receivedDate < cutoff Then Exit For
         End If
 
         If Len(subjectFilter) > 0 Then
