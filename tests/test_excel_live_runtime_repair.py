@@ -66,6 +66,7 @@ def test_generation_search_resolves_real_inbox_and_reports_search_evidence() -> 
 def test_report_output_uses_prepared_sheets_and_keeps_wtg_status_service_only() -> None:
     output = _source("modShiftHelperReportOutput.bas")
     ribbon = _source("modShiftHelperRibbon.bas")
+    station_facts = _source("modShiftHelperStationFacts.bas")
 
     assert "Public Sub SH_GeneratePreparedReport" in output
     assert "source.Copy After:=outWb.Worksheets" in output
@@ -78,7 +79,9 @@ def test_report_output_uses_prepared_sheets_and_keeps_wtg_status_service_only() 
     assert "SH_OutputValidate outWb" in output
     assert "target.UsedRange.Value" not in output
     assert "SH_ExtractEmbeddedReportTemplate" not in output
-    assert "SH_GeneratePreparedReport" in ribbon
+    assert "SH_GenerateStationReportForRibbon" in ribbon
+    assert "SH_GeneratePreparedReport" in station_facts
+    assert "SH_ApplyStationHistoricalFacts wb" in station_facts
     assert "SH_GenerateFullReport" not in ribbon
     assert "WTG status service column must not be exported." in output
 
