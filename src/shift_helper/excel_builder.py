@@ -12,7 +12,8 @@ from shift_helper.extension_builder_payload import _template_bytes, _validate_te
 
 _CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
 _REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
-_RIBBON_REL = "http://schemas.microsoft.com/office/2006/relationships/ui/extensibility"
+_RIBBON_NS = "http://schemas.microsoft.com/office/2009/07/customui"
+_RIBBON_REL = "http://schemas.microsoft.com/office/2007/relationships/ui/extensibility"
 _TEMPLATE_REL = "https://shift-helper.local/relationships/embedded-report-template"
 _TEMPLATE_PART = "shift_helper_report_template.xlsx"
 _TEMPLATE_CONTENT_TYPE = (
@@ -163,6 +164,29 @@ def _rewrite_zip(path: Path, replacements: dict[str, bytes]) -> None:
     temp.replace(path)
 
 
+def _verify_ribbon_package(archive: zipfile.ZipFile) -> str:
+    root_rels = ET.fromstring(archive.read("_rels/.rels"))
+    ribbon_relationships = [
+        node
+        for node in root_rels.findall(f"{{{_REL_NS}}}Relationship")
+        if node.attrib.get("Type") == _RIBBON_REL
+    ]
+    if len(ribbon_relationships) != 1:
+        raise RuntimeError(
+            "XLAM must contain exactly one Office 2010+ Ribbon relationship."
+        )
+    target = ribbon_relationships[0].attrib.get("Target", "").lstrip("/")
+    if target != "customUI/customUI14.xml":
+        raise RuntimeError(f"XLAM Ribbon relationship targets unexpected part: {target}")
+    ribbon_bytes = archive.read(target)
+    ribbon_root = ET.fromstring(ribbon_bytes)
+    if ribbon_root.tag != f"{{{_RIBBON_NS}}}customUI":
+        raise RuntimeError(
+            "customUI14.xml must use the Office 2010+ 2009/07 customUI namespace."
+        )
+    return ribbon_bytes.decode("utf-8")
+
+
 def build_excel_addin(repo_root: Path, output: Path) -> Path:
     """Create a real XLAM with native VBA, Ribbon and exact internal template."""
 
@@ -239,7 +263,7 @@ def verify_excel_addin(repo_root: Path, path: Path) -> dict[str, object]:
             raise RuntimeError(f"XLAM is missing required parts: {sorted(required - names)}")
         embedded = archive.read(_TEMPLATE_PART)
         _validate_template(embedded)
-        ribbon = archive.read("customUI/customUI14.xml").decode("utf-8")
+        ribbon = _verify_ribbon_package(archive)
         callbacks = set(re.findall(r'onAction="([A-Za-z0-9_]+)"', ribbon))
         implemented = "\n".join(sources.values())
         missing_callbacks = [
