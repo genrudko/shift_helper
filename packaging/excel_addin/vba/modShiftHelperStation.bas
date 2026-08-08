@@ -320,6 +320,9 @@ Private Sub SH_RebuildStationState(ByVal state As Worksheet, ByVal stationId As 
     stationName = SH_ReportStationName(stationId)
     groupHeight = state.Rows(4).RowHeight
     childHeight = state.Rows(5).RowHeight
+    On Error Resume Next
+    state.Range("B4:C220").UnMerge
+    On Error GoTo 0
     state.Range("B4:L220").ClearContents
     rowNumber = 4
 
@@ -349,6 +352,14 @@ Private Sub SH_RebuildStationState(ByVal state As Worksheet, ByVal stationId As 
             state.Cells(rowNumber, 12).Value = SH_StatusText(1)
             rowNumber = rowNumber + 1
         Next asset
+
+        state.Range("B" & CStr(groupRow) & ":B" & CStr(rowNumber - 1)).Merge
+        state.Range("C" & CStr(groupRow) & ":C" & CStr(rowNumber - 1)).Merge
+        With state.Range("B" & CStr(groupRow) & ":C" & CStr(rowNumber - 1))
+            .HorizontalAlignment = xlCenter
+            .VerticalAlignment = xlCenter
+            .WrapText = True
+        End With
     Next groupIndex
     Application.CutCopyMode = False
 
