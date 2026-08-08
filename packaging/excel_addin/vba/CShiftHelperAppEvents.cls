@@ -12,9 +12,11 @@ Option Explicit
 Public WithEvents App As Application
 
 Private Sub App_SheetSelectionChange(ByVal Sh As Object, ByVal Target As Range)
+    If Not SH_QuickInputEventAllowed(Sh) Then Exit Sub
     SH_PrepareQuickInputSelection Sh, Target
 End Sub
 
 Private Sub App_SheetChange(ByVal Sh As Object, ByVal Target As Range)
+    If Not SH_QuickInputEventAllowed(Sh) Then Exit Sub
     SH_HandleQuickInputChange Sh, Target
 End Sub
