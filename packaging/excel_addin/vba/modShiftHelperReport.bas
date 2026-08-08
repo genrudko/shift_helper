@@ -3,10 +3,21 @@ Option Explicit
 
 Public Sub SH_PrepareReportContour()
     On Error GoTo Failed
-    Dim wb As Workbook, template As Workbook, templatePath As String
-    Dim i As Long, inputName As String, reportName As String
+    Dim wb As Workbook
     Set wb = SH_JournalBook()
-    If Not SH_HasSheet(wb, SH_PrepSheetName()) Then Err.Raise vbObjectError + 530, , SH_T("SHEET_MISSING") & SH_PrepSheetName()
+    SH_EnsureReportContour wb
+    MsgBox SH_T("OK_PREP") & vbCrLf & SH_T("NO_TEMPLATE_PICK"), vbInformation, "Shift-Helper"
+    Exit Sub
+Failed:
+    MsgBox SH_T("ERR_PREP") & Err.Description, vbExclamation, "Shift-Helper"
+End Sub
+
+Public Sub SH_EnsureReportContour(ByVal wb As Workbook)
+    On Error GoTo Failed
+    Dim template As Workbook, templatePath As String, prep As Worksheet
+    Dim i As Long, inputName As String, reportName As String
+    Dim errNumber As Long, errDescription As String
+    Set prep = SH_EnsurePrepSheet(wb)
     templatePath = SH_ExtractEmbeddedReportTemplate()
     Set template = Workbooks.Open(Filename:=templatePath, UpdateLinks:=0, ReadOnly:=True, AddToMru:=False)
     For i = 1 To SH_ReportSheetCount()
@@ -18,16 +29,18 @@ Public Sub SH_PrepareReportContour()
         End If
     Next i
     template.Close SaveChanges:=False
+    Set template = Nothing
     SH_ApplyCriticalFormulas wb
     SH_RefreshEmergencyOutages wb
     wb.Calculate
-    MsgBox SH_T("OK_PREP") & vbCrLf & SH_T("NO_TEMPLATE_PICK"), vbInformation, "Shift-Helper"
     Exit Sub
 Failed:
+    errNumber = Err.Number
+    errDescription = Err.Description
     On Error Resume Next
     If Not template Is Nothing Then template.Close SaveChanges:=False
     On Error GoTo 0
-    MsgBox SH_T("ERR_PREP") & Err.Description, vbExclamation, "Shift-Helper"
+    Err.Raise errNumber, , errDescription
 End Sub
 
 Public Sub SH_ApplyCriticalFormulas(ByVal wb As Workbook)
@@ -36,9 +49,9 @@ Public Sub SH_ApplyCriticalFormulas(ByVal wb As Workbook)
     Dim groupRow As Long, firstChild As Long, lastChild As Long, nextGroup As Long
     Dim col As Variant, q As String
     q = Chr$(34)
-    Set main = wb.Worksheets(SH_InputSheetName(1))
-    Set state = wb.Worksheets(SH_InputSheetName(5))
-    Set works = wb.Worksheets(SH_InputSheetName(6))
+    Set main = SH_RequireSheet(wb, SH_InputSheetName(1))
+    Set state = SH_RequireSheet(wb, SH_InputSheetName(5))
+    Set works = SH_RequireSheet(wb, SH_InputSheetName(6))
     SH_EnsureStatusColumn state
 
     main.Range("C6").Formula = "=IFERROR(C10/24000,0)"
@@ -151,8 +164,8 @@ Public Function SH_RefreshEmergencyOutages(ByVal wb As Workbook) As Long
     Dim source As Worksheet, target As Worksheet, reportDate As Date, windowStart As Date, windowEnd As Date
     Dim lastRow As Long, r As Long, outRow As Long, eventTime As Variant, endTime As Variant
     Dim description As String, reason As String, asset As String
-    Set source = wb.Worksheets(SH_JournalSheetName())
-    Set target = wb.Worksheets(SH_InputSheetName(2))
+    Set source = SH_RequireSheet(wb, SH_JournalSheetName())
+    Set target = SH_RequireSheet(wb, SH_InputSheetName(2))
     reportDate = SH_ReportDate(wb)
     windowEnd = DateSerial(Year(reportDate), Month(reportDate), Day(reportDate)) + TimeSerial(7, 0, 0)
     windowStart = windowEnd - 1
@@ -215,9 +228,10 @@ End Function
 Public Sub SH_GenerateFullReport()
     On Error GoTo Failed
     Dim wb As Workbook, outWb As Workbook, templatePath As String, i As Long
-    Dim reportDate As Date, offsetHours As Double, suggested As String, outputPath As Variant
+    Dim reportDate As Date, offsetHours As Double, suggested As String, outputPath As Variant, outputFolder As String
+    Dim errDescription As String
     Set wb = SH_JournalBook()
-    SH_PrepareReportContour
+    SH_EnsureReportContour wb
     reportDate = SH_ReportDate(wb)
     offsetHours = SH_ReportOffset(wb)
     SH_RefreshEmergencyOutages wb
@@ -227,10 +241,12 @@ Public Sub SH_GenerateFullReport()
     If outWb.Worksheets.Count <> SH_ReportSheetCount() Then Err.Raise vbObjectError + 540, , "Embedded report template sheet count mismatch."
     For i = 1 To SH_ReportSheetCount()
         If outWb.Worksheets(i).Name <> SH_ReportSheetName(i) Then Err.Raise vbObjectError + 541, , "Embedded report template sheet order mismatch."
-        SH_CopyValuesIntoTemplate wb.Worksheets(SH_InputSheetName(i)), outWb.Worksheets(SH_ReportSheetName(i))
+        SH_CopyValuesIntoTemplate SH_RequireSheet(wb, SH_InputSheetName(i)), outWb.Worksheets(SH_ReportSheetName(i))
     Next i
     SH_ApplyReportOffset outWb, offsetHours
-    suggested = wb.Path & Application.PathSeparator & "Shift-Helper-Report-" & Format$(reportDate, "yyyy-mm-dd") & ".xlsx"
+    outputFolder = wb.Path
+    If Len(outputFolder) = 0 Then outputFolder = Application.DefaultFilePath
+    suggested = outputFolder & Application.PathSeparator & "Shift-Helper-Report-" & Format$(reportDate, "yyyy-mm-dd") & ".xlsx"
     outputPath = Application.GetSaveAsFilename(suggested, "Excel Workbook (*.xlsx),*.xlsx", , SH_T("SAVE_REPORT"))
     If VarType(outputPath) = vbBoolean And outputPath = False Then outWb.Close SaveChanges:=False: Exit Sub
     Application.DisplayAlerts = False
@@ -240,11 +256,12 @@ Public Sub SH_GenerateFullReport()
     MsgBox SH_T("OK_REPORT") & CStr(outputPath), vbInformation, "Shift-Helper"
     Exit Sub
 Failed:
+    errDescription = Err.Description
     Application.DisplayAlerts = True
     On Error Resume Next
     If Not outWb Is Nothing Then outWb.Close SaveChanges:=False
     On Error GoTo 0
-    MsgBox SH_T("ERR_REPORT") & Err.Description, vbExclamation, "Shift-Helper"
+    MsgBox SH_T("ERR_REPORT") & errDescription, vbExclamation, "Shift-Helper"
 End Sub
 
 Private Sub SH_CopyValuesIntoTemplate(ByVal source As Worksheet, ByVal target As Worksheet)
