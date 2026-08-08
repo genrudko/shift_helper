@@ -43,11 +43,25 @@ def test_generation_import_uses_hardened_runtime_and_bounded_outlook_scan() -> N
     assert "SH_ImportGenerationSafe" in ribbon
 
 
+def test_calendar_uses_bounded_report_calculation_after_date_selection() -> None:
+    calendar = _source("modShiftHelperCalendar.bas")
+
+    assert "Application.Calculation = xlCalculationManual" in calendar
+    assert "Application.EnableEvents = False" in calendar
+    assert "SH_CalculateReportInputs wb" in calendar
+    assert "wb.Calculate" not in calendar
+    assert 'stage = "write report date"' in calendar
+    assert 'stage = "refresh emergency outages"' in calendar
+    assert 'Stage [" & stage & "]' in calendar
+    assert "SH_CalendarTryDate" in calendar
+
+
 def test_live_repair_preserves_shared_journal_boundary() -> None:
     report = _source("modShiftHelperReport.bas")
     generation = _source("modShiftHelperGeneration.bas")
+    calendar = _source("modShiftHelperCalendar.bas")
 
-    combined = report + generation
+    combined = report + generation + calendar
     assert "VBProject" not in combined
     assert "ActiveX" not in combined
     assert "SaveAs Filename:=wb." not in combined
