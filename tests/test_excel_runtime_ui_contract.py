@@ -15,6 +15,7 @@ def _source(name: str) -> str:
 
 def test_calendar_is_ribbon_owned_and_never_creates_a_workbook() -> None:
     calendar = _source("modShiftHelperCalendar.bas")
+    callbacks = _source("modShiftHelperRibbon.bas")
     root = ET.parse(RIBBON).getroot()
     control = root.find(".//ui:dynamicMenu[@id='btnCalendar']", NS)
     assert control is not None
@@ -22,11 +23,12 @@ def test_calendar_is_ribbon_owned_and_never_creates_a_workbook() -> None:
     assert "Workbooks.Add" not in calendar
     assert "SH_CalendarMenuXml" in calendar
     assert "SH_CalendarPickTag" in calendar
-    assert "SH_RibbonCalendarPick" in calendar
+    assert "Public Sub SH_RibbonCalendarPick" in callbacks
 
 
 def test_outlook_settings_are_ribbon_owned_and_never_create_a_workbook() -> None:
     outlook = _source("modShiftHelperOutlook.bas")
+    callbacks = _source("modShiftHelperRibbon.bas")
     root = ET.parse(RIBBON).getroot()
     control = root.find(".//ui:dynamicMenu[@id='btnOutlook']", NS)
     assert control is not None
@@ -35,6 +37,7 @@ def test_outlook_settings_are_ribbon_owned_and_never_create_a_workbook() -> None
     assert "mSettingsBook" not in outlook
     assert "SH_OutlookMenuXml" in outlook
     assert "SH_EditOutlookSetting" in outlook
+    assert "Public Sub SH_RibbonOutlookEdit" in callbacks
 
 
 def test_report_commands_bootstrap_instead_of_assuming_prep_sheet_exists() -> None:
