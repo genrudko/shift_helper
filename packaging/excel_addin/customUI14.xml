@@ -12,6 +12,7 @@
           <button id="btnTime" label="Вставить время" getImage="SH_RibbonImage" onAction="SH_RibbonTime"/>
         </group>
         <group id="grpReport" label="Рапорт">
+          <dynamicMenu id="btnStation" label="Станция" getImage="SH_RibbonImage" getContent="SH_RibbonStationMenu"/>
           <button id="btnPrepare" label="Подготовить полный контур" size="large" getImage="SH_RibbonImage" onAction="SH_RibbonPrepare"/>
           <button id="btnCalendar" label="Дата рапорта" getImage="SH_RibbonImage" onAction="SH_RibbonCalendar"/>
           <button id="btnGenerate" label="Сформировать утренний рапорт" size="large" getImage="SH_RibbonImage" onAction="SH_RibbonGenerate"/>
