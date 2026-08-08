@@ -28,6 +28,7 @@ Public Sub SH_PrepareStationReportForRibbon()
     On Error GoTo Failed
     Dim wb As Workbook
     Set wb = SH_JournalBook()
+    SH_SyncReportWindow wb
     SH_EnsureStationReportContour wb
     SH_ApplyStationHistoricalFacts wb
     SH_CalculateReportInputs wb
@@ -42,6 +43,7 @@ Public Sub SH_SelectStationForRibbon(ByVal stationId As Long)
     SH_SetReportStation stationId
     Dim wb As Workbook
     Set wb = SH_JournalBook()
+    SH_SyncReportWindow wb
     SH_ApplyStationHistoricalFacts wb
     SH_CalculateReportInputs wb
 End Sub
@@ -50,6 +52,7 @@ Public Sub SH_ShowStationCalendarForRibbon()
     Dim wb As Workbook
     SH_ShowStationCalendar
     Set wb = SH_JournalBook()
+    SH_SyncReportWindow wb
     SH_ApplyStationHistoricalFacts wb
     SH_CalculateReportInputs wb
 End Sub
@@ -57,6 +60,7 @@ End Sub
 Public Sub SH_GenerateStationReportForRibbon()
     Dim wb As Workbook
     Set wb = SH_JournalBook()
+    SH_SyncReportWindow wb
     SH_EnsureStationReportContour wb
     SH_ApplyStationHistoricalFacts wb
     SH_CalculateReportInputs wb
