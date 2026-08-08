@@ -17,6 +17,7 @@ Private Sub App_SheetSelectionChange(ByVal Sh As Object, ByVal Target As Range)
 End Sub
 
 Private Sub App_SheetChange(ByVal Sh As Object, ByVal Target As Range)
+    SH_HandlePrepReportDateChange Sh, Target
     If Not SH_QuickInputEventAllowed(Sh) Then Exit Sub
     SH_HandleQuickInputChange Sh, Target
 End Sub
