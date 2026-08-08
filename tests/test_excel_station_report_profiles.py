@@ -37,12 +37,17 @@ def test_station_profiles_cover_kochubeevskaya_and_kuzminskaya_reports() -> None
     ):
         assert value in station
 
-    assert "starts = Array(1, 33, 57, 25, 41, 49, 17)" in station
-    assert "ends = Array(16, 40, 64, 32, 48, 56, 24)" in station
+    # The uploaded Kuzminskaya reference had a broken WTG block order. The accepted
+    # Shift-Helper profile intentionally normalizes the visible state sheet to WTG 1..64.
+    assert "starts = Array(1, 17, 25, 33, 41, 49, 57)" in station
+    assert "ends = Array(16, 24, 32, 40, 48, 56, 64)" in station
     assert (
-        'codes = Array("GVIE0531", "GVIE0543", "GVIE0545", "GVIE0546", '
-        '"GVIE0547", "GVIE0549", "GVIE0555")'
+        'codes = Array("GVIE0531", "GVIE0555", "GVIE0546", "GVIE0543", '
+        '"GVIE0547", "GVIE0549", "GVIE0545")'
     ) in station
+    assert "nextKuzAsset = 1" in station
+    assert "nextKuzAsset = nextKuzAsset + 1" in station
+    assert "nextKuzAsset = 65" in station
 
 
 def test_station_profile_remains_compatible_with_kochubeevskaya_layout() -> None:
