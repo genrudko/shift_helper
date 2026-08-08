@@ -56,12 +56,25 @@ def test_calendar_uses_bounded_report_calculation_after_date_selection() -> None
     assert "SH_CalendarTryDate" in calendar
 
 
+def test_rotor_refresh_uses_array_scan_and_bounded_calculation() -> None:
+    rotor = _source("modShiftHelperRotor.bas")
+
+    assert "Application.Calculation = xlCalculationManual" in rotor
+    assert 'journal.Range("B2:J" & lastRow).Value2' in rotor
+    assert "SH_RotorSafeText" in rotor
+    assert "SH_RotorTrySerial" in rotor
+    assert "SH_CalculateReportInputs wb" in rotor
+    assert "wb.Calculate" not in rotor
+    assert 'Stage [" & stage & "]' in rotor
+
+
 def test_live_repair_preserves_shared_journal_boundary() -> None:
     report = _source("modShiftHelperReport.bas")
     generation = _source("modShiftHelperGeneration.bas")
     calendar = _source("modShiftHelperCalendar.bas")
+    rotor = _source("modShiftHelperRotor.bas")
 
-    combined = report + generation + calendar
+    combined = report + generation + calendar + rotor
     assert "VBProject" not in combined
     assert "ActiveX" not in combined
     assert "SaveAs Filename:=wb." not in combined
