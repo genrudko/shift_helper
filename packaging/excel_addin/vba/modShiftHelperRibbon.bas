@@ -64,11 +64,11 @@ Public Sub SH_RibbonTime(ByVal control As IRibbonControl)
 End Sub
 
 Public Sub SH_RibbonPrepare(ByVal control As IRibbonControl)
-    SH_PrepareStationReportContour
+    SH_PrepareStationReportForRibbon
 End Sub
 
 Public Sub SH_RibbonCalendar(ByVal control As IRibbonControl)
-    SH_ShowStationCalendar
+    SH_ShowStationCalendarForRibbon
 End Sub
 
 Public Sub SH_RibbonStationMenu(ByVal control As IRibbonControl, ByRef returnedVal)
@@ -76,7 +76,7 @@ Public Sub SH_RibbonStationMenu(ByVal control As IRibbonControl, ByRef returnedV
 End Sub
 
 Public Sub SH_RibbonSetStation(ByVal control As IRibbonControl)
-    SH_SetReportStation CLng(control.Tag)
+    SH_SelectStationForRibbon CLng(control.Tag)
 End Sub
 
 Public Sub SH_RibbonGenerate(ByVal control As IRibbonControl)
