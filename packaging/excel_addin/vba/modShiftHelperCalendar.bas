@@ -9,16 +9,11 @@ Private Declare PtrSafe Function MoveWindow Lib "user32" (ByVal hwnd As LongPtr,
 Private Declare PtrSafe Function GetWindowRect Lib "user32" (ByVal hwnd As LongPtr, ByRef lpRect As SH_RECT) As Long
 Private Declare PtrSafe Function IsWindow Lib "user32" (ByVal hwnd As LongPtr) As Long
 Private Declare PtrSafe Function SetForegroundWindow Lib "user32" (ByVal hwnd As LongPtr) As Long
-Private Declare PtrSafe Function CallWindowProcW Lib "user32" (ByVal lpPrevWndFunc As LongPtr, ByVal hwnd As LongPtr, ByVal Msg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As LongPtr
 Private Declare PtrSafe Function SendMessageW Lib "user32" (ByVal hwnd As LongPtr, ByVal Msg As Long, ByVal wParam As LongPtr, ByRef lParam As Any) As LongPtr
 Private Declare PtrSafe Function GetModuleHandleW Lib "kernel32" (ByVal lpModuleName As LongPtr) As LongPtr
+Private Declare PtrSafe Function GetAsyncKeyState Lib "user32" (ByVal vKey As Long) As Integer
+Private Declare PtrSafe Function GetCursorPos Lib "user32" (ByRef lpPoint As SH_POINT) As Long
 Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
-Private Declare PtrSafe Sub SH_CopyMemory Lib "kernel32" Alias "RtlMoveMemory" (ByRef Destination As Any, ByVal Source As LongPtr, ByVal Length As LongPtr)
-#If Win64 Then
-Private Declare PtrSafe Function SetWindowLongPtrW Lib "user32" (ByVal hwnd As LongPtr, ByVal nIndex As Long, ByVal dwNewLong As LongPtr) As LongPtr
-#Else
-Private Declare PtrSafe Function SetWindowLongPtrW Lib "user32" Alias "SetWindowLongW" (ByVal hwnd As LongPtr, ByVal nIndex As Long, ByVal dwNewLong As LongPtr) As LongPtr
-#End If
 #End If
 
 Private Type SH_INITCOMMONCONTROLSEX
@@ -33,6 +28,11 @@ Private Type SH_RECT
     Bottom As Long
 End Type
 
+Private Type SH_POINT
+    x As Long
+    y As Long
+End Type
+
 Private Type SH_SYSTEMTIME
     wYear As Integer
     wMonth As Integer
@@ -44,82 +44,74 @@ Private Type SH_SYSTEMTIME
     wMilliseconds As Integer
 End Type
 
-Private Type SH_NMHDR
-    hwndFrom As LongPtr
-    idFrom As LongPtr
-    code As Long
-End Type
-
 Private Const SH_ICC_DATE_CLASSES As Long = &H100
 Private Const SH_WS_POPUP As Long = &H80000000
 Private Const SH_WS_CHILD As Long = &H40000000
 Private Const SH_WS_VISIBLE As Long = &H10000000
 Private Const SH_WS_CAPTION As Long = &HC00000
 Private Const SH_WS_SYSMENU As Long = &H80000
+Private Const SH_WS_BORDER As Long = &H800000
 Private Const SH_WS_EX_TOOLWINDOW As Long = &H80
 Private Const SH_WS_EX_DLGMODALFRAME As Long = &H1
-Private Const SH_GWL_WNDPROC As Long = -4
-Private Const SH_WM_CLOSE As Long = &H10
-Private Const SH_WM_DESTROY As Long = &H2
-Private Const SH_WM_NOTIFY As Long = &H4E
 Private Const SH_MCM_FIRST As Long = &H1000
 Private Const SH_MCM_GETCURSEL As Long = SH_MCM_FIRST + 1
 Private Const SH_MCM_SETCURSEL As Long = SH_MCM_FIRST + 2
 Private Const SH_MCM_GETMINREQRECT As Long = SH_MCM_FIRST + 9
-Private Const SH_MCN_FIRST As Long = -750
-Private Const SH_MCN_SELECT As Long = SH_MCN_FIRST - 4
-
-Private mCalendarWindow As LongPtr
-Private mCalendarControl As LongPtr
-Private mCalendarOldProc As LongPtr
-Private mCalendarDone As Boolean
-Private mCalendarPicked As Boolean
-Private mCalendarSelected As Date
-Private mCalendarJournal As Workbook
+Private Const SH_VK_LBUTTON As Long = &H1
+Private Const SH_VK_RETURN As Long = &HD
+Private Const SH_VK_ESCAPE As Long = &H1B
 
 Public Sub SH_ShowCalendar()
     On Error GoTo Failed
-    Dim wb As Workbook, prep As Worksheet, currentValue As Variant, initialDate As Date
+    Dim wb As Workbook, prep As Worksheet, initialDate As Date, selectedDate As Date
+    Dim currentValue As Variant, picked As Boolean
     Set wb = SH_JournalBook()
-    SH_EnsureReportContour wb
-    Set prep = SH_RequireSheet(wb, SH_PrepSheetName())
+    Set prep = SH_EnsurePrepSheet(wb)
     currentValue = prep.Range(SH_ReportDateCell()).Value
     If IsDate(currentValue) Or IsNumeric(currentValue) Then
         initialDate = CDate(currentValue)
     Else
         initialDate = Date
     End If
-
-    Set mCalendarJournal = wb
-    mCalendarDone = False
-    mCalendarPicked = False
-    mCalendarSelected = 0
-    SH_CreateCalendarWindow initialDate
-
-    Do While Not mCalendarDone
-        If mCalendarWindow = 0 Then Exit Do
-        If IsWindow(mCalendarWindow) = 0 Then Exit Do
-        DoEvents
-        Sleep 15
-    Loop
-
-    If mCalendarPicked Then SH_ApplyCalendarDate mCalendarJournal, mCalendarSelected
-    SetForegroundWindow CLngPtr(Application.hwnd)
-    SH_ResetCalendarState
+    picked = SH_PickDateNative(initialDate, selectedDate)
+    If picked Then SH_ApplyReportCalendarDate wb, selectedDate
     Exit Sub
 Failed:
-    On Error Resume Next
-    If mCalendarWindow <> 0 Then DestroyWindow mCalendarWindow
-    SH_ResetCalendarState
-    On Error GoTo 0
-    MsgBox Err.Description, vbExclamation, "Shift-Helper"
+    SH_ShowCalendarError "calendar", Err.Number, Err.Description
 End Sub
 
-Private Sub SH_CreateCalendarWindow(ByVal initialDate As Date)
+Public Sub SH_InsertDateIntoSelection()
+    On Error GoTo Failed
+    Dim wb As Workbook, target As Range, initialDate As Date, selectedDate As Date, picked As Boolean
+    Dim cell As Range
+    Set wb = SH_JournalBook()
+    Set target = SH_SelectionRange(wb)
+    If IsDate(target.Cells(1, 1).Value) Or IsNumeric(target.Cells(1, 1).Value2) Then
+        On Error Resume Next
+        initialDate = DateValue(CDate(target.Cells(1, 1).Value))
+        On Error GoTo Failed
+    End If
+    If initialDate = 0 Then initialDate = Date
+    picked = SH_PickDateNative(initialDate, selectedDate)
+    If Not picked Then Exit Sub
+    For Each cell In target.Cells
+        cell.Value = selectedDate
+        cell.NumberFormat = "dd.mm.yyyy"
+    Next cell
+    Exit Sub
+Failed:
+    SH_ShowCalendarError "date", Err.Number, Err.Description
+End Sub
+
+Private Function SH_PickDateNative(ByVal initialDate As Date, ByRef selectedDate As Date) As Boolean
+    On Error GoTo Failed
     Dim controls As SH_INITCOMMONCONTROLSEX, ownerRect As SH_RECT, calendarRect As SH_RECT
-    Dim st As SH_SYSTEMTIME, ownerHwnd As LongPtr, instanceHwnd As LongPtr
+    Dim parentRect As SH_RECT, point As SH_POINT, st As SH_SYSTEMTIME
+    Dim ownerHwnd As LongPtr, parentHwnd As LongPtr, calendarHwnd As LongPtr, instanceHwnd As LongPtr
     Dim parentClass As String, calendarClass As String, titleText As String
     Dim width As Long, height As Long, x As Long, y As Long
+    Dim currentDate As Date, mouseDown As Boolean, wasMouseDown As Boolean
+    Dim errNumber As Long, errDescription As String
 
     controls.dwSize = LenB(controls)
     controls.dwICC = SH_ICC_DATE_CLASSES
@@ -129,7 +121,7 @@ Private Sub SH_CreateCalendarWindow(ByVal initialDate As Date)
     instanceHwnd = GetModuleHandleW(0)
     parentClass = "STATIC"
     calendarClass = "SysMonthCal32"
-    titleText = SH_U("0414043004420430002004400430043F043E044004420430")
+    titleText = SH_U("041A0430043B0435043D043404300440044C0020201400200045006E007400650072003A00200432044B0431044004300442044C")
 
     If GetWindowRect(ownerHwnd, ownerRect) = 0 Then
         ownerRect.Left = 100
@@ -137,84 +129,110 @@ Private Sub SH_CreateCalendarWindow(ByVal initialDate As Date)
         ownerRect.Right = 900
         ownerRect.Bottom = 700
     End If
-    width = 282
-    height = 238
+    width = 300
+    height = 250
     x = ownerRect.Left + ((ownerRect.Right - ownerRect.Left) - width) \ 2
     y = ownerRect.Top + ((ownerRect.Bottom - ownerRect.Top) - height) \ 2
 
-    mCalendarWindow = CreateWindowExW( _
+    parentHwnd = CreateWindowExW( _
         SH_WS_EX_TOOLWINDOW Or SH_WS_EX_DLGMODALFRAME, StrPtr(parentClass), StrPtr(titleText), _
-        SH_WS_POPUP Or SH_WS_CAPTION Or SH_WS_SYSMENU Or SH_WS_VISIBLE, _
+        SH_WS_POPUP Or SH_WS_CAPTION Or SH_WS_SYSMENU Or SH_WS_BORDER Or SH_WS_VISIBLE, _
         x, y, width, height, ownerHwnd, 0, instanceHwnd, 0)
-    If mCalendarWindow = 0 Then Err.Raise vbObjectError + 551, , "Cannot create calendar window."
+    If parentHwnd = 0 Then Err.Raise vbObjectError + 551, , "Cannot create calendar window."
 
-    mCalendarOldProc = SetWindowLongPtrW(mCalendarWindow, SH_GWL_WNDPROC, AddressOf SH_CalendarWndProc)
-    If mCalendarOldProc = 0 Then
-        DestroyWindow mCalendarWindow
-        mCalendarWindow = 0
-        Err.Raise vbObjectError + 552, , "Cannot attach calendar window procedure."
-    End If
-
-    mCalendarControl = CreateWindowExW( _
+    calendarHwnd = CreateWindowExW( _
         0, StrPtr(calendarClass), 0, SH_WS_CHILD Or SH_WS_VISIBLE, _
-        10, 10, 250, 180, mCalendarWindow, 1001, instanceHwnd, 0)
-    If mCalendarControl = 0 Then
-        DestroyWindow mCalendarWindow
-        mCalendarWindow = 0
-        Err.Raise vbObjectError + 553, , "Cannot create Windows month calendar."
-    End If
+        8, 8, 270, 190, parentHwnd, 1001, instanceHwnd, 0)
+    If calendarHwnd = 0 Then Err.Raise vbObjectError + 552, , "Cannot create Windows month calendar."
 
     SH_DateToSystemTime initialDate, st
-    SendMessageW mCalendarControl, SH_MCM_SETCURSEL, 0, st
-    If SendMessageW(mCalendarControl, SH_MCM_GETMINREQRECT, 0, calendarRect) <> 0 Then
+    SendMessageW calendarHwnd, SH_MCM_SETCURSEL, 0, st
+    If SendMessageW(calendarHwnd, SH_MCM_GETMINREQRECT, 0, calendarRect) <> 0 Then
         width = calendarRect.Right + 28
-        height = calendarRect.Bottom + 54
-        MoveWindow mCalendarControl, 10, 10, calendarRect.Right + 6, calendarRect.Bottom + 6, 1
-        MoveWindow mCalendarWindow, x, y, width, height, 1
+        height = calendarRect.Bottom + 48
+        MoveWindow calendarHwnd, 8, 8, calendarRect.Right + 8, calendarRect.Bottom + 8, 1
+        MoveWindow parentHwnd, x, y, width, height, 1
     End If
-    SetForegroundWindow mCalendarWindow
-End Sub
+    SetForegroundWindow parentHwnd
 
-Public Function SH_CalendarWndProc(ByVal hwnd As LongPtr, ByVal Msg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As LongPtr
-    On Error Resume Next
-    Dim header As SH_NMHDR, st As SH_SYSTEMTIME
-    If Msg = SH_WM_NOTIFY And lParam <> 0 Then
-        SH_CopyMemory header, lParam, LenB(header)
-        If header.hwndFrom = mCalendarControl And header.code = SH_MCN_SELECT Then
-            If SendMessageW(mCalendarControl, SH_MCM_GETCURSEL, 0, st) <> 0 Then
-                mCalendarSelected = DateSerial(CLng(st.wYear), CLng(st.wMonth), CLng(st.wDay))
-                mCalendarPicked = True
-            End If
-            mCalendarDone = True
-            DestroyWindow hwnd
-            SH_CalendarWndProc = 0
-            Exit Function
+    Do While IsWindow(parentHwnd) <> 0
+        DoEvents
+        If GetAsyncKeyState(SH_VK_ESCAPE) < 0 Then Exit Do
+        If GetAsyncKeyState(SH_VK_RETURN) < 0 Then
+            If SH_ReadCalendarDate(calendarHwnd, selectedDate) Then SH_PickDateNative = True
+            Exit Do
         End If
-    ElseIf Msg = SH_WM_CLOSE Then
-        mCalendarDone = True
-        DestroyWindow hwnd
-        SH_CalendarWndProc = 0
-        Exit Function
-    ElseIf Msg = SH_WM_DESTROY Then
-        mCalendarDone = True
-    End If
-    If mCalendarOldProc <> 0 Then SH_CalendarWndProc = CallWindowProcW(mCalendarOldProc, hwnd, Msg, wParam, lParam)
+        If SH_ReadCalendarDate(calendarHwnd, currentDate) Then
+            If DateValue(currentDate) <> DateValue(initialDate) Then
+                selectedDate = currentDate
+                SH_PickDateNative = True
+                Exit Do
+            End If
+        End If
+        mouseDown = (GetAsyncKeyState(SH_VK_LBUTTON) < 0)
+        If wasMouseDown And Not mouseDown Then
+            If GetCursorPos(point) <> 0 And GetWindowRect(calendarHwnd, parentRect) <> 0 Then
+                If point.x >= parentRect.Left And point.x <= parentRect.Right And _
+                   point.y >= parentRect.Top + 34 And point.y <= parentRect.Bottom - 12 Then
+                    If SH_ReadCalendarDate(calendarHwnd, selectedDate) Then SH_PickDateNative = True
+                    Exit Do
+                End If
+            End If
+        End If
+        wasMouseDown = mouseDown
+        Sleep 15
+    Loop
+
+CleanExit:
+    On Error Resume Next
+    If parentHwnd <> 0 Then DestroyWindow parentHwnd
+    SetForegroundWindow CLngPtr(Application.hwnd)
+    On Error GoTo 0
+    Exit Function
+Failed:
+    errNumber = Err.Number
+    errDescription = Err.Description
+    On Error Resume Next
+    If parentHwnd <> 0 Then DestroyWindow parentHwnd
+    SetForegroundWindow CLngPtr(Application.hwnd)
+    On Error GoTo 0
+    If Len(errDescription) = 0 Then errDescription = "Native calendar failed."
+    Err.Raise errNumber, , errDescription
 End Function
 
-Private Sub SH_ApplyCalendarDate(ByVal wb As Workbook, ByVal selectedDate As Date)
+Private Function SH_ReadCalendarDate(ByVal calendarHwnd As LongPtr, ByRef value As Date) As Boolean
+    Dim st As SH_SYSTEMTIME
+    If calendarHwnd = 0 Then Exit Function
+    If SendMessageW(calendarHwnd, SH_MCM_GETCURSEL, 0, st) = 0 Then Exit Function
+    On Error GoTo InvalidDate
+    value = DateSerial(CLng(st.wYear), CLng(st.wMonth), CLng(st.wDay))
+    SH_ReadCalendarDate = True
+InvalidDate:
+End Function
+
+Private Sub SH_ApplyReportCalendarDate(ByVal wb As Workbook, ByVal selectedDate As Date)
     Dim prep As Worksheet
-    SH_EnsureReportContour wb
-    Set prep = SH_RequireSheet(wb, SH_PrepSheetName())
+    Set prep = SH_EnsurePrepSheet(wb)
     prep.Range(SH_ReportDateCell()).Value = selectedDate
     prep.Range(SH_ReportDateCell()).NumberFormat = "dd.mm.yyyy"
     prep.Range("B4").Value = selectedDate - 1 + TimeSerial(7, 0, 0)
     prep.Range("B4").NumberFormat = "dd.mm.yyyy hh:mm"
     prep.Range("B5").Value = selectedDate + TimeSerial(7, 0, 0)
     prep.Range("B5").NumberFormat = "dd.mm.yyyy hh:mm"
-    SH_ApplyCriticalFormulas wb
-    SH_RefreshEmergencyOutages wb
-    wb.Calculate
+    If SH_ReportInputsReady(wb) Then
+        SH_ApplyCriticalFormulas wb
+        SH_RefreshEmergencyOutages wb
+        wb.Calculate
+    End If
 End Sub
+
+Private Function SH_ReportInputsReady(ByVal wb As Workbook) As Boolean
+    Dim i As Long
+    For i = 1 To SH_ReportSheetCount()
+        If Not SH_HasSheet(wb, SH_InputSheetName(i)) Then Exit Function
+    Next i
+    SH_ReportInputsReady = True
+End Function
 
 Private Sub SH_DateToSystemTime(ByVal value As Date, ByRef st As SH_SYSTEMTIME)
     st.wYear = CInt(Year(value))
@@ -222,12 +240,9 @@ Private Sub SH_DateToSystemTime(ByVal value As Date, ByRef st As SH_SYSTEMTIME)
     st.wDay = CInt(Day(value))
 End Sub
 
-Private Sub SH_ResetCalendarState()
-    mCalendarWindow = 0
-    mCalendarControl = 0
-    mCalendarOldProc = 0
-    mCalendarDone = False
-    mCalendarPicked = False
-    mCalendarSelected = 0
-    Set mCalendarJournal = Nothing
+Private Sub SH_ShowCalendarError(ByVal operationName As String, ByVal errNumber As Long, ByVal errDescription As String)
+    Dim message As String
+    message = errDescription
+    If Len(message) = 0 Then message = "Calendar operation failed (" & CStr(errNumber) & ", " & operationName & ")."
+    MsgBox message, vbExclamation, "Shift-Helper"
 End Sub
