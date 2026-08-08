@@ -44,7 +44,11 @@ def test_kochubeevskaya_mailing_preserves_legacy_layout_and_signature_behavior()
     assert 'subjectCell = "B2": recipientCell = "A8"' in mailing
     assert 'subjectCell = "B3": recipientCell = "B8"' in mailing
     assert 'subjectCell = "B4": recipientCell = "C8"' in mailing
-    assert 'SH_CreateMailDraft ws, "B1", recipientCell, "", subjectCell, "C2", "", "", True' in mailing
+    expected = (
+        'SH_CreateMailDraft ws, "B1", recipientCell, "", subjectCell, '
+        '"C2", "", "", True'
+    )
+    assert expected in mailing
     assert "SH_MailNormalizeRecipients" in mailing
     assert "mail.GetInspector.WordEditor" in mailing
     assert 'insertedRange.Font.Name = "Arial"' in mailing
