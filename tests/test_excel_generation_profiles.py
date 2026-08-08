@@ -11,7 +11,7 @@ def _source(name: str) -> str:
 
 
 def test_generation_import_supports_both_station_workbook_contracts() -> None:
-    source = _source("modShiftHelperGenerationUniversal.bas")
+    source = _source("modShiftHelperGenProfiles.bas")
     ribbon = _source("modShiftHelperRibbon.bas")
 
     assert "Public Sub SH_ImportGenerationUniversal" in source
@@ -42,7 +42,7 @@ def test_generation_import_supports_both_station_workbook_contracts() -> None:
 
 
 def test_generation_outlook_search_is_station_aware_but_keeps_manual_fallback() -> None:
-    source = _source("modShiftHelperGenerationUniversal.bas")
+    source = _source("modShiftHelperGenProfiles.bas")
 
     assert "SH_G2StationHint" in source
     assert "SH_G2StationFromText" in source
