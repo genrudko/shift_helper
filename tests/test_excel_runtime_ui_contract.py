@@ -13,17 +13,20 @@ def _source(name: str) -> str:
     return (VBA / name).read_text(encoding="ascii")
 
 
-def test_calendar_is_ribbon_owned_and_never_creates_a_workbook() -> None:
+def test_calendar_is_native_popup_and_never_creates_a_workbook() -> None:
     calendar = _source("modShiftHelperCalendar.bas")
     callbacks = _source("modShiftHelperRibbon.bas")
     root = ET.parse(RIBBON).getroot()
-    control = root.find(".//ui:dynamicMenu[@id='btnCalendar']", NS)
+    control = root.find(".//ui:button[@id='btnCalendar']", NS)
     assert control is not None
-    assert control.attrib["getContent"] == "SH_RibbonCalendarMenu"
+    assert control.attrib["onAction"] == "SH_RibbonCalendar"
     assert "Workbooks.Add" not in calendar
-    assert "SH_CalendarMenuXml" in calendar
-    assert "SH_CalendarPickTag" in calendar
-    assert "Public Sub SH_RibbonCalendarPick" in callbacks
+    assert 'calendarClass = "SysMonthCal32"' in calendar
+    assert "CreateWindowExW" in calendar
+    assert "SH_MCN_SELECT" in calendar
+    assert "SH_MCM_GETCURSEL" in calendar
+    assert "SH_CalendarMenuXml" not in calendar
+    assert "Public Sub SH_RibbonCalendar" in callbacks
 
 
 def test_outlook_settings_are_ribbon_owned_and_never_create_a_workbook() -> None:
@@ -38,6 +41,31 @@ def test_outlook_settings_are_ribbon_owned_and_never_create_a_workbook() -> None
     assert "SH_OutlookMenuXml" in outlook
     assert "SH_EditOutlookSetting" in outlook
     assert "Public Sub SH_RibbonOutlookEdit" in callbacks
+
+
+def test_row_height_is_native_autofit_without_manual_prompt() -> None:
+    journal = _source("modShiftHelperJournal.bas")
+    callbacks = _source("modShiftHelperRibbon.bas")
+    root = ET.parse(RIBBON).getroot()
+    control = root.find(".//ui:button[@id='btnRows']", NS)
+    assert control is not None
+    assert control.attrib["label"] == "Автовысота строк"
+    assert control.attrib["onAction"] == "SH_RibbonAutoFitRows"
+    assert "Public Sub SH_AutoFitRows" in journal
+    assert ".EntireRow.AutoFit" in journal
+    assert "Application.InputBox" not in journal
+    assert "Public Sub SH_RibbonAutoFitRows" in callbacks
+
+
+def test_every_top_level_shift_helper_control_has_an_icon_callback() -> None:
+    callbacks = _source("modShiftHelperRibbon.bas")
+    root = ET.parse(RIBBON).getroot()
+    controls = root.findall(".//ui:button", NS) + root.findall(".//ui:dynamicMenu", NS)
+    assert controls
+    assert all(control.attrib.get("getImage") == "SH_RibbonImage" for control in controls)
+    assert "Public Sub SH_RibbonImage" in callbacks
+    assert "Application.CommandBars.GetImageMso" in callbacks
+    assert 'GetImageMso("Paste", 32, 32)' in callbacks
 
 
 def test_report_commands_bootstrap_instead_of_assuming_prep_sheet_exists() -> None:
