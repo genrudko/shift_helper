@@ -77,6 +77,10 @@ Public Sub SH_GeneratePreparedReport()
     outWb.SaveAs Filename:=CStr(outputPath), FileFormat:=xlOpenXMLWorkbook
     outWb.Close SaveChanges:=False
     Application.DisplayAlerts = oldAlerts
+
+    stage = "register generated report"
+    SH_RegisterGeneratedReport wb, CStr(outputPath)
+
     MsgBox SH_T("OK_REPORT") & CStr(outputPath), vbInformation, "Shift-Helper"
     Exit Sub
 Failed:
