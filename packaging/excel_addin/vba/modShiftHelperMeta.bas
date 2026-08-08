@@ -3,6 +3,7 @@ Option Explicit
 
 Public Function SH_MetaRow(ByVal wb As Workbook, ByVal labelText As String) As Long
     Dim ws As Worksheet, r As Long, lastRow As Long
+    If Not SH_HasSheet(wb, SH_PrepSheetName()) Then Exit Function
     Set ws = wb.Worksheets(SH_PrepSheetName())
     lastRow = Application.Max(50, SH_LastRow(ws, 13))
     For r = 1 To lastRow
@@ -27,7 +28,7 @@ End Function
 
 Public Sub SH_SetMetaValue(ByVal wb As Workbook, ByVal labelText As String, ByVal value As Variant)
     Dim ws As Worksheet, r As Long
-    Set ws = wb.Worksheets(SH_PrepSheetName())
+    Set ws = SH_EnsurePrepSheet(wb)
     r = SH_MetaRow(wb, labelText)
     If r = 0 Then
         r = Application.Max(2, SH_LastRow(ws, 13) + 1)
