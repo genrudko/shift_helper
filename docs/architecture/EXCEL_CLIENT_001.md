@@ -61,14 +61,14 @@ Because the build environment does not provide Microsoft Office, package-level C
 
 ## Ribbon
 
-The XLAM exposes one `Shift-Helper` tab with these groups.
+The XLAM exposes one `Shift-Helper` tab with these groups. Every top-level command has an icon obtained from the Office image catalogue at runtime, with a safe built-in fallback if a preferred icon is unavailable in a particular Excel build.
 
 ### Журнал
 
 - Сортировать по времени
 - Объединить и копировать
 - Очистить пробелы
-- Высота строк
+- Автовысота строк
 
 ### Рапорт
 
@@ -90,12 +90,13 @@ Callbacks operate on the active journal workbook. The XLAM never embeds controls
 
 ## Calendar and settings UI
 
-No Microsoft Date and Time Picker ActiveX dependency is allowed.
+No Microsoft Date and Time Picker ActiveX dependency and no temporary workbook-as-dialog implementation are allowed.
 
-The Excel adapter uses dependency-free Excel-native dialog workbooks created at runtime from the XLAM:
+The calendar is a compact native Windows month-calendar control (`SysMonthCal32`) hosted in a small owned popup window above Excel. It provides the standard month grid, month/year navigation and explicit date selection. Selecting a day writes the report date to `Подготовка рапорта!B3`, refreshes the accepted 07:00→07:00 window and recalculates the report inputs. It does not create or persist an Excel workbook, worksheet, shape or ActiveX control.
 
-- the calendar is a compact temporary workbook/window with a 6x7 month grid and native shapes whose `OnAction` callbacks return the selected date to `Подготовка рапорта!B3`;
-- Outlook settings use a compact temporary settings workbook/window with native worksheet cells and buttons, while persistence is shared with the existing `Подготовка рапорта` metadata and may additionally use per-user VBA `SaveSetting`/`GetSetting` as a fallback.
+Outlook settings stay in an in-Ribbon dynamic menu. Editing one setting may use a standard Excel input dialog; persistence is shared with the existing `Подготовка рапорта` metadata and per-user VBA `SaveSetting`/`GetSetting` fallback. No settings workbook is created.
+
+`Автовысота строк` delegates to Excel's native row AutoFit for the selected journal rows. The add-in does not ask the operator for an arbitrary numeric row height.
 
 No Excel-only object is persisted into the shared journal.
 
@@ -135,6 +136,6 @@ Formulas that naturally belong to the workbook remain in the journal and use fun
 
 ## Acceptance boundary
 
-Automated acceptance covers contract calculations, mappings, embedded-template identity, XLAM package shape, Ribbon callbacks, VBA-source static checks and macro-free journal preservation.
+Automated acceptance covers contract calculations, mappings, embedded-template identity, XLAM package shape, Ribbon callbacks including image callbacks, VBA-source static checks and macro-free journal preservation.
 
-Final acceptance requires a real Windows x64 Microsoft 365/Excel Desktop run, followed by reopening the same saved `.xlsx` in LibreOffice. The Draft PR must remain Draft until the owner explicitly accepts and commands the next transition.
+Final acceptance requires a real Windows x64 Microsoft Excel Desktop run, followed by reopening the same saved `.xlsx` in LibreOffice. The Draft PR must remain Draft until the owner explicitly accepts and commands the next transition.
