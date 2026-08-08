@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import re
 import zipfile
@@ -93,17 +94,65 @@ def _contract_source() -> str:
     return result
 
 
+def _template_payload_source(template: bytes) -> str:
+    encoded = base64.b64encode(template).decode("ascii")
+    chunks = [encoded[index : index + 180] for index in range(0, len(encoded), 180)]
+    lines = [
+        'Attribute VB_Name = "modShiftHelperTemplatePayload"',
+        "Option Explicit",
+        "",
+        "Public Function SH_EmbeddedTemplateBase64() As String",
+        "    Dim payload As String",
+    ]
+    for index, chunk in enumerate(chunks):
+        operator = "=" if index == 0 else "= payload &"
+        if index == 0:
+            lines.append(f'    payload = "{chunk}"')
+        else:
+            lines.append(f'    payload = payload & "{chunk}"')
+    lines.extend(
+        [
+            "    SH_EmbeddedTemplateBase64 = payload",
+            "End Function",
+            "",
+        ]
+    )
+    result = "\r\n".join(lines)
+    if not result.isascii():
+        raise RuntimeError("Generated VBA template payload must remain ASCII-safe.")
+    return result
+
+
+def _source_module_name(text: str, path: Path) -> str:
+    match = re.search(r'^Attribute VB_Name = "([A-Za-z0-9_]+)"', text, re.MULTILINE)
+    if match is None:
+        raise RuntimeError(f"VBA module has no VB_Name attribute: {path}")
+    return match.group(1)
+
+
 def _vba_sources(repo_root: Path) -> dict[str, str]:
     source_dir = repo_root / "packaging" / "excel_addin" / "vba"
-    sources: dict[str, str] = {"modShiftHelperContract": _contract_source()}
-    for path in sorted(source_dir.glob("*.bas")):
+    template = _template_bytes(repo_root)
+    sources: dict[str, str] = {
+        "modShiftHelperContract": _contract_source(),
+        "modShiftHelperTemplatePayload": _template_payload_source(template),
+    }
+    for pattern in ("*.bas", "*.cls"):
+        for path in sorted(source_dir.glob(pattern)):
+            text = path.read_text(encoding="ascii").replace("\r\n", "\n")
+            text = text.replace("\r", "\n").replace("\n", "\r\n")
+            sources[_source_module_name(text, path)] = text
+    return sources
+
+
+def _vba_class_names(repo_root: Path) -> set[str]:
+    source_dir = repo_root / "packaging" / "excel_addin" / "vba"
+    result: set[str] = set()
+    for path in sorted(source_dir.glob("*.cls")):
         text = path.read_text(encoding="ascii").replace("\r\n", "\n")
         text = text.replace("\r", "\n").replace("\n", "\r\n")
-        match = re.search(r'^Attribute VB_Name = "([A-Za-z0-9_]+)"', text, re.MULTILINE)
-        if match is None:
-            raise RuntimeError(f"VBA module has no VB_Name attribute: {path}")
-        sources[match.group(1)] = text
-    return sources
+        result.add(_source_module_name(text, path))
+    return result
 
 
 def _new_relationship_id(root: ET.Element, preferred: str) -> str:
@@ -190,7 +239,7 @@ def _verify_ribbon_package(archive: zipfile.ZipFile) -> str:
 def _ribbon_callbacks(ribbon: str) -> set[str]:
     return set(
         re.findall(
-            r'(?:onAction|getContent|getImage)="([A-Za-z0-9_]+)"',
+            r'(?:onAction|getContent|getImage|onLoad)="([A-Za-z0-9_]+)"',
             ribbon,
         )
     )
@@ -208,6 +257,7 @@ def build_excel_addin(repo_root: Path, output: Path) -> Path:
     output = output.resolve()
     template = _template_bytes(repo_root)
     sources = _vba_sources(repo_root)
+    class_names = _vba_class_names(repo_root)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     if output.exists():
@@ -225,7 +275,8 @@ def build_excel_addin(repo_root: Path, output: Path) -> Path:
             elif name in existing:
                 workbook.set_module(name, source)
             else:
-                project.add_module(name, source, kind=VBAModuleKind.standard)
+                kind = VBAModuleKind.other if name in class_names else VBAModuleKind.standard
+                project.add_module(name, source, kind=kind)
         workbook.save()
 
     with zipfile.ZipFile(output, "r") as archive:
