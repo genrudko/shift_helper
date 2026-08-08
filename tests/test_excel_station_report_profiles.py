@@ -59,6 +59,7 @@ def test_station_profile_remains_compatible_with_kochubeevskaya_layout() -> None
 
 def test_report_actions_use_station_aware_contour_and_visible_station_selector() -> None:
     station = _source("modShiftHelperStation.bas")
+    station_facts = _source("modShiftHelperStationFacts.bas")
     station_import = _source("modShiftHelperStationImport.bas")
     ribbon = _source("modShiftHelperRibbon.bas")
     output = _source("modShiftHelperReportOutput.bas")
@@ -72,11 +73,16 @@ def test_report_actions_use_station_aware_contour_and_visible_station_selector()
     assert "SH_ApplyStationOverrides wb, stationId" in station
     assert "SH_EnsureStationReportContour wb" in output
 
-    assert "SH_PrepareStationReportContour" in ribbon
-    assert "SH_ShowStationCalendar" in ribbon
+    assert "SH_PrepareStationReportForRibbon" in ribbon
+    assert "SH_ShowStationCalendarForRibbon" in ribbon
+    assert "SH_GenerateStationReportForRibbon" in ribbon
+    assert "SH_SelectStationForRibbon" in ribbon
     assert "SH_ImportStationGenerationSelected" in ribbon
     assert "SH_ImportGenerationUniversal" in station_import
     assert 'SH_U("041A04430437")' in station_import
+    assert "SH_ApplyStationHistoricalFacts wb" in station_import
+    assert "SH_ApplyStationHistoricalFacts wb" in station_facts
+    assert "SH_GeneratePreparedReport" in station_facts
     assert "SH_UpdateStationRotorLimits" in ribbon
     assert "SH_RibbonStationMenu" in ribbon
     assert "SH_RibbonSetStation" in ribbon
@@ -95,3 +101,21 @@ def test_kuzminskaya_state_profile_keeps_status_service_only_and_merged_gtp_bloc
     assert '.Range("C" & CStr(groupRow) & ":C" & CStr(rowNumber - 1)).Merge' in station
     assert "SH_OutputRemoveWtgServiceColumns target" in output
     assert "target.Columns(12).Delete" in output
+
+
+def test_station_history_seeds_known_2026_facts_without_overwriting_current_month() -> None:
+    facts = _source("modShiftHelperStationFacts.bas")
+
+    for value in (
+        "30154342#",
+        "33176283#",
+        "33173000#",
+        "21151677#",
+        "29470109#",
+        "11951418#",
+        "13003670#",
+    ):
+        assert value in facts
+
+    assert "lastKnownMonth = Application.Min(7, Month(reportDate) - 1)" in facts
+    assert "main.Cells(monthIndex + 4, 10).Value2 = value" in facts
