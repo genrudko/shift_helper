@@ -54,6 +54,15 @@ Public Sub SH_ShowStationCalendarForRibbon()
     SH_CalculateReportInputs wb
 End Sub
 
+Public Sub SH_GenerateStationReportForRibbon()
+    Dim wb As Workbook
+    Set wb = SH_JournalBook()
+    SH_EnsureStationReportContour wb
+    SH_ApplyStationHistoricalFacts wb
+    SH_CalculateReportInputs wb
+    SH_GeneratePreparedReport
+End Sub
+
 Private Function SH_StationHistoricalFact2026(ByVal stationId As Long, _
     ByVal monthIndex As Long) As Double
     SH_StationHistoricalFact2026 = -1#
