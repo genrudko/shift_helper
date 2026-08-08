@@ -32,6 +32,7 @@ Public Sub SH_GeneratePreparedReport()
         Set target = outWb.Worksheets(outWb.Worksheets.Count)
         target.Name = SH_ReportSheetName(i)
         SH_OutputFreezeFormulas source, target
+        If i = 5 Then SH_OutputRemoveWtgServiceColumns target
     Next i
 
     stage = "remove seed sheet"
@@ -109,13 +110,20 @@ Failed:
     Err.Raise Err.Number, , "Could not freeze report formulas: " & Err.Description
 End Sub
 
+Private Sub SH_OutputRemoveWtgServiceColumns(ByVal target As Worksheet)
+    If StrComp(Trim$(SH_OutputSafeText(target.Range("L3").Value2)), _
+        SH_U("04210442043004420443044100200412042D0423"), vbTextCompare) = 0 Then
+        target.Columns(12).Delete
+    End If
+End Sub
+
 Private Sub SH_OutputApplyCaptions(ByVal wb As Workbook, ByVal reportDate As Date)
     Dim main As Worksheet, ws As Worksheet, i As Long, value As String
     Dim generatedAt As Date
     generatedAt = Now
 
     Set main = wb.Worksheets(SH_ReportSheetName(1))
-    value = SH_ReportSafeText(main.Range("B1").Value2)
+    value = SH_OutputSafeText(main.Range("B1").Value2)
     value = SH_OutputReplaceFirst(value, "dd.mm.yyyy", Format$(reportDate, "dd.mm.yyyy"))
     value = SH_OutputReplaceFirst(value, "dd.mm.yyyy", Format$(generatedAt, "dd.mm.yyyy"))
     value = Replace(value, "hh:mm:ss", Format$(generatedAt, "hh:mm:ss"), 1, -1, vbTextCompare)
@@ -137,7 +145,7 @@ End Sub
 
 Private Sub SH_OutputReplaceDateCell(ByVal target As Range, ByVal value As Date)
     Dim text As String
-    text = SH_ReportSafeText(target.Value2)
+    text = SH_OutputSafeText(target.Value2)
     text = Replace(text, "dd.mm.yyyy", Format$(value, "dd.mm.yyyy"), 1, -1, vbTextCompare)
     target.Value = text
 End Sub
@@ -152,6 +160,15 @@ Private Function SH_OutputReplaceFirst(ByVal text As String, ByVal token As Stri
         SH_OutputReplaceFirst = Left$(text, position - 1) & replacement & _
             Mid$(text, position + Len(token))
     End If
+End Function
+
+Private Function SH_OutputSafeText(ByVal value As Variant) As String
+    On Error GoTo Failed
+    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+    SH_OutputSafeText = CStr(value)
+    Exit Function
+Failed:
+    SH_OutputSafeText = ""
 End Function
 
 Private Sub SH_OutputApplyOffset(ByVal wb As Workbook, ByVal offsetHours As Double)
@@ -210,7 +227,7 @@ Private Sub SH_OutputBreakLinks(ByVal wb As Workbook)
 End Sub
 
 Private Sub SH_OutputValidate(ByVal wb As Workbook)
-    Dim i As Long
+    Dim i As Long, wtg As Worksheet
     If wb.Worksheets.Count <> SH_ReportSheetCount() Then
         Err.Raise vbObjectError + 641, , "Output report must contain exactly seven worksheets."
     End If
@@ -219,7 +236,10 @@ Private Sub SH_OutputValidate(ByVal wb As Workbook)
             Err.Raise vbObjectError + 642, , "Output report worksheet order mismatch."
         End If
     Next i
-    If wb.Worksheets(SH_ReportSheetName(5)).Range("L3").Value2 <> SH_U("04210442043004420443044100200412042D0423") Then
-        Err.Raise vbObjectError + 643, , "WTG status column is missing from the output report."
+
+    Set wtg = wb.Worksheets(SH_ReportSheetName(5))
+    If StrComp(Trim$(SH_OutputSafeText(wtg.Range("L3").Value2)), _
+        SH_U("04210442043004420443044100200412042D0423"), vbTextCompare) = 0 Then
+        Err.Raise vbObjectError + 643, , "WTG status service column must not be exported."
     End If
 End Sub
