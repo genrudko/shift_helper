@@ -71,3 +71,11 @@ def test_selection_tools_cannot_mutate_a_transient_or_foreign_workbook() -> None
 def test_inspection_navigation_reports_missing_sheet_through_shared_guard() -> None:
     shift = _source("modShiftHelperShift.bas")
     assert "Set ws = SH_RequireSheet(wb, SH_InspectionSheetName())" in shift
+
+
+def test_embedded_report_template_waits_for_the_file_it_actually_extracts() -> None:
+    embedded = _source("modShiftHelperEmbedded.bas")
+    assert 'targetPath = tempRoot & Application.PathSeparator & "shift_helper_report_template.xlsx"' in embedded
+    assert 'zipFolder.ParseName("shift_helper_report_template.xlsx")' in embedded
+    assert 'Application.PathSeparator & "report_template.xlsx"' not in embedded
+    assert 'DateDiff("s", startedAt, Now) > 20' in embedded
