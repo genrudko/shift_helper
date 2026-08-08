@@ -24,6 +24,7 @@ def test_excel_addin_build_and_verify(tmp_path: Path) -> None:
     assert "modShiftHelperGeneration" in evidence["modules"]
     assert "modShiftHelperMailing" in evidence["modules"]
     assert "modShiftHelperMailButtons" in evidence["modules"]
+    assert "modShiftHelperMailBinding" in evidence["modules"]
     assert "modShiftHelperReportWindow" in evidence["modules"]
 
     with zipfile.ZipFile(output, "r") as archive:
