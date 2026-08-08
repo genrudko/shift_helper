@@ -80,7 +80,7 @@ Public Sub SH_RibbonSetStation(ByVal control As IRibbonControl)
 End Sub
 
 Public Sub SH_RibbonGenerate(ByVal control As IRibbonControl)
-    SH_GeneratePreparedReport
+    SH_GenerateStationReportForRibbon
 End Sub
 
 Public Sub SH_RibbonImportGeneration(ByVal control As IRibbonControl)
