@@ -13,7 +13,7 @@ Public Sub SH_GeneratePreparedReport()
     Set wb = SH_JournalBook()
 
     stage = "prepare report contour"
-    SH_EnsureReportContour wb
+    SH_EnsureStationReportContour wb
     reportDate = SH_ReportDate(wb)
     offsetHours = SH_ReportOffset(wb)
 
