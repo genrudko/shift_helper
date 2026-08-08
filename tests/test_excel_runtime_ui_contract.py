@@ -148,7 +148,11 @@ def test_embedded_report_template_runtime_does_not_depend_on_explorer_zip_shell(
     assert "Shell.Application" not in embedded
     assert "ParseName" not in embedded
     assert "FileCopy ThisWorkbook.FullName" not in embedded
-    assert 'targetPath = tempRoot & Application.PathSeparator & "shift_helper_report_template.xlsx"' in embedded
+    target_line = (
+        'targetPath = tempRoot & Application.PathSeparator & '
+        '"shift_helper_report_template.xlsx"'
+    )
+    assert target_line in embedded
 
 
 def test_quick_input_uses_application_events_and_covers_accepted_journal_columns() -> None:
