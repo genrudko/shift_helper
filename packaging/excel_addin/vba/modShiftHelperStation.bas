@@ -287,19 +287,30 @@ End Function
 Private Function SH_StationLayoutMatches(ByVal state As Worksheet, ByVal stationId As Long) As Boolean
     Dim r As Long, countWtg As Long, assetText As String, expected As Long
     Dim firstCode As String, lastCode As String, foundFirst As Boolean, foundLast As Boolean
+    Dim nextKuzAsset As Long
     expected = SH_ReportStationWtgCount(stationId)
     If stationId = SH_STATION_KUZ Then
-        firstCode = "GVIE0531": lastCode = "GVIE0555"
+        firstCode = "GVIE0531": lastCode = "GVIE0545"
+        nextKuzAsset = 1
     Else
         firstCode = "GVIE0532": lastCode = "GVIE0891"
     End If
     For r = 4 To 220
         assetText = SH_StationSafeText(state.Cells(r, 4).Value2)
-        If Left$(assetText, 4) = SH_U("0412042D0423002D") Then countWtg = countWtg + 1
+        If Left$(assetText, 4) = SH_U("0412042D0423002D") Then
+            countWtg = countWtg + 1
+            If stationId = SH_STATION_KUZ Then
+                If assetText <> SH_U("0412042D0423002D") & CStr(nextKuzAsset) Then Exit Function
+                nextKuzAsset = nextKuzAsset + 1
+            End If
+        End If
         If StrComp(SH_StationSafeText(state.Cells(r, 3).Value2), firstCode, vbTextCompare) = 0 Then foundFirst = True
         If StrComp(SH_StationSafeText(state.Cells(r, 3).Value2), lastCode, vbTextCompare) = 0 Then foundLast = True
     Next r
     SH_StationLayoutMatches = (countWtg = expected And foundFirst And foundLast)
+    If stationId = SH_STATION_KUZ Then
+        SH_StationLayoutMatches = SH_StationLayoutMatches And nextKuzAsset = 65
+    End If
 End Function
 
 Private Sub SH_RebuildStationState(ByVal state As Worksheet, ByVal stationId As Long)
@@ -308,9 +319,9 @@ Private Sub SH_RebuildStationState(ByVal state As Worksheet, ByVal stationId As 
     Dim groupHeight As Double, childHeight As Double, stationName As String
 
     If stationId = SH_STATION_KUZ Then
-        starts = Array(1, 33, 57, 25, 41, 49, 17)
-        ends = Array(16, 40, 64, 32, 48, 56, 24)
-        codes = Array("GVIE0531", "GVIE0543", "GVIE0545", "GVIE0546", "GVIE0547", "GVIE0549", "GVIE0555")
+        starts = Array(1, 17, 25, 33, 41, 49, 57)
+        ends = Array(16, 24, 32, 40, 48, 56, 64)
+        codes = Array("GVIE0531", "GVIE0555", "GVIE0546", "GVIE0543", "GVIE0547", "GVIE0549", "GVIE0545")
     Else
         starts = Array(45, 5, 13, 21, 29, 37, 61, 53, 69, 77, 1)
         ends = Array(52, 12, 20, 28, 36, 44, 68, 60, 76, 84, 4)
