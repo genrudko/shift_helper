@@ -24,36 +24,36 @@ def test_report_contour_avoids_full_workbook_recalculation_and_cellwise_journal_
 
 
 def test_generation_import_uses_hardened_runtime_and_bounded_outlook_scan() -> None:
-    generation = _source("modShiftHelperGeneration.bas")
+    generation = _source("modShiftHelperGenerationUniversal.bas")
     ribbon = _source("modShiftHelperRibbon.bas")
 
-    assert "Public Sub SH_ImportGenerationSafe" in generation
+    assert "Public Sub SH_ImportGenerationUniversal" in generation
     assert "Application.Calculation = xlCalculationManual" in generation
     assert "SH_CalculateReportInputs wb" in generation
     assert "wb.Calculate" not in generation
-    assert "SH_GenSafeDouble" in generation
-    assert "SH_GenSafeText" in generation
-    assert "SH_GenIsNumericValue" in generation
+    assert "SH_G2SafeDouble" in generation
+    assert "SH_G2SafeText" in generation
+    assert "SH_G2IsNumericValue" in generation
     assert "errNumber = Err.Number" in generation
     assert "errDescription = Err.Description" in generation
     assert "If Not source Is Nothing Then source.Close SaveChanges:=False" in generation
-    assert "SH_GenTryDate(received, receivedDate)" in generation
+    assert "SH_G2TryDate(received, receivedDate)" in generation
     assert "If receivedDate < cutoff Then Exit For" in generation
-    assert "SH_GenTryDate(received, cutoff)" not in generation
-    assert "SH_ImportGenerationSafe" in ribbon
+    assert "SH_G2TryDate(received, cutoff)" not in generation
+    assert "SH_ImportGenerationUniversal" in ribbon
 
 
 def test_generation_search_resolves_real_inbox_and_reports_search_evidence() -> None:
-    generation = _source("modShiftHelperGeneration.bas")
+    generation = _source("modShiftHelperGenerationUniversal.bas")
 
     assert "ns.GetSharedDefaultFolder(recipient, 6)" in generation
     assert "root.Store.GetDefaultFolder(6)" in generation
     assert "ns.GetDefaultFolder(6)" in generation
     assert "folder.DefaultItemType" not in generation
-    assert "SH_GenIsInboxToken" in generation
-    assert "SH_GenWalkFolder" in generation
-    assert "SH_GenAttachmentMatches" in generation
-    assert "SH_GenNormalizeFileKey" in generation
+    assert "SH_G2IsInboxToken" in generation
+    assert "SH_G2WalkFolder" in generation
+    assert "SH_G2AttachmentMatches" in generation
+    assert "SH_G2NormalizeFileKey" in generation
     assert 'expectedDate = DateAdd("d", -1, DateValue(reportDate))' in generation
     assert "Messages scanned:" in generation
     assert "XLSX attachments:" in generation
@@ -109,7 +109,7 @@ def test_rotor_refresh_uses_array_scan_and_bounded_calculation() -> None:
 def test_live_repair_preserves_shared_journal_boundary() -> None:
     report = _source("modShiftHelperReport.bas")
     output = _source("modShiftHelperReportOutput.bas")
-    generation = _source("modShiftHelperGeneration.bas")
+    generation = _source("modShiftHelperGenerationUniversal.bas")
     calendar = _source("modShiftHelperCalendar.bas")
     rotor = _source("modShiftHelperRotor.bas")
 
