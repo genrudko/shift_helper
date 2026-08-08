@@ -28,7 +28,7 @@ Private Function SH_RibbonImageId(ByVal controlId As String) As String
         Case "btnGenerate": SH_RibbonImageId = "FileSaveAs"
         Case "btnGeneration": SH_RibbonImageId = "RefreshAll"
         Case "btnOutlook": SH_RibbonImageId = "Outlook"
-        Case "btnMailDraft": SH_RibbonImageId = "FileSendAsAttachment"
+        Case "btnMailing": SH_RibbonImageId = "FileSendAsAttachment"
         Case "btnMaintenance": SH_RibbonImageId = "InsertTextBox"
         Case "btnRotor": SH_RibbonImageId = "ControlsGallery"
         Case "btnShift": SH_RibbonImageId = "GoTo"
@@ -95,8 +95,12 @@ Public Sub SH_RibbonOutlookEdit(ByVal control As IRibbonControl)
     SH_EditOutlookSetting control.Tag
 End Sub
 
-Public Sub SH_RibbonMailDraft(ByVal control As IRibbonControl)
-    SH_CreateOutlookDraft
+Public Sub SH_RibbonMailingMenu(ByVal control As IRibbonControl, ByRef returnedVal)
+    returnedVal = SH_MailingMenuXml()
+End Sub
+
+Public Sub SH_RibbonMailingDraft(ByVal control As IRibbonControl)
+    SH_CreateStationMailingDraft CStr(control.Tag)
 End Sub
 
 Public Sub SH_RibbonMaintenance(ByVal control As IRibbonControl)
