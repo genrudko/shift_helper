@@ -20,7 +20,7 @@
         <group id="grpOutlook" label="Outlook">
           <button id="btnGeneration" label="Импортировать генерацию" size="large" getImage="SH_RibbonImage" onAction="SH_RibbonImportGeneration"/>
           <dynamicMenu id="btnOutlook" label="Настройки импорта" getImage="SH_RibbonImage" getContent="SH_RibbonOutlookMenu"/>
-          <button id="btnMailDraft" label="Создать черновик письма" getImage="SH_RibbonImage" onAction="SH_RibbonMailDraft"/>
+          <dynamicMenu id="btnMailing" label="Рассылки" size="large" getImage="SH_RibbonImage" getContent="SH_RibbonMailingMenu"/>
         </group>
         <group id="grpTools" label="Инструменты">
           <button id="btnMaintenance" label="Текст ТО ВЭУ" size="large" getImage="SH_RibbonImage" onAction="SH_RibbonMaintenance"/>
