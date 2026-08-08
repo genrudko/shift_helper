@@ -2,66 +2,80 @@
 
 ## Scope
 
-`EXCEL-CLIENT-001` adds a Microsoft Excel Desktop runtime without replacing the accepted LibreOffice runtime or changing the product's shared-workbook principle.
-
-Target topology:
+`EXCEL-CLIENT-001` adds a Microsoft Excel Desktop / Windows x64 runtime without replacing the accepted LibreOffice runtime or changing the shared-workbook principle.
 
 ```text
 LibreOffice Calc:
-  Shift-Helper-Journal.xlsx
-  + Shift-Helper-Calc.oxt
+  Shift-Helper-Journal.xlsx + Shift-Helper-Calc.oxt
 
 Microsoft Excel Desktop:
-  Shift-Helper-Journal.xlsx
-  + Shift-Helper-Excel.xlam
+  Shift-Helper-Journal.xlsx + Shift-Helper-Excel.xlam
 ```
 
-The journal stays macro-free. VBA, Ribbon callbacks, Outlook automation and Excel-only UI live in the XLAM.
+The shared journal stays macro-free. VBA, Ribbon callbacks, Excel application events, Outlook COM automation and Windows-only UI live in the XLAM.
 
-The accepted `Shift-Helper-Journal-ACCEPTANCE-006.xlsx` is the visual/structural journal baseline. It is private operational input and is not committed to Git. Repository tests use contracts, semantic manifests and synthetic workbooks instead of publishing operational data.
+`Shift-Helper-Journal-ACCEPTANCE-006.xlsx` remains the accepted visual/structural baseline. Private operational workbooks are not committed to Git; repository gates use source contracts, synthetic workbooks and the approved embedded report-template payload.
 
-## Recovered main boundary
+## Authority and parity rule
 
-The accepted Calc implementation has three layers that are currently partially interleaved:
+The accepted Calc implementation is the functional reference for the Excel port. Platform-specific APIs may differ, but operator-visible behavior and workbook semantics must remain equivalent where the feature applies to both runtimes.
 
-1. stable workbook/report rules in `src/shift_helper/core` and `src/shift_helper/uno_adapter/report_generation.py`;
-2. UNO-specific document, dialog, toolbar and dispatch code under `packaging/libreoffice_extension`;
-3. acceptance repairs in `src/shift_helper/core/acceptance_repairs_006.py` that move authoritative WTG status to the visible state sheet, add outage input, repair calculations and expose Outlook settings.
+Shared facts are owned by `src/shift_helper/core/workbook_contract.py`, including:
 
-The Excel port must reuse the stable rules but must not clone UNO APIs, ScriptProvider/dispatch plumbing or Calc-specific clipboard workarounds.
-
-## Canonical cross-platform contract
-
-A small pure-Python contract owns facts that both platform adapters must agree on:
-
-- exact journal/input/report sheet names and report-sheet order;
-- report date: `Подготовка рапорта!B3`;
-- generated-output time offset: `Подготовка рапорта!B6`;
-- report window: previous day 07:00 inclusive through report day 07:00 exclusive;
-- journal event source columns and emergency-output mapping;
-- exact main-form coordinates;
+- exact journal/input/report sheet names and seven-sheet report order;
+- report date `Подготовка рапорта!B3`;
+- generated-output offset `Подготовка рапорта!B6`;
+- previous-day 07:00 inclusive → report-day 07:00 exclusive selection window;
 - WTG count `84` and statuses `Работа`, `Останов`, `Авария`, `Ремонт`;
-- visible authoritative WTG status on `Ввод - Состояние ВЭУ`;
-- available power rule `MAX(P уставка - P ремонт, 0)`;
-- average previous-day load `daily_generation_kwh / 24 / 1000`;
-- required remaining mean power from monthly plan, MTD fact and hours remaining from 00:00 of report date through month end;
-- the approved embedded report-template SHA-256 and seven-sheet identity.
-
-This contract is intentionally small. Excel/VBA source is generated from it where duplication would otherwise create a second authority.
+- authoritative WTG status in column L of `Ввод - Состояние ВЭУ`;
+- available power `MAX(P уставка - P ремонт, 0)`;
+- average previous-day load `daily_generation_kwh / 24000`;
+- remaining-power calculation including the report date and `-1` ahead-of-plan sentinel;
+- approved report-template identity and exact seven-sheet order.
 
 ## Excel add-in packaging
 
-`Shift-Helper-Excel.xlam` is built from source-controlled VBA modules plus the already approved report-template payload.
+`Shift-Helper-Excel.xlam` is generated from source-controlled VBA plus generated VBA contract/payload modules.
 
-The approved report sheets are carried inside the add-in workbook itself. Report generation copies those sheets into a new workbook, preserving the original sheet objects and therefore their merges, sizes, styles, number formats and print settings. Normal operator flow never opens a template picker.
+Two copies of the approved report template are intentionally present at package level for different purposes:
 
-The build is required to fail closed if the reconstructed template hash or seven-sheet identity differs from the approved contract.
+1. an OOXML package part `shift_helper_report_template.xlsx`, used by the build verifier to fail closed on exact template content;
+2. the same template bytes encoded into generated VBA module `modShiftHelperTemplatePayload`, used by the Excel runtime.
 
-Because the build environment does not provide Microsoft Office, package-level CI is not treated as runtime acceptance. Structural XLAM/Ribbon/VBA checks and pure contract tests are automated; the owner performs the final real Excel Desktop gate.
+At runtime `modShiftHelperEmbedded` decodes that Base64 payload through Windows MSXML and ADODB Stream directly into `%TEMP%\ShiftHelper\shift_helper_report_template.xlsx`. The runtime does not depend on Explorer/Shell ZIP extraction and never asks the operator to select an external report template.
+
+The build verifies:
+
+- real `xl/vbaProject.bin` presence;
+- Office 2007 Ribbon extensibility relationship for `customUI14.xml`;
+- Ribbon namespace/callback integrity;
+- all source VBA modules/classes are physically present in the emitted XLAM;
+- approved embedded template content and seven-sheet identity;
+- generated VBA Base64 payload round-trips to the same exact template bytes.
+
+CI does not contain Microsoft Office, so these gates prove package structure and static contracts, not live Excel execution.
+
+## VBA runtime composition
+
+The XLAM contains standard modules for:
+
+- contract and Unicode helpers;
+- journal tools;
+- calendar/date selection;
+- report bootstrap/calculations/generation;
+- Outlook generation import/settings;
+- WTG rotor-limit processing;
+- current-shift inspection navigation;
+- operator utilities such as time entry, maintenance text and Outlook draft;
+- quick-input state and normalization;
+- Ribbon callbacks and icons;
+- generated report-template payload.
+
+`CShiftHelperAppEvents` is a class module with `WithEvents Application`. Ribbon `onLoad` initializes it so worksheet selection/change events can provide automatic quick input without inserting VBA into the journal.
 
 ## Ribbon
 
-The XLAM exposes one `Shift-Helper` tab with these groups. Every top-level command has an icon obtained from the Office image catalogue at runtime, with a safe built-in fallback if a preferred icon is unavailable in a particular Excel build.
+The XLAM exposes one `Shift-Helper` tab. Every top-level command uses an Office-native image callback with a known fallback.
 
 ### Журнал
 
@@ -69,73 +83,138 @@ The XLAM exposes one `Shift-Helper` tab with these groups. Every top-level comma
 - Объединить и копировать
 - Очистить пробелы
 - Автовысота строк
+- Вставить дату
+- Вставить время
 
 ### Рапорт
 
-- Подготовить полный контур рапорта
-- Календарь
-- Сформировать полный утренний рапорт
+- Подготовить полный контур
+- Дата рапорта
+- Сформировать утренний рапорт
+
+### Outlook
+
 - Импортировать генерацию
-- Настройки Outlook
+- Настройки импорта
+- Создать черновик письма
 
-### ВЭУ
+### Инструменты
 
-- Ограничение по оборотам / мощности
+- Текст ТО ВЭУ
+- Ограничения ВЭУ
+- Осмотры текущей смены
 
-### Смена
+### Быстрый ввод
 
-- Текущий день / текущая смена
+- Включить
+- Состояние
+- Выключить
 
-Callbacks operate on the active journal workbook. The XLAM never embeds controls or a VBA project into that journal.
+Callbacks always resolve the active Shift-Helper journal and selection ownership before mutation. The XLAM itself is never treated as the journal.
 
-## Calendar and settings UI
+## Journal tools
 
-No Microsoft Date and Time Picker ActiveX dependency and no temporary workbook-as-dialog implementation are allowed.
+### Stable sort
 
-The calendar is a compact native Windows month-calendar control (`SysMonthCal32`) hosted in a small owned popup window above Excel. It provides the standard month grid, month/year navigation and explicit date selection. Selecting a day writes the report date to `Подготовка рапорта!B3`, refreshes the accepted 07:00→07:00 window and recalculates the report inputs. It does not create or persist an Excel workbook, worksheet, shape or ActiveX control.
+The accepted Calc sort semantics are retained:
 
-Outlook settings stay in an in-Ribbon dynamic menu. Editing one setting may use a standard Excel input dialog; persistence is shared with the existing `Подготовка рапорта` metadata and per-user VBA `SaveSetting`/`GetSetting` fallback. No settings workbook is created.
+- sort selected journal rows as whole A:R records;
+- time key is column C;
+- formula columns K and N:R are converted to absolute A1 references before row movement;
+- a temporary very-hidden worksheet carries an original-order helper column so equal-time rows remain stable;
+- temporary content is deleted before returning control to the operator.
 
-`Автовысота строк` delegates to Excel's native row AutoFit for the selected journal rows. The add-in does not ask the operator for an arbitrary numeric row height.
+### Merge/copy and whitespace cleanup
 
-No Excel-only object is persisted into the shared journal.
+Unicode merge/copy uses the Windows clipboard API and never creates a dialog workbook. Whitespace cleanup affects only selected non-formula text cells. Both commands restore row height with native AutoFit where appropriate.
 
-## Outlook
+### AutoFit
 
-Classic Outlook Desktop is accessed with late-bound VBA COM automation (`Outlook.Application` / MAPI namespace). No Outlook reference is required in the VBA project.
+Row height is content-driven through Excel `EntireRow.AutoFit`. There is no arbitrary numeric-height prompt.
 
-The operator configures:
+## Date/time UI
 
-- mailbox;
-- folder path;
-- attachment mask;
-- subject substring;
-- sender substring;
-- search depth in days;
-- manual file fallback.
+No Microsoft Date and Time Picker ActiveX dependency and no temporary workbook-as-dialog are allowed.
 
-Only expected `.xlsx` attachments are saved to a temporary directory and opened read-only. Attachments are never executed. Generation import validates the expected workbook structure before reading values. Outlook absence, MAPI lookup failure and missing mail are recoverable conditions; configured manual file selection remains available.
+Calendar commands host Windows `SysMonthCal32` in a small owned popup above Excel. The implementation deliberately avoids Win32 window-procedure subclassing because that proved too fragile in the first live Excel acceptance attempt.
+
+Two date use cases are distinct:
+
+- **Дата рапорта** updates only `Подготовка рапорта!B3` plus B4/B5 07:00 boundaries; it does not bootstrap the whole report merely to show a calendar;
+- **Вставить дату** writes the selected date into the selected cells.
+
+Time insertion writes one validated `ЧЧ:ММ` value to selected cells using ordinary Excel input UI.
+
+## Automatic quick input
+
+Application-level events provide the accepted compact journal input behavior on `ЖС` columns B/C/I/J without modifying the journal VBA project.
+
+Supported compact forms include repeat (`.`), current date/time (`!`), relative `+N`, compact numeric date/time tokens and ordinary separators. Relative time crossing midnight changes the paired date cell when a valid paired date exists. Invalid tokens remain visible and generate diagnostics rather than silently changing factual journal data.
+
+Quick-input enable state is stored per user through VBA settings and is controlled from the Ribbon.
+
+## Report workspace and formulas
+
+`SH_EnsureReportContour` first ensures the preparation sheet, then checks whether any approved input form is missing. The embedded template is reconstructed/opened only when a missing form actually needs to be copied. Repeated preparation of an already prepared workbook therefore does not perform unnecessary template extraction.
+
+Critical formulas are re-applied explicitly, including:
+
+- dynamic report title/date captions;
+- C6 average load;
+- elapsed-month plan, deviation, ratio and C15 remaining power;
+- monthly/year-to-date plan/fact totals;
+- WTG available power and commercial-group sums;
+- status counts in accepted visible order: Останов / Работа / Авария / Ремонт;
+- planned-work available-power formulas.
+
+Emergency outage selection retains the accepted legacy 07:00→07:00 filtering rules.
 
 ## Report generation
 
-Generation follows the accepted Calc semantics:
+Generation:
 
-1. validate the active journal and `Подготовка рапорта` settings;
-2. take `B3` as the sole report date;
-3. construct a new workbook from the embedded seven approved template sheets;
-4. fill main data, emergency outages, external commands, violations, WTG state, planned works and defects;
-5. apply `B6` only to timestamps written to the output workbook, never to source journal values or to the event-selection window;
-6. save the generated workbook as a separate `.xlsx`;
-7. never overwrite the source journal or the XLAM.
+1. validates the active journal and report contour;
+2. takes B3 as the sole report date;
+3. reconstructs and opens the embedded approved template;
+4. verifies exact seven-sheet order;
+5. transfers prepared values to the template sheets;
+6. applies B6 only to output timestamp columns;
+7. saves a separate `.xlsx` chosen by the operator;
+8. never overwrites source journal values or the XLAM.
 
-## Compatibility gate
+## WTG rotor/power limits
 
-Tests must prove that the common journal remains a macro-free OOXML workbook after Excel-side operations. No `xl/vbaProject.bin`, ActiveX part or customUI part may be written to the journal.
+The latest matching add/remove event before report time wins, independent of journal row order. Repair-power mapping matches the accepted discrete Calc contract exactly:
 
-Formulas that naturally belong to the workbook remain in the journal and use functions supported by both current Excel and LibreOffice Calc. Platform adapters may reapply the accepted formulas but must not replace them with static values.
+- `< 0.70 → 2.50 MW`;
+- `0.70 → 1.40`;
+- `0.75 → 1.20`;
+- `0.80 → 1.00`;
+- `0.85 → 0.75`;
+- `0.90 → 0.55`;
+- `>= 0.95 → 0`;
+- any other intermediate value → `0.45 MW`.
+
+## Current-shift inspections
+
+Excel follows the accepted Calc schedule shape rather than searching for a full Excel date. It scans the schedule rows, carries the day number from column A, compares the current Д/Н shift in column B and selects through the last assigned inspection column.
+
+## Outlook
+
+Classic Outlook Desktop is accessed only through late-bound COM; the VBA project has no Outlook reference dependency.
+
+Generation import supports saved mailbox/folder/attachment mask, optional subject/sender filters, search depth, `.xlsx` attachment validation and manual-file fallback. The source generation workbook is opened read-only.
+
+The Outlook draft tool reads the accepted active-sheet fields, creates an Outlook mail item and displays it. Shift-Helper never calls `Send` automatically.
+
+## Shared-workbook compatibility
+
+No Excel command is allowed to persist `xl/vbaProject.bin`, ActiveX or customUI parts into the shared journal. Formulas that belong in the workbook remain formulas and use functions supported by current Excel and Calc.
+
+The same saved `.xlsx` must remain usable by the accepted Calc OXT workflow after Excel-side operation.
 
 ## Acceptance boundary
 
-Automated acceptance covers contract calculations, mappings, embedded-template identity, XLAM package shape, Ribbon callbacks including image callbacks, VBA-source static checks and macro-free journal preservation.
+Automated gates cover calculations, mappings, Ribbon callback topology, event-class/payload packaging, embedded-template integrity, operator-tool parity contracts and Calc regression.
 
-Final acceptance requires a real Windows x64 Microsoft Excel Desktop run, followed by reopening the same saved `.xlsx` in LibreOffice. The Draft PR must remain Draft until the owner explicitly accepts and commands the next transition.
+Final acceptance still requires live Microsoft Excel Desktop Windows x64, because only Office can prove actual VBA compilation/runtime behavior, native calendar rendering, Outlook COM behavior and event handling. PR #17 remains Draft until the owner explicitly accepts it and commands the next transition.
