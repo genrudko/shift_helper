@@ -22,6 +22,7 @@ def test_excel_addin_build_and_verify(tmp_path: Path) -> None:
     assert evidence["sha256"] == hashlib.sha256(output.read_bytes()).hexdigest()
     assert evidence["embedded_template_members"] == len(_TEMPLATE_ENTRY_SHA256)
     assert "modShiftHelperGeneration" in evidence["modules"]
+    assert "modShiftHelperMailing" in evidence["modules"]
 
     with zipfile.ZipFile(output, "r") as archive:
         names = set(archive.namelist())
