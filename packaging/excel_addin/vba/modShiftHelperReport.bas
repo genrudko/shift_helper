@@ -3,33 +3,40 @@ Option Explicit
 
 Public Sub SH_PrepareReportContour()
     On Error GoTo Failed
-    Dim wb As Workbook
+    Dim wb As Workbook, errDescription As String
     Set wb = SH_JournalBook()
     SH_EnsureReportContour wb
     MsgBox SH_T("OK_PREP") & vbCrLf & SH_T("NO_TEMPLATE_PICK"), vbInformation, "Shift-Helper"
     Exit Sub
 Failed:
-    MsgBox SH_T("ERR_PREP") & Err.Description, vbExclamation, "Shift-Helper"
+    errDescription = Err.Description
+    If Len(errDescription) = 0 Then errDescription = "Report contour preparation failed (" & CStr(Err.Number) & ")."
+    MsgBox SH_T("ERR_PREP") & errDescription, vbExclamation, "Shift-Helper"
 End Sub
 
 Public Sub SH_EnsureReportContour(ByVal wb As Workbook)
     On Error GoTo Failed
     Dim template As Workbook, templatePath As String, prep As Worksheet
-    Dim i As Long, inputName As String, reportName As String
+    Dim i As Long, inputName As String, reportName As String, needsTemplate As Boolean
     Dim errNumber As Long, errDescription As String
     Set prep = SH_EnsurePrepSheet(wb)
-    templatePath = SH_ExtractEmbeddedReportTemplate()
-    Set template = Workbooks.Open(Filename:=templatePath, UpdateLinks:=0, ReadOnly:=True, AddToMru:=False)
     For i = 1 To SH_ReportSheetCount()
-        inputName = SH_InputSheetName(i)
-        reportName = SH_ReportSheetName(i)
-        If Not SH_HasSheet(wb, inputName) Then
-            template.Worksheets(reportName).Copy After:=wb.Worksheets(wb.Worksheets.Count)
-            wb.Worksheets(wb.Worksheets.Count).Name = inputName
-        End If
+        If Not SH_HasSheet(wb, SH_InputSheetName(i)) Then needsTemplate = True: Exit For
     Next i
-    template.Close SaveChanges:=False
-    Set template = Nothing
+    If needsTemplate Then
+        templatePath = SH_ExtractEmbeddedReportTemplate()
+        Set template = Workbooks.Open(Filename:=templatePath, UpdateLinks:=0, ReadOnly:=True, AddToMru:=False)
+        For i = 1 To SH_ReportSheetCount()
+            inputName = SH_InputSheetName(i)
+            reportName = SH_ReportSheetName(i)
+            If Not SH_HasSheet(wb, inputName) Then
+                template.Worksheets(reportName).Copy After:=wb.Worksheets(wb.Worksheets.Count)
+                wb.Worksheets(wb.Worksheets.Count).Name = inputName
+            End If
+        Next i
+        template.Close SaveChanges:=False
+        Set template = Nothing
+    End If
     SH_ApplyCriticalFormulas wb
     SH_RefreshEmergencyOutages wb
     wb.Calculate
@@ -40,6 +47,7 @@ Failed:
     On Error Resume Next
     If Not template Is Nothing Then template.Close SaveChanges:=False
     On Error GoTo 0
+    If Len(errDescription) = 0 Then errDescription = "Report contour bootstrap failed."
     Err.Raise errNumber, , errDescription
 End Sub
 
@@ -47,19 +55,30 @@ Public Sub SH_ApplyCriticalFormulas(ByVal wb As Workbook)
     Dim main As Worksheet, state As Worksheet, works As Worksheet
     Dim groups As Collection, r As Long, lastRow As Long, i As Long
     Dim groupRow As Long, firstChild As Long, lastChild As Long, nextGroup As Long
-    Dim col As Variant, q As String
+    Dim col As Variant, q As String, prepName As String
     q = Chr$(34)
+    prepName = SH_PrepSheetName()
     Set main = SH_RequireSheet(wb, SH_InputSheetName(1))
     Set state = SH_RequireSheet(wb, SH_InputSheetName(5))
     Set works = SH_RequireSheet(wb, SH_InputSheetName(6))
     SH_EnsureStatusColumn state
 
+    main.Range("B1").Formula = "=" & q & SH_U("04200430043F043E044004420020041D042104210020043D04300020") & q & "&TEXT('" & prepName & "'!B3," & q & "dd.mm.yyyy" & q & ")&" & q & SH_U("0020041A043E0447044304310435043504320441043A0430044F00200412042D042100200028") & q & "&'" & prepName & "'!B7&" & q & SH_U("0029002E0020041F043E0441043B04350434043D04380435002004380437043C0435043D0435043D0438044F0020") & q & "&TEXT(NOW()," & q & "dd.mm.yyyy, hh:mm:ss" & q & ")"
+    main.Range("B6").Formula = "=" & q & SH_U("00200421044004350434043D044F044F0020043D04300433044004430437043A04300020043704300020") & q & "&TEXT('" & prepName & "'!B3-1," & q & "dd.mm.yyyy" & q & ")&" & q & SH_U("002C0020041C04120442") & q
+    main.Range("B7").Formula = "=" & q & SH_U("002004220435043A044304490430044F0020043D04300433044004430437043A04300020043D0430002000300037003A003000300020") & q & "&TEXT('" & prepName & "'!B3," & q & "dd.mm.yyyy" & q & ")&" & q & SH_U("002C0020041C04120442") & q
+    main.Range("B10").Formula = "=" & q & SH_U("00200412044B044004300431043E0442043A04300020043704300020") & q & "&TEXT('" & prepName & "'!B3-1," & q & "dd.mm.yyyy" & q & ")&" & q & SH_U("002C0020043A04120442002A0447") & q
+    main.Range("B12").Formula = "=" & q & SH_U("0020041F043B0430043D002004410020003000310020043F043E0020") & q & "&TEXT('" & prepName & "'!B3," & q & "dd.mm.yyyy" & q & ")&" & q & SH_U("002C0020043A04120442002A0447") & q
+    main.Range("E9").Formula = "=" & q & SH_U("041F043E0433043E0434043D044B0435002004430441043B043E04320438044F0020043D0430002000300037003A003000300020") & q & "&TEXT('" & prepName & "'!B3," & q & "dd.mm.yyyy" & q & ")"
+    main.Range("E14").Formula = "=" & q & SH_U("041F043004400430043C043504420440044B0020044104350442043800200412042D04210020043D0430002000300037003A003000300020") & q & "&TEXT('" & prepName & "'!B3," & q & "dd.mm.yyyy" & q & ")"
+    main.Range("H3").Formula = "=" & q & SH_U("041F043B0430043D002F04240430043A04420020041A043E0447044304310435043504320441043A0430044F00200412042D04210020") & q & "&YEAR('" & prepName & "'!B3)"
+    main.Range("H18").Formula = "=" & q & SH_U("041D043004400430044104420430044E044904380439002004380442043E04330020043D04300020") & q & "&TEXT('" & prepName & "'!B3," & q & "dd.mm.yyyy" & q & ")"
+
     main.Range("C6").Formula = "=IFERROR(C10/24000,0)"
     main.Range("C6").NumberFormat = "0.00"
-    main.Range("C12").Formula = "=INDEX(I5:I16,MONTH('" & SH_PrepSheetName() & "'!B3))*(DAY('" & SH_PrepSheetName() & "'!B3)-1)/DAY(EOMONTH('" & SH_PrepSheetName() & "'!B3,0))"
+    main.Range("C12").Formula = "=INDEX(I5:I16,MONTH('" & prepName & "'!B3))*(DAY('" & prepName & "'!B3)-1)/DAY(EOMONTH('" & prepName & "'!B3,0))"
     main.Range("C13").Formula = "=C11-C12"
     main.Range("C14").Formula = "=IFERROR(C11/C12,0)"
-    main.Range("C15").Formula = "=IFERROR(IF(C13>=0,-1,(INDEX(I5:I16,MONTH('" & SH_PrepSheetName() & "'!B3))-C11)/((DAY(EOMONTH('" & SH_PrepSheetName() & "'!B3,0))-DAY('" & SH_PrepSheetName() & "'!B3)+1)*24)),0)"
+    main.Range("C15").Formula = "=IFERROR(IF(C13>=0,-1,(INDEX(I5:I16,MONTH('" & prepName & "'!B3))-C11)/((DAY(EOMONTH('" & prepName & "'!B3,0))-DAY('" & prepName & "'!B3)+1)*24)),0)"
     main.Range("C15").NumberFormat = "0.0"
 
     For r = 5 To 16
@@ -70,8 +89,8 @@ Public Sub SH_ApplyCriticalFormulas(ByVal wb As Workbook)
     main.Range("J17").Formula = "=SUM(J5:J16)"
     main.Range("K17").Formula = "=J17-I17"
     main.Range("L17").Formula = "=IFERROR(J17/I17," & q & q & ")"
-    main.Range("I18").Formula = "=SUMPRODUCT(I5:I16,--(ROW(I5:I16)-ROW(I5)+1<MONTH('" & SH_PrepSheetName() & "'!B3)))+INDEX(I5:I16,MONTH('" & SH_PrepSheetName() & "'!B3))*(DAY('" & SH_PrepSheetName() & "'!B3)-1)/DAY(EOMONTH('" & SH_PrepSheetName() & "'!B3,0))"
-    main.Range("J18").Formula = "=SUMPRODUCT(J5:J16,--(ROW(J5:J16)-ROW(J5)+1<=MONTH('" & SH_PrepSheetName() & "'!B3)))"
+    main.Range("I18").Formula = "=SUMPRODUCT(I5:I16,--(ROW(I5:I16)-ROW(I5)+1<MONTH('" & prepName & "'!B3)))+INDEX(I5:I16,MONTH('" & prepName & "'!B3))*(DAY('" & prepName & "'!B3)-1)/DAY(EOMONTH('" & prepName & "'!B3,0))"
+    main.Range("J18").Formula = "=SUMPRODUCT(J5:J16,--(ROW(J5:J16)-ROW(J5)+1<=MONTH('" & prepName & "'!B3)))"
     main.Range("K18").Formula = "=J18-I18"
     main.Range("L18").Formula = "=IFERROR(J18/I18," & q & q & ")"
 
@@ -98,9 +117,10 @@ Public Sub SH_ApplyCriticalFormulas(ByVal wb As Workbook)
         main.Range("C3").Formula = SH_GroupSumFormula(state.Name, "E", groups)
         main.Range("C4").Formula = SH_GroupSumFormula(state.Name, "H", groups)
     End If
-    For i = 1 To 4
-        main.Cells(i + 3, 6).Formula = "=COUNTIF('" & state.Name & "'!L4:L98," & q & SH_StatusText(i) & q & ")"
-    Next i
+    main.Range("F4").Formula = "=COUNTIF('" & state.Name & "'!L4:L98," & q & SH_StatusText(2) & q & ")"
+    main.Range("F5").Formula = "=COUNTIF('" & state.Name & "'!L4:L98," & q & SH_StatusText(1) & q & ")"
+    main.Range("F6").Formula = "=COUNTIF('" & state.Name & "'!L4:L98," & q & SH_StatusText(3) & q & ")"
+    main.Range("F7").Formula = "=COUNTIF('" & state.Name & "'!L4:L98," & q & SH_StatusText(4) & q & ")"
 
     lastRow = Application.Max(SH_LastRow(works, 4), SH_LastRow(works, 5), 200)
     For r = 4 To lastRow
@@ -261,6 +281,7 @@ Failed:
     On Error Resume Next
     If Not outWb Is Nothing Then outWb.Close SaveChanges:=False
     On Error GoTo 0
+    If Len(errDescription) = 0 Then errDescription = "Report generation failed (" & CStr(Err.Number) & ")."
     MsgBox SH_T("ERR_REPORT") & errDescription, vbExclamation, "Shift-Helper"
 End Sub
 
