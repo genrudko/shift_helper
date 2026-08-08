@@ -24,7 +24,7 @@ def test_report_contour_avoids_full_workbook_recalculation_and_cellwise_journal_
 
 
 def test_generation_import_uses_hardened_runtime_and_bounded_outlook_scan() -> None:
-    generation = _source("modShiftHelperGenerationUniversal.bas")
+    generation = _source("modShiftHelperGenProfiles.bas")
     ribbon = _source("modShiftHelperRibbon.bas")
 
     assert "Public Sub SH_ImportGenerationUniversal" in generation
@@ -44,7 +44,7 @@ def test_generation_import_uses_hardened_runtime_and_bounded_outlook_scan() -> N
 
 
 def test_generation_search_resolves_real_inbox_and_reports_search_evidence() -> None:
-    generation = _source("modShiftHelperGenerationUniversal.bas")
+    generation = _source("modShiftHelperGenProfiles.bas")
 
     assert "ns.GetSharedDefaultFolder(recipient, 6)" in generation
     assert "root.Store.GetDefaultFolder(6)" in generation
@@ -109,7 +109,7 @@ def test_rotor_refresh_uses_array_scan_and_bounded_calculation() -> None:
 def test_live_repair_preserves_shared_journal_boundary() -> None:
     report = _source("modShiftHelperReport.bas")
     output = _source("modShiftHelperReportOutput.bas")
-    generation = _source("modShiftHelperGenerationUniversal.bas")
+    generation = _source("modShiftHelperGenProfiles.bas")
     calendar = _source("modShiftHelperCalendar.bas")
     rotor = _source("modShiftHelperRotor.bas")
 
