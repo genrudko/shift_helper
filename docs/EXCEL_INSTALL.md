@@ -18,9 +18,42 @@ Excel runtime uses the shared journal workbook plus `Shift-Helper-Excel.xlam`. T
 
 When replacing an acceptance build, first disable/remove the old XLAM, fully close Excel, replace the file, then start Excel again. Excel can cache Ribbon/VBA state for an already loaded add-in.
 
+## Dual-station generation import
+
+The single **Импортировать генерацию** command supports both station workbooks and detects the actual workbook structure rather than relying only on the attachment name.
+
+### Kochubeevskaya VES form
+
+On sheet `Сумма ВЭС` the accepted legacy contract is:
+
+- daily generation — `G26`;
+- own use — `Q26`;
+- `Q2:Q25` is additionally checked as the expected numeric source range.
+
+### Kuzminskaya VES form
+
+On sheet `Сумма ВЭС` the KuzVES form is identified by the form headers and uses:
+
+- daily generation — `J26` under `Сумма по ВЭС`;
+- own use — `Z26` under `потребление в расчет`.
+
+The source generation workbook is explicitly recalculated by Excel before the totals are read. This is required for the formula-driven KuzVES workbook, whose saved OOXML file may not contain cached values for the final formulas.
+
+When both station messages exist for the same date, Outlook discovery also uses the station indicated by the current journal/title so an attachment from the other station is not selected accidentally. The configured attachment mask remains the first match rule; a constrained station/date XLSX fallback is available. Manual `.xlsx` selection remains available when automatic Outlook discovery does not find a suitable attachment.
+
+If Outlook search misses, the diagnostic message reports the configured/resolved folder, station, effective mask, cutoff date, numbers of scanned messages/attachments/XLSX files and sample XLSX attachment names.
+
+## Report-output repair
+
+The final seven-sheet report is now produced from the already prepared input worksheets rather than copying values only inside the historical embedded-template `UsedRange`. This preserves dynamically expanded rows, widths, row heights, borders, wrapping and number/date formats. Formulas are frozen to their calculated values in the final `.xlsx`.
+
+The service-only `Статус ВЭУ` column remains on `Ввод - Состояние ВЭУ` for calculation/state logic but is removed from the generated `Состояние ВЭУ` sheet.
+
+The embedded approved template remains authoritative for creating missing input forms; the normal operator flow never asks for an external report template.
+
 ## Current live-acceptance focus
 
-The current candidate contains the live-Excel repairs found during owner testing:
+The current candidate also retains the earlier live-Excel repairs:
 
 - no temporary workbook is used for Calendar or Outlook settings;
 - report preparation, generation import, Calendar date application and WTG rotor-limit processing do not use invalid `Workbook.Calculate` calls;
@@ -35,15 +68,15 @@ The current candidate contains the live-Excel repairs found during owner testing
 
 After loading the newest XLAM:
 
-1. Open **Shift-Helper → Рапорт → Календарь**.
-2. Select a different report date and verify that `Подготовка рапорта!B3` changes with no error 438.
-3. Run **Подготовить полный контур рапорта** and confirm that it completes without the previous multi-minute wait / `Type mismatch`.
-4. Run **Импортировать генерацию**. If Outlook cannot supply the expected file, verify the configured manual `.xlsx` fallback instead of a crash.
-5. Run **Ограничение по оборотам / мощности ВЭУ** and verify that it completes without `Object doesn't support this property or method`.
-6. Continue the full report-generation and operator-tool acceptance sequence.
+1. Open **Shift-Helper → Рапорт → Календарь** and select the report date.
+2. Run **Подготовить полный контур рапорта**.
+3. Run **Импортировать генерацию** with the Kochubeevskaya source and verify the G26/Q26 profile.
+4. Run the same command with the Kuzminskaya source and verify the J26/Z26 profile after recalculation.
+5. Run **Сформировать полный утренний рапорт** and verify that all prepared dynamic rows are present, date/percentage formats are retained, and the service WTG status column is absent from the final report.
+6. Run **Ограничение по оборотам / мощности ВЭУ** and continue the remaining operator-tool acceptance sequence.
 
-If any of these operations still fails, capture the complete Shift-Helper message including the numeric error and `Stage [...]` text. That diagnostic identifies the remaining runtime boundary directly.
+If an operation fails, capture the complete Shift-Helper message including the numeric error and `Stage [...]` text or the Outlook search diagnostic block.
 
 ## Shared workbook contract
 
-The XLAM may modify values, formulas, formatting and worksheets required by the accepted Shift-Helper workflow, but it must not save VBA, ActiveX or Ribbon parts into the shared journal. Report generation creates a separate `.xlsx` output workbook from the embedded approved seven-sheet report template. The normal operator flow never asks for an external report template.
+The XLAM may modify values, formulas, formatting and worksheets required by the accepted Shift-Helper workflow, but it must not save VBA, ActiveX or Ribbon parts into the shared journal. The shared journal remains an ordinary `.xlsx` workbook usable by both Microsoft Excel and LibreOffice Calc.
