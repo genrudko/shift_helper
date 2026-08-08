@@ -7,8 +7,9 @@ Public Sub SH_UpdateRotorLimits()
     Dim limits(1 To 84) As Double, eventTimes(1 To 84) As Double, active(1 To 84) As Boolean
     Dim lastRow As Long, r As Long, eventTime As Variant, asset As Long, sourceText As String, value As Double
     Set wb = SH_JournalBook()
-    Set journal = wb.Worksheets(SH_JournalSheetName())
-    Set state = wb.Worksheets(SH_InputSheetName(5))
+    SH_EnsureReportContour wb
+    Set journal = SH_RequireSheet(wb, SH_JournalSheetName())
+    Set state = SH_RequireSheet(wb, SH_InputSheetName(5))
     reportDate = SH_ReportDate(wb)
     endTime = DateSerial(Year(reportDate), Month(reportDate), Day(reportDate)) + TimeSerial(7, 0, 0)
     lastRow = Application.Max(SH_LastRow(journal, 2), SH_LastRow(journal, 3))
@@ -20,16 +21,20 @@ Public Sub SH_UpdateRotorLimits()
                 asset = CLng(journal.Cells(r, 4).Value2)
                 If asset >= 1 And asset <= 84 Then
                     sourceText = LCase$(CStr(journal.Cells(r, 7).Value2))
-                    If InStr(1, sourceText, SH_U("0441043D044F0442043E"), vbTextCompare) > 0 And _
-                       InStr(1, sourceText, SH_U("043E043304400430043D04380447"), vbTextCompare) > 0 Then
-                        active(asset) = False
-                    ElseIf InStr(1, sourceText, SH_U("0443044104420430043D043E0432043B0435043D043E0020043E043304400430043D043804470435043D04380435"), vbTextCompare) > 0 And _
-                           InStr(1, sourceText, SH_U("043E0431043E0440043E"), vbTextCompare) > 0 Then
-                        value = SH_ParseRotorLimit(sourceText)
-                        If value > 0 Then
-                            active(asset) = True
-                            limits(asset) = value
+                    If CDbl(eventTime) >= eventTimes(asset) Then
+                        If InStr(1, sourceText, SH_U("0441043D044F0442043E"), vbTextCompare) > 0 And _
+                           InStr(1, sourceText, SH_U("043E043304400430043D04380447"), vbTextCompare) > 0 Then
+                            active(asset) = False
+                            limits(asset) = 0#
                             eventTimes(asset) = CDbl(eventTime)
+                        ElseIf InStr(1, sourceText, SH_U("0443044104420430043D043E0432043B0435043D043E0020043E043304400430043D043804470435043D04380435"), vbTextCompare) > 0 And _
+                               InStr(1, sourceText, SH_U("043E0431043E0440043E"), vbTextCompare) > 0 Then
+                            value = SH_ParseRotorLimit(sourceText)
+                            If value > 0 Then
+                                active(asset) = True
+                                limits(asset) = value
+                                eventTimes(asset) = CDbl(eventTime)
+                            End If
                         End If
                     End If
                 End If
