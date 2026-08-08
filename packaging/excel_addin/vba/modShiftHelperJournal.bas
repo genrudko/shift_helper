@@ -8,6 +8,8 @@ Public Sub SH_SortJournalByTime()
     Dim sortRange As Range, formulaText As String, converted As Variant
     Dim hadEvents As Boolean, hadAlerts As Boolean, errDescription As String
 
+    hadEvents = Application.EnableEvents
+    hadAlerts = Application.DisplayAlerts
     Set wb = SH_JournalBook()
     Set ws = SH_RequireSheet(wb, SH_JournalSheetName())
     Set selected = SH_SelectionRange(wb)
@@ -17,8 +19,6 @@ Public Sub SH_SortJournalByTime()
     If lastRow <= firstRow Then Err.Raise vbObjectError + 519, , SH_U("0412044B04340435043B043804420435002004340432043500200438043B043800200431043E043B044C044804350020044104420440043E043A002E")
     rowCount = lastRow - firstRow + 1
 
-    hadEvents = Application.EnableEvents
-    hadAlerts = Application.DisplayAlerts
     Application.EnableEvents = False
     Application.DisplayAlerts = False
 
