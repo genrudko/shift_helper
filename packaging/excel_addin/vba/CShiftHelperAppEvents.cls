@@ -11,6 +11,14 @@ Option Explicit
 
 Public WithEvents App As Application
 
+Private Sub App_WorkbookOpen(ByVal Wb As Workbook)
+    SH_RepairMailButtonBindings Wb, False
+End Sub
+
+Private Sub App_WorkbookActivate(ByVal Wb As Workbook)
+    SH_RepairMailButtonBindings Wb, False
+End Sub
+
 Private Sub App_SheetSelectionChange(ByVal Sh As Object, ByVal Target As Range)
     If Not SH_QuickInputEventAllowed(Sh) Then Exit Sub
     SH_PrepareQuickInputSelection Sh, Target
