@@ -11,10 +11,10 @@
         </group>
         <group id="grpReport" label="Рапорт">
           <button id="btnPrepare" label="Подготовить полный контур рапорта" size="large" onAction="SH_RibbonPrepare"/>
-          <button id="btnCalendar" label="Календарь" onAction="SH_RibbonCalendar"/>
+          <dynamicMenu id="btnCalendar" label="Календарь" getContent="SH_RibbonCalendarMenu"/>
           <button id="btnGenerate" label="Сформировать полный утренний рапорт" size="large" onAction="SH_RibbonGenerate"/>
           <button id="btnGeneration" label="Импортировать генерацию" onAction="SH_RibbonImportGeneration"/>
-          <button id="btnOutlook" label="Настройки Outlook" onAction="SH_RibbonOutlookSettings"/>
+          <dynamicMenu id="btnOutlook" label="Настройки Outlook" getContent="SH_RibbonOutlookMenu"/>
         </group>
         <group id="grpWtg" label="ВЭУ">
           <button id="btnRotor" label="Ограничение по оборотам / мощности" size="large" onAction="SH_RibbonRotorLimits"/>
