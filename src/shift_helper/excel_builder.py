@@ -187,6 +187,15 @@ def _verify_ribbon_package(archive: zipfile.ZipFile) -> str:
     return ribbon_bytes.decode("utf-8")
 
 
+def _ribbon_callbacks(ribbon: str) -> set[str]:
+    return set(
+        re.findall(
+            r'(?:onAction|getContent)="([A-Za-z0-9_]+)"',
+            ribbon,
+        )
+    )
+
+
 def build_excel_addin(repo_root: Path, output: Path) -> Path:
     """Create a real XLAM with native VBA, Ribbon and exact internal template."""
 
@@ -264,7 +273,7 @@ def verify_excel_addin(repo_root: Path, path: Path) -> dict[str, object]:
         embedded = archive.read(_TEMPLATE_PART)
         _validate_template(embedded)
         ribbon = _verify_ribbon_package(archive)
-        callbacks = set(re.findall(r'onAction="([A-Za-z0-9_]+)"', ribbon))
+        callbacks = _ribbon_callbacks(ribbon)
         implemented = "\n".join(sources.values())
         missing_callbacks = [
             callback
