@@ -43,6 +43,24 @@ def test_generation_import_uses_hardened_runtime_and_bounded_outlook_scan() -> N
     assert "SH_ImportGenerationSafe" in ribbon
 
 
+def test_generation_search_resolves_real_inbox_and_reports_search_evidence() -> None:
+    generation = _source("modShiftHelperGeneration.bas")
+
+    assert "ns.GetSharedDefaultFolder(recipient, 6)" in generation
+    assert "root.Store.GetDefaultFolder(6)" in generation
+    assert "ns.GetDefaultFolder(6)" in generation
+    assert "folder.DefaultItemType" not in generation
+    assert "SH_GenIsInboxToken" in generation
+    assert "SH_GenWalkFolder" in generation
+    assert "SH_GenAttachmentMatches" in generation
+    assert "SH_GenNormalizeFileKey" in generation
+    assert 'expectedDate = DateAdd("d", -1, DateValue(reportDate))' in generation
+    assert "Messages scanned:" in generation
+    assert "XLSX attachments:" in generation
+    assert "XLSX samples:" in generation
+    assert "searchDiagnostic" in generation
+
+
 def test_calendar_uses_bounded_report_calculation_after_date_selection() -> None:
     calendar = _source("modShiftHelperCalendar.bas")
 
