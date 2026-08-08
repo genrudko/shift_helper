@@ -61,6 +61,26 @@ def test_generation_search_resolves_real_inbox_and_reports_search_evidence() -> 
     assert "searchDiagnostic" in generation
 
 
+def test_report_output_uses_prepared_sheets_and_keeps_wtg_status_service_only() -> None:
+    output = _source("modShiftHelperReportOutput.bas")
+    ribbon = _source("modShiftHelperRibbon.bas")
+
+    assert "Public Sub SH_GeneratePreparedReport" in output
+    assert "source.Copy After:=outWb.Worksheets" in output
+    assert "SH_OutputFreezeFormulas source, target" in output
+    assert "SH_OutputRemoveWtgServiceColumns target" in output
+    assert "target.Columns(12).Delete" in output
+    assert "SH_OutputApplyCaptions outWb, reportDate" in output
+    assert "SH_OutputApplyOffset outWb, offsetHours" in output
+    assert "SH_OutputBreakLinks outWb" in output
+    assert "SH_OutputValidate outWb" in output
+    assert "target.UsedRange.Value" not in output
+    assert "SH_ExtractEmbeddedReportTemplate" not in output
+    assert "SH_GeneratePreparedReport" in ribbon
+    assert "SH_GenerateFullReport" not in ribbon
+    assert "WTG status service column must not be exported." in output
+
+
 def test_calendar_uses_bounded_report_calculation_after_date_selection() -> None:
     calendar = _source("modShiftHelperCalendar.bas")
 
@@ -88,11 +108,12 @@ def test_rotor_refresh_uses_array_scan_and_bounded_calculation() -> None:
 
 def test_live_repair_preserves_shared_journal_boundary() -> None:
     report = _source("modShiftHelperReport.bas")
+    output = _source("modShiftHelperReportOutput.bas")
     generation = _source("modShiftHelperGeneration.bas")
     calendar = _source("modShiftHelperCalendar.bas")
     rotor = _source("modShiftHelperRotor.bas")
 
-    combined = report + generation + calendar + rotor
+    combined = report + output + generation + calendar + rotor
     assert "VBProject" not in combined
     assert "ActiveX" not in combined
     assert "SaveAs Filename:=wb." not in combined
