@@ -1,92 +1,85 @@
 Attribute VB_Name = "modShiftHelperOutlook"
 Option Explicit
 
-Private mSettingsBook As Workbook
-Private mSettingsJournal As Workbook
+Private Const SH_MENU_NS As String = "http://schemas.microsoft.com/office/2009/07/customui"
 
-Public Sub SH_ShowOutlookSettings()
+Public Function SH_OutlookMenuXml() As String
     On Error GoTo Failed
-    Dim ws As Worksheet, i As Long, area As Range, shape As Shape, captions As Variant
-    Set mSettingsJournal = SH_JournalBook()
-    If Not mSettingsBook Is Nothing Then
-        Application.DisplayAlerts = False
-        mSettingsBook.Close SaveChanges:=False
-        Application.DisplayAlerts = True
-    End If
-    Set mSettingsBook = Workbooks.Add(xlWBATWorksheet)
-    Set ws = mSettingsBook.Worksheets(1)
-    ws.Name = "Outlook"
-    ActiveWindow.DisplayGridlines = False
-    ActiveWindow.Zoom = 100
-    ws.Columns("A").ColumnWidth = 42
-    ws.Columns("B").ColumnWidth = 54
-    ws.Range("A1:B1").Merge
-    ws.Range("A1").Value = SH_U("041D0430044104420440043E0439043A04380020004F00750074006C006F006F006B")
-    ws.Range("A1").Font.Bold = True
-    ws.Range("A1").HorizontalAlignment = xlCenter
-    captions = Array( _
-        SH_U("041F043E04470442043E0432044B04390020044F04490438043A"), _
-        SH_U("041F0430043F043A0430"), _
-        SH_U("041C04300441043A043000200432043B043E04360435043D0438044F00200028007B0064006100740065007D0020003D0020043F044004350434044B043404430449043804350020044104430442043A04380029"), _
-        SH_U("04220435043C04300020043F04380441044C043C043000200441043E043404350440043604380442"), _
-        SH_U("041E0442043F044004300432043804420435043B044C00200441043E043404350440043604380442"), _
-        SH_U("0413043B044304310438043D04300020043F043E04380441043A0430002C00200434043D04350439"), _
-        SH_U("042004430447043D043E043900200432044B0431043E04400020044404300439043B04300020043F044004380020043E0442044104430442044104420432043804380020043F04380441044C043C0430"))
+    Dim wb As Workbook, i As Long, value As String, displayValue As String, xml As String
+    Set wb = SH_JournalBook()
+    xml = "<menu xmlns=""" & SH_MENU_NS & """>"
     For i = 1 To 7
-        ws.Cells(i + 2, 1).Value = captions(i - 1)
-        ws.Cells(i + 2, 2).Value = SH_MetaValue(mSettingsJournal, SH_Label(i), SH_DefaultSetting(i))
-    Next i
-    ws.Cells(8, 2).NumberFormat = "0"
-    ws.Cells(9, 2).NumberFormat = "0"
-    Set area = ws.Range("A11:A12")
-    Set shape = ws.Shapes.AddShape(msoShapeRoundedRectangle, area.Left + 2, area.Top + 2, area.Width - 4, area.Height - 4)
-    shape.TextFrame2.TextRange.Text = SH_U("0421043E044504400430043D04380442044C")
-    shape.OnAction = SH_QualifiedMacro("SH_SaveOutlookSettings")
-    Set area = ws.Range("B11:B12")
-    Set shape = ws.Shapes.AddShape(msoShapeRoundedRectangle, area.Left + 2, area.Top + 2, area.Width - 4, area.Height - 4)
-    shape.TextFrame2.TextRange.Text = SH_U("041E0442043C0435043D0430")
-    shape.OnAction = SH_QualifiedMacro("SH_CancelOutlookSettings")
-    mSettingsBook.Windows(1).Caption = "Shift-Helper - Outlook"
-    Exit Sub
-Failed:
-    MsgBox Err.Description, vbExclamation, "Shift-Helper"
-End Sub
-
-Public Sub SH_SaveOutlookSettings()
-    On Error GoTo Failed
-    Dim i As Long, value As String
-    If mSettingsBook Is Nothing Or mSettingsJournal Is Nothing Then Exit Sub
-    For i = 1 To 7
-        value = Trim$(CStr(mSettingsBook.Worksheets(1).Cells(i + 2, 2).Value2))
-        If i = 1 And Len(value) = 0 Then Err.Raise vbObjectError + 580, , "Mailbox is required."
-        If i = 3 And Len(value) = 0 Then Err.Raise vbObjectError + 581, , "Attachment mask is required."
-        If i = 6 Then
-            If Not IsNumeric(value) Then Err.Raise vbObjectError + 582, , "Search depth must be numeric."
-            If CLng(value) < 1 Or CLng(value) > 60 Then Err.Raise vbObjectError + 583, , "Search depth: 1..60."
+        value = SH_OutlookValue(wb, i)
+        If i = 7 Then
+            If Val(value) <> 0 Then
+                displayValue = SH_U("0432043A043B044E04470451043D")
+            Else
+                displayValue = SH_U("0432044B043A043B044E04470435043D")
+            End If
+        Else
+            displayValue = SH_MenuText(value)
         End If
-        If i = 7 Then value = IIf(Val(value) <> 0, "1", "0")
-        SH_SetMetaValue mSettingsJournal, SH_Label(i), value
-        SaveSetting "Shift-Helper", "Outlook", SH_Label(i), value
+        xml = xml & "<button id=""outlookSetting" & CStr(i) & """ label=""" & _
+            SH_XmlEscape(SH_OutlookCaption(i) & ": " & displayValue) & """ tag=""" & CStr(i) & _
+            """ onAction=""SH_RibbonOutlookEdit""/>"
     Next i
-    SH_CloseSettings
-    MsgBox SH_U("041D0430044104420440043E0439043A04380020004F00750074006C006F006F006B00200441043E044504400430043D0435043D044B002E"), vbInformation, "Shift-Helper"
+    SH_OutlookMenuXml = xml & "</menu>"
+    Exit Function
+Failed:
+    SH_OutlookMenuXml = "<menu xmlns=""" & SH_MENU_NS & """><button id=""outlookUnavailable"" label=""" & _
+        SH_XmlEscape(SH_T("ERR_JOURNAL")) & """ enabled=""false""/></menu>"
+End Function
+
+Public Sub SH_EditOutlookSetting(ByVal tagValue As String)
+    On Error GoTo Failed
+    Dim wb As Workbook, index As Long, currentValue As String, answer As Variant, value As String
+    If Not IsNumeric(tagValue) Then Exit Sub
+    index = CLng(tagValue)
+    If index < 1 Or index > 7 Then Exit Sub
+    Set wb = SH_JournalBook()
+    currentValue = SH_OutlookValue(wb, index)
+
+    If index = 7 Then
+        If Val(currentValue) <> 0 Then value = "0" Else value = "1"
+    Else
+        answer = Application.InputBox( _
+            SH_U("04120432043504340438044204350020043D043E0432043E043500200437043D043004470435043D04380435003A") & vbCrLf & SH_OutlookCaption(index), _
+            SH_T("OUTLOOK_TITLE"), currentValue, Type:=2)
+        If VarType(answer) = vbBoolean Then If answer = False Then Exit Sub
+        value = Trim$(CStr(answer))
+        If index = 1 And Len(value) = 0 Then Err.Raise vbObjectError + 580, , "Mailbox is required."
+        If index = 3 And Len(value) = 0 Then Err.Raise vbObjectError + 581, , "Attachment mask is required."
+        If index = 6 Then
+            If Not IsNumeric(value) Then Err.Raise vbObjectError + 582, , "Search depth must be numeric."
+            If CLng(value) < 1 Or CLng(value) > 60 Then Err.Raise vbObjectError + 583, , SH_U("0417043D043004470435043D0438043500200434043E043B0436043D043E00200431044B0442044C0020043E04420020003100200434043E002000360030002E")
+            value = CStr(CLng(value))
+        End If
+    End If
+
+    SH_SetMetaValue wb, SH_Label(index), value
+    SaveSetting "Shift-Helper", "Outlook", SH_Label(index), value
     Exit Sub
 Failed:
     MsgBox Err.Description, vbExclamation, "Shift-Helper"
 End Sub
 
-Public Sub SH_CancelOutlookSettings()
-    SH_CloseSettings
-End Sub
+Private Function SH_OutlookValue(ByVal wb As Workbook, ByVal index As Long) As String
+    Dim fallback As String
+    fallback = GetSetting("Shift-Helper", "Outlook", SH_Label(index), SH_DefaultSetting(index))
+    SH_OutlookValue = CStr(SH_MetaValue(wb, SH_Label(index), fallback))
+End Function
 
-Private Sub SH_CloseSettings()
-    If mSettingsBook Is Nothing Then Exit Sub
-    Application.DisplayAlerts = False
-    mSettingsBook.Close SaveChanges:=False
-    Application.DisplayAlerts = True
-    Set mSettingsBook = Nothing
-    Set mSettingsJournal = Nothing
-End Sub
+Private Function SH_OutlookCaption(ByVal index As Long) As String
+    Select Case index
+        Case 1: SH_OutlookCaption = SH_U("041F043E04470442043E0432044B04390020044F04490438043A")
+        Case 2: SH_OutlookCaption = SH_U("041F0430043F043A0430")
+        Case 3: SH_OutlookCaption = SH_U("041C04300441043A043000200432043B043E04360435043D0438044F")
+        Case 4: SH_OutlookCaption = SH_U("04220435043C043000200441043E043404350440043604380442")
+        Case 5: SH_OutlookCaption = SH_U("041E0442043F044004300432043804420435043B044C00200441043E043404350440043604380442")
+        Case 6: SH_OutlookCaption = SH_U("0413043B044304310438043D04300020043F043E04380441043A0430002C00200434043D04350439")
+        Case 7: SH_OutlookCaption = SH_U("042004430447043D043E043900200432044B0431043E04400020043F044004380020043E044204410443044204410442043204380438")
+    End Select
+End Function
 
 Public Sub SH_ImportGeneration()
     On Error GoTo Failed
@@ -94,15 +87,15 @@ Public Sub SH_ImportGeneration()
     Dim daily As Double, own As Double, monthGeneration As Double, monthOwn As Double
     Dim oldDaily As Double, oldOwn As Double, oldDateValue As Variant, oldDate As Date, hasOldDate As Boolean
     Set wb = SH_JournalBook()
-    If Not SH_HasSheet(wb, SH_InputSheetName(1)) Then SH_PrepareReportContour
-    Set main = wb.Worksheets(SH_InputSheetName(1))
+    SH_EnsureReportContour wb
+    Set main = SH_RequireSheet(wb, SH_InputSheetName(1))
     reportDate = SH_ReportDate(wb)
     sourcePath = SH_FindOutlookGeneration(wb, reportDate)
     If Len(sourcePath) = 0 And Val(CStr(SH_MetaValue(wb, SH_Label(7), SH_DefaultSetting(7)))) <> 0 Then
         sourcePath = SH_PickGenerationFile()
     End If
     If Len(sourcePath) = 0 Then
-        MsgBox SH_U("041F043E04340445043E0434044F0449043504350020043F04380441044C043C043E0020004F00750074006C006F006F006B0020043D04350020043D0430043904340435043D043E002E"), vbInformation, "Shift-Helper"
+        MsgBox SH_T("OUTLOOK_NOT_FOUND"), vbInformation, "Shift-Helper"
         Exit Sub
     End If
     If LCase$(Right$(sourcePath, 5)) <> ".xlsx" Then Err.Raise vbObjectError + 584, , "Only .xlsx generation attachments are allowed."
@@ -146,16 +139,16 @@ Public Sub SH_ImportGeneration()
     SH_SetMetaValue wb, SH_Label(11), own
     SH_ApplyCriticalFormulas wb
     wb.Calculate
-    MsgBox SH_U("04130435043D04350440043004460438044F00200438043C043F043E0440044204380440043E04320430043D0430002E") & vbCrLf & _
-        Format$(daily, "0") & " kWh" & vbCrLf & Format$(daily / 24000#, "0.00") & " MW", vbInformation, "Shift-Helper"
+    MsgBox SH_T("GEN_OK") & vbCrLf & Format$(daily, "0") & " kWh" & vbCrLf & _
+        Format$(daily / 24000#, "0.00") & " MW", vbInformation, "Shift-Helper"
     Exit Sub
 Failed:
-    MsgBox SH_U("041D04350020044304340430043B043E0441044C00200438043C043F043E0440044204380440043E043204300442044C002004330435043D04350440043004460438044E003A0020") & Err.Description, vbExclamation, "Shift-Helper"
+    MsgBox SH_T("GEN_BAD") & Err.Description, vbExclamation, "Shift-Helper"
 End Sub
 
 Private Function SH_PickGenerationFile() As String
     Dim selected As Variant
-    selected = Application.GetOpenFilename("Excel Workbook (*.xlsx),*.xlsx", , SH_U("0412044B0431043504400438044204350020044404300439043B002004330435043D043504400430044604380438"))
+    selected = Application.GetOpenFilename("Excel Workbook (*.xlsx),*.xlsx", , SH_T("GEN_PICK"))
     If VarType(selected) <> vbBoolean Then SH_PickGenerationFile = CStr(selected)
 End Function
 
@@ -164,13 +157,13 @@ Private Function SH_FindOutlookGeneration(ByVal wb As Workbook, ByVal reportDate
     Dim outlook As Object, ns As Object, folder As Object, items As Object, item As Object, att As Object
     Dim mailbox As String, folderPath As String, pattern As String, subjectFilter As String, senderFilter As String
     Dim depthDays As Long, cutoff As Date, tempRoot As String, target As String, senderText As String
-    mailbox = CStr(SH_MetaValue(wb, SH_Label(1), GetSetting("Shift-Helper", "Outlook", SH_Label(1), SH_DefaultSetting(1))))
-    folderPath = CStr(SH_MetaValue(wb, SH_Label(2), GetSetting("Shift-Helper", "Outlook", SH_Label(2), SH_DefaultSetting(2))))
-    pattern = CStr(SH_MetaValue(wb, SH_Label(3), GetSetting("Shift-Helper", "Outlook", SH_Label(3), SH_DefaultSetting(3))))
+    mailbox = SH_OutlookValue(wb, 1)
+    folderPath = SH_OutlookValue(wb, 2)
+    pattern = SH_OutlookValue(wb, 3)
     pattern = Replace(pattern, "{date}", Format$(DateAdd("d", -1, reportDate), "dd_mm_yyyy"))
-    subjectFilter = LCase$(CStr(SH_MetaValue(wb, SH_Label(4), GetSetting("Shift-Helper", "Outlook", SH_Label(4), ""))))
-    senderFilter = LCase$(CStr(SH_MetaValue(wb, SH_Label(5), GetSetting("Shift-Helper", "Outlook", SH_Label(5), ""))))
-    depthDays = CLng(Val(CStr(SH_MetaValue(wb, SH_Label(6), GetSetting("Shift-Helper", "Outlook", SH_Label(6), "7")))))
+    subjectFilter = LCase$(SH_OutlookValue(wb, 4))
+    senderFilter = LCase$(SH_OutlookValue(wb, 5))
+    depthDays = CLng(Val(SH_OutlookValue(wb, 6)))
     If depthDays < 1 Then depthDays = 1
     If depthDays > 60 Then depthDays = 60
     cutoff = DateAdd("d", -depthDays, reportDate)
@@ -292,7 +285,9 @@ Private Sub SH_ReadGeneration(ByVal path As String, ByRef daily As Double, ByRef
     If daily < 0 Or own < 0 Then Err.Raise vbObjectError + 586, , "Generation values must be non-negative."
     Exit Sub
 Failed:
+    On Error Resume Next
     source.Close SaveChanges:=False
+    On Error GoTo 0
     Err.Raise Err.Number, , Err.Description
 End Sub
 
