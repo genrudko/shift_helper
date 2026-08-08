@@ -75,7 +75,7 @@ Public Sub SH_RibbonGenerate(ByVal control As IRibbonControl)
 End Sub
 
 Public Sub SH_RibbonImportGeneration(ByVal control As IRibbonControl)
-    SH_ImportGenerationSafe
+    SH_ImportGenerationUniversal
 End Sub
 
 Public Sub SH_RibbonOutlookMenu(ByVal control As IRibbonControl, ByRef returnedVal)
