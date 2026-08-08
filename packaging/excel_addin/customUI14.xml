@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui" onLoad="SH_RibbonOnLoad">
+  <ribbon>
+    <tabs>
+      <tab id="tabShiftHelper" label="Shift-Helper">
+        <group id="grpJournal" label="Журнал">
+          <button id="btnSort" label="Сортировать по времени" size="large" getImage="SH_RibbonImage" onAction="SH_RibbonSort"/>
+          <button id="btnMergeCopy" label="Объединить и копировать" size="large" getImage="SH_RibbonImage" onAction="SH_RibbonMergeCopy"/>
+          <button id="btnClean" label="Очистить пробелы" getImage="SH_RibbonImage" onAction="SH_RibbonCleanSpaces"/>
+          <button id="btnRows" label="Автовысота строк" getImage="SH_RibbonImage" onAction="SH_RibbonAutoFitRows"/>
+          <button id="btnInsertDate" label="Вставить дату" getImage="SH_RibbonImage" onAction="SH_RibbonInsertDate"/>
+          <button id="btnTime" label="Вставить время" getImage="SH_RibbonImage" onAction="SH_RibbonTime"/>
+        </group>
+        <group id="grpReport" label="Рапорт">
+          <dynamicMenu id="btnStation" label="Станция" getImage="SH_RibbonImage" getContent="SH_RibbonStationMenu"/>
+          <button id="btnPrepare" label="Подготовить полный контур" size="large" getImage="SH_RibbonImage" onAction="SH_RibbonPrepare"/>
+          <button id="btnCalendar" label="Дата рапорта" getImage="SH_RibbonImage" onAction="SH_RibbonCalendar"/>
+          <button id="btnGenerate" label="Сформировать утренний рапорт" size="large" getImage="SH_RibbonImage" onAction="SH_RibbonGenerate"/>
+        </group>
+        <group id="grpOutlook" label="Outlook">
+          <button id="btnGeneration" label="Импортировать генерацию" size="large" getImage="SH_RibbonImage" onAction="SH_RibbonImportGeneration"/>
+          <dynamicMenu id="btnOutlook" label="Настройки импорта" getImage="SH_RibbonImage" getContent="SH_RibbonOutlookMenu"/>
+          <dynamicMenu id="btnMailing" label="Рассылки" size="large" getImage="SH_RibbonImage" getContent="SH_RibbonMailingMenu"/>
+          <button id="btnRepairMailButtons" label="Обновить кнопки" getImage="SH_RibbonImage" onAction="SH_RibbonRepairMailButtons"/>
+        </group>
+        <group id="grpTools" label="Инструменты">
+          <button id="btnMaintenance" label="Текст ТО ВЭУ" size="large" getImage="SH_RibbonImage" onAction="SH_RibbonMaintenance"/>
+          <button id="btnRotor" label="Ограничения ВЭУ" size="large" getImage="SH_RibbonImage" onAction="SH_RibbonRotorLimits"/>
+          <button id="btnShift" label="Осмотры текущей смены" size="large" getImage="SH_RibbonImage" onAction="SH_RibbonCurrentShift"/>
+        </group>
+        <group id="grpQuick" label="Быстрый ввод">
+          <button id="btnQuickOn" label="Включить" getImage="SH_RibbonImage" onAction="SH_RibbonQuickOn"/>
+          <button id="btnQuickStatus" label="Состояние" getImage="SH_RibbonImage" onAction="SH_RibbonQuickStatus"/>
+          <button id="btnQuickOff" label="Выключить" getImage="SH_RibbonImage" onAction="SH_RibbonQuickOff"/>
+        </group>
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>

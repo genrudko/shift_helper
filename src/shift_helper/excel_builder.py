@@ -1,0 +1,345 @@
+"""Build and verify the native Microsoft Excel add-in."""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import re
+import zipfile
+from pathlib import Path
+from xml.etree import ElementTree as ET
+
+from shift_helper.extension_builder_payload import _template_bytes, _validate_template
+
+_CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
+_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+_RIBBON_NS = "http://schemas.microsoft.com/office/2009/07/customui"
+_RIBBON_REL = "http://schemas.microsoft.com/office/2007/relationships/ui/extensibility"
+_TEMPLATE_REL = "https://shift-helper.local/relationships/embedded-report-template"
+_TEMPLATE_PART = "shift_helper_report_template.xlsx"
+_TEMPLATE_CONTENT_TYPE = (
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+
+
+def _utf16_hex(value: str) -> str:
+    return "".join(f"{ord(char):04X}" for char in value)
+
+
+def _contract_source() -> str:
+    from shift_helper.core.workbook_contract import (
+        INPUT_SHEETS,
+        INSPECTION_SHEET,
+        JOURNAL_SHEET,
+        PREP_SHEET,
+        REPORT_DATE_CELL,
+        REPORT_OFFSET_CELL,
+        REPORT_SHEETS,
+        WTG_COUNT,
+        WTG_STATUSES,
+    )
+
+    lines = [
+        'Attribute VB_Name = "modShiftHelperContract"',
+        "Option Explicit",
+        "",
+        f"Public Const SH_WTG_COUNT As Long = {WTG_COUNT}",
+        f"Public Const SH_REPORT_SHEET_COUNT As Long = {len(REPORT_SHEETS)}",
+        "",
+        "Public Function SH_JournalSheetName() As String",
+        f'    SH_JournalSheetName = SH_U("{_utf16_hex(JOURNAL_SHEET)}")',
+        "End Function",
+        "Public Function SH_PrepSheetName() As String",
+        f'    SH_PrepSheetName = SH_U("{_utf16_hex(PREP_SHEET)}")',
+        "End Function",
+        "Public Function SH_InspectionSheetName() As String",
+        f'    SH_InspectionSheetName = SH_U("{_utf16_hex(INSPECTION_SHEET)}")',
+        "End Function",
+        "Public Function SH_ReportDateCell() As String",
+        f'    SH_ReportDateCell = "{REPORT_DATE_CELL}"',
+        "End Function",
+        "Public Function SH_ReportOffsetCell() As String",
+        f'    SH_ReportOffsetCell = "{REPORT_OFFSET_CELL}"',
+        "End Function",
+        "Public Function SH_ReportSheetCount() As Long",
+        f"    SH_ReportSheetCount = {len(REPORT_SHEETS)}",
+        "End Function",
+        "Public Function SH_ReportSheetName(ByVal index As Long) As String",
+        "    Select Case index",
+    ]
+    for index, name in enumerate(REPORT_SHEETS, start=1):
+        lines.append(f'        Case {index}: SH_ReportSheetName = SH_U("{_utf16_hex(name)}")')
+    lines.extend(["        Case Else: Err.Raise 5", "    End Select", "End Function"])
+    lines.extend(
+        [
+            "Public Function SH_InputSheetName(ByVal index As Long) As String",
+            "    Select Case index",
+        ]
+    )
+    for index, name in enumerate(INPUT_SHEETS, start=1):
+        lines.append(f'        Case {index}: SH_InputSheetName = SH_U("{_utf16_hex(name)}")')
+    lines.extend(["        Case Else: Err.Raise 5", "    End Select", "End Function"])
+    lines.extend(
+        [
+            "Public Function SH_StatusText(ByVal index As Long) As String",
+            "    Select Case index",
+        ]
+    )
+    for index, name in enumerate(WTG_STATUSES, start=1):
+        lines.append(f'        Case {index}: SH_StatusText = SH_U("{_utf16_hex(name)}")')
+    lines.extend(["        Case Else: Err.Raise 5", "    End Select", "End Function", ""])
+    result = "\r\n".join(lines)
+    if not result.isascii():
+        raise RuntimeError("Generated VBA contract must remain ASCII-safe.")
+    return result
+
+
+def _template_payload_source(template: bytes) -> str:
+    encoded = base64.b64encode(template).decode("ascii")
+    chunks = [encoded[index : index + 180] for index in range(0, len(encoded), 180)]
+    lines = [
+        'Attribute VB_Name = "modShiftHelperTemplatePayload"',
+        "Option Explicit",
+        "",
+        "Public Function SH_EmbeddedTemplateBase64() As String",
+        "    Dim payload As String",
+    ]
+    for index, chunk in enumerate(chunks):
+        if index == 0:
+            lines.append(f'    payload = "{chunk}"')
+        else:
+            lines.append(f'    payload = payload & "{chunk}"')
+    lines.extend(
+        [
+            "    SH_EmbeddedTemplateBase64 = payload",
+            "End Function",
+            "",
+        ]
+    )
+    result = "\r\n".join(lines)
+    if not result.isascii():
+        raise RuntimeError("Generated VBA template payload must remain ASCII-safe.")
+    return result
+
+
+def _source_module_name(text: str, path: Path) -> str:
+    match = re.search(r'^Attribute VB_Name = "([A-Za-z0-9_]+)"', text, re.MULTILINE)
+    if match is None:
+        raise RuntimeError(f"VBA module has no VB_Name attribute: {path}")
+    return match.group(1)
+
+
+def _vba_sources(repo_root: Path) -> dict[str, str]:
+    source_dir = repo_root / "packaging" / "excel_addin" / "vba"
+    template = _template_bytes(repo_root)
+    sources: dict[str, str] = {
+        "modShiftHelperContract": _contract_source(),
+        "modShiftHelperTemplatePayload": _template_payload_source(template),
+    }
+    for pattern in ("*.bas", "*.cls"):
+        for path in sorted(source_dir.glob(pattern)):
+            text = path.read_text(encoding="ascii").replace("\r\n", "\n")
+            text = text.replace("\r", "\n").replace("\n", "\r\n")
+            sources[_source_module_name(text, path)] = text
+    return sources
+
+
+def _vba_class_names(repo_root: Path) -> set[str]:
+    source_dir = repo_root / "packaging" / "excel_addin" / "vba"
+    result: set[str] = set()
+    for path in sorted(source_dir.glob("*.cls")):
+        text = path.read_text(encoding="ascii").replace("\r\n", "\n")
+        text = text.replace("\r", "\n").replace("\n", "\r\n")
+        result.add(_source_module_name(text, path))
+    return result
+
+
+def _new_relationship_id(root: ET.Element, preferred: str) -> str:
+    existing = {node.attrib.get("Id", "") for node in root}
+    candidate = preferred
+    counter = 1
+    while candidate in existing:
+        candidate = f"{preferred}{counter}"
+        counter += 1
+    return candidate
+
+
+def _add_relationship(data: bytes, rel_type: str, target: str, preferred_id: str) -> bytes:
+    ET.register_namespace("", _REL_NS)
+    root = ET.fromstring(data)
+    for node in root.findall(f"{{{_REL_NS}}}Relationship"):
+        if node.attrib.get("Type") == rel_type:
+            node.set("Target", target)
+            return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    ET.SubElement(
+        root,
+        f"{{{_REL_NS}}}Relationship",
+        Id=_new_relationship_id(root, preferred_id),
+        Type=rel_type,
+        Target=target,
+    )
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def _add_template_content_type(data: bytes) -> bytes:
+    ET.register_namespace("", _CONTENT_TYPES_NS)
+    root = ET.fromstring(data)
+    for node in root.findall(f"{{{_CONTENT_TYPES_NS}}}Override"):
+        if node.attrib.get("PartName") == f"/{_TEMPLATE_PART}":
+            node.set("ContentType", _TEMPLATE_CONTENT_TYPE)
+            return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    ET.SubElement(
+        root,
+        f"{{{_CONTENT_TYPES_NS}}}Override",
+        PartName=f"/{_TEMPLATE_PART}",
+        ContentType=_TEMPLATE_CONTENT_TYPE,
+    )
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def _rewrite_zip(path: Path, replacements: dict[str, bytes]) -> None:
+    temp = path.with_suffix(path.suffix + ".tmp")
+    with zipfile.ZipFile(path, "r") as source, zipfile.ZipFile(
+        temp, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
+    ) as target:
+        seen: set[str] = set()
+        for info in source.infolist():
+            payload = replacements.get(info.filename, source.read(info.filename))
+            target.writestr(info, payload)
+            seen.add(info.filename)
+        for name in sorted(set(replacements) - seen):
+            target.writestr(name, replacements[name])
+    temp.replace(path)
+
+
+def _verify_ribbon_package(archive: zipfile.ZipFile) -> str:
+    root_rels = ET.fromstring(archive.read("_rels/.rels"))
+    ribbon_relationships = [
+        node
+        for node in root_rels.findall(f"{{{_REL_NS}}}Relationship")
+        if node.attrib.get("Type") == _RIBBON_REL
+    ]
+    if len(ribbon_relationships) != 1:
+        raise RuntimeError(
+            "XLAM must contain exactly one Office 2010+ Ribbon relationship."
+        )
+    target = ribbon_relationships[0].attrib.get("Target", "").lstrip("/")
+    if target != "customUI/customUI14.xml":
+        raise RuntimeError(f"XLAM Ribbon relationship targets unexpected part: {target}")
+    ribbon_bytes = archive.read(target)
+    ribbon_root = ET.fromstring(ribbon_bytes)
+    if ribbon_root.tag != f"{{{_RIBBON_NS}}}customUI":
+        raise RuntimeError(
+            "customUI14.xml must use the Office 2010+ 2009/07 customUI namespace."
+        )
+    return ribbon_bytes.decode("utf-8")
+
+
+def _ribbon_callbacks(ribbon: str) -> set[str]:
+    return set(
+        re.findall(
+            r'(?:onAction|getContent|getImage|onLoad)="([A-Za-z0-9_]+)"',
+            ribbon,
+        )
+    )
+
+
+def build_excel_addin(repo_root: Path, output: Path) -> Path:
+    """Create a real XLAM with native VBA, Ribbon and exact internal template."""
+
+    try:
+        from pyopenvba import ExcelFile, VBAModuleKind
+    except ImportError as exc:  # pragma: no cover - dedicated build workflow
+        raise RuntimeError("Install the 'excel' optional dependency first.") from exc
+
+    repo_root = repo_root.resolve()
+    output = output.resolve()
+    template = _template_bytes(repo_root)
+    sources = _vba_sources(repo_root)
+    class_names = _vba_class_names(repo_root)
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if output.exists():
+        output.unlink()
+    with ExcelFile.create_new(str(output)) as workbook:
+        project = workbook.vba_project()
+        existing = set(workbook.module_names())
+        donor = "Module1" if "Module1" in existing else None
+        for index, (name, source) in enumerate(sources.items()):
+            if index == 0 and donor is not None:
+                workbook.set_module(donor, source)
+                project.rename_module(donor, name)
+                existing.discard(donor)
+                existing.add(name)
+            elif name in existing:
+                workbook.set_module(name, source)
+            else:
+                kind = VBAModuleKind.other if name in class_names else VBAModuleKind.standard
+                project.add_module(name, source, kind=kind)
+        workbook.save()
+
+    with zipfile.ZipFile(output, "r") as archive:
+        root_rels = archive.read("_rels/.rels")
+        content_types = archive.read("[Content_Types].xml")
+    replacements = {
+        "_rels/.rels": _add_relationship(
+            _add_relationship(
+                root_rels,
+                _RIBBON_REL,
+                "customUI/customUI14.xml",
+                "rIdShiftHelperRibbon",
+            ),
+            _TEMPLATE_REL,
+            _TEMPLATE_PART,
+            "rIdShiftHelperTemplate",
+        ),
+        "[Content_Types].xml": _add_template_content_type(content_types),
+        "customUI/customUI14.xml": (
+            repo_root / "packaging" / "excel_addin" / "customUI14.xml"
+        ).read_bytes(),
+        _TEMPLATE_PART: template,
+    }
+    _rewrite_zip(output, replacements)
+    verify_excel_addin(repo_root, output)
+    return output
+
+
+def verify_excel_addin(repo_root: Path, path: Path) -> dict[str, object]:
+    try:
+        from pyopenvba import ExcelFile
+    except ImportError as exc:  # pragma: no cover - dedicated build workflow
+        raise RuntimeError("Install the 'excel' optional dependency first.") from exc
+
+    sources = _vba_sources(repo_root)
+    with zipfile.ZipFile(path, "r") as archive:
+        names = set(archive.namelist())
+        required = {
+            "xl/vbaProject.bin",
+            "customUI/customUI14.xml",
+            _TEMPLATE_PART,
+        }
+        if not required <= names:
+            raise RuntimeError(f"XLAM is missing required parts: {sorted(required - names)}")
+        embedded = archive.read(_TEMPLATE_PART)
+        _validate_template(embedded)
+        ribbon = _verify_ribbon_package(archive)
+        callbacks = _ribbon_callbacks(ribbon)
+        implemented = "\n".join(sources.values())
+        missing_callbacks = [
+            callback
+            for callback in sorted(callbacks)
+            if re.search(rf"\bSub\s+{re.escape(callback)}\b", implemented, re.I) is None
+        ]
+        if missing_callbacks:
+            raise RuntimeError(f"Ribbon callbacks are missing: {missing_callbacks}")
+
+    with ExcelFile(str(path)) as workbook:
+        module_names = set(workbook.module_names())
+    missing_modules = set(sources) - module_names
+    if missing_modules:
+        raise RuntimeError(f"XLAM is missing VBA modules: {sorted(missing_modules)}")
+    return {
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "modules": sorted(sources),
+        "embedded_template_members": 19,
+    }
