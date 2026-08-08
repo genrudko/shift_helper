@@ -2,12 +2,7 @@
 
 ## Files
 
-Excel runtime uses:
-
-- the shared journal workbook (`.xlsx` or an existing working copy opened by the operator);
-- `Shift-Helper-Excel.xlam` as the Excel add-in.
-
-The add-in must not be embedded into the shared journal. The journal remains the common workbook used by Excel and LibreOffice Calc.
+Excel runtime uses the shared journal workbook plus `Shift-Helper-Excel.xlam`. The add-in must not be embedded into the shared journal; the journal remains the common workbook used by Excel and LibreOffice Calc.
 
 ## Installation
 
@@ -48,25 +43,6 @@ After loading the newest XLAM:
 6. Continue the full report-generation and operator-tool acceptance sequence.
 
 If any of these operations still fails, capture the complete Shift-Helper message including the numeric error and `Stage [...]` text. That diagnostic identifies the remaining runtime boundary directly.
-
-## Ribbon scope
-
-The add-in exposes operator functions for:
-
-- journal time sorting;
-- merge-and-copy;
-- whitespace cleanup;
-- automatic row height;
-- date and time input;
-- full report-contour preparation;
-- report-date Calendar;
-- full morning report generation;
-- classic-Outlook generation import and settings;
-- Outlook draft creation;
-- WTG maintenance text;
-- WTG rotor/power-limit refresh;
-- current-day/current-shift inspection navigation;
-- automatic quick-input enable/status/disable.
 
 ## Shared workbook contract
 
