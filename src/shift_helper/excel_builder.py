@@ -190,7 +190,7 @@ def _verify_ribbon_package(archive: zipfile.ZipFile) -> str:
 def _ribbon_callbacks(ribbon: str) -> set[str]:
     return set(
         re.findall(
-            r'(?:onAction|getContent)="([A-Za-z0-9_]+)"',
+            r'(?:onAction|getContent|getImage)="([A-Za-z0-9_]+)"',
             ribbon,
         )
     )
