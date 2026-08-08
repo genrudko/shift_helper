@@ -64,43 +64,60 @@ Private Const SH_VK_ESCAPE As Long = &H1B
 Public Sub SH_ShowCalendar()
     On Error GoTo Failed
     Dim wb As Workbook, prep As Worksheet, initialDate As Date, selectedDate As Date
-    Dim currentValue As Variant, picked As Boolean
+    Dim currentValue As Variant, picked As Boolean, stage As String
+    Dim errNumber As Long, errDescription As String
+
+    stage = "resolve journal workbook"
     Set wb = SH_JournalBook()
+    stage = "prepare report settings"
     Set prep = SH_EnsurePrepSheet(wb)
     currentValue = prep.Range(SH_ReportDateCell()).Value
-    If IsDate(currentValue) Or IsNumeric(currentValue) Then
-        initialDate = CDate(currentValue)
+    If SH_CalendarTryDate(currentValue, initialDate) Then
+        initialDate = DateValue(initialDate)
     Else
         initialDate = Date
     End If
+
+    stage = "show calendar"
     picked = SH_PickDateNative(initialDate, selectedDate)
-    If picked Then SH_ApplyReportCalendarDate wb, selectedDate
+    If picked Then
+        stage = "apply selected report date"
+        SH_ApplyReportCalendarDate wb, selectedDate
+    End If
     Exit Sub
 Failed:
-    SH_ShowCalendarError "calendar", Err.Number, Err.Description
+    errNumber = Err.Number
+    errDescription = Err.Description
+    SH_ShowCalendarError "calendar / " & stage, errNumber, errDescription
 End Sub
 
 Public Sub SH_InsertDateIntoSelection()
     On Error GoTo Failed
     Dim wb As Workbook, target As Range, initialDate As Date, selectedDate As Date, picked As Boolean
-    Dim cell As Range
+    Dim cell As Range, errNumber As Long, errDescription As String, stage As String
+
+    stage = "resolve journal selection"
     Set wb = SH_JournalBook()
     Set target = SH_SelectionRange(wb)
-    If IsDate(target.Cells(1, 1).Value) Or IsNumeric(target.Cells(1, 1).Value2) Then
-        On Error Resume Next
-        initialDate = DateValue(CDate(target.Cells(1, 1).Value))
-        On Error GoTo Failed
+    If SH_CalendarTryDate(target.Cells(1, 1).Value, initialDate) Then
+        initialDate = DateValue(initialDate)
+    Else
+        initialDate = Date
     End If
-    If initialDate = 0 Then initialDate = Date
+
+    stage = "show calendar"
     picked = SH_PickDateNative(initialDate, selectedDate)
     If Not picked Then Exit Sub
+    stage = "write selected date"
     For Each cell In target.Cells
         cell.Value = selectedDate
         cell.NumberFormat = "dd.mm.yyyy"
     Next cell
     Exit Sub
 Failed:
-    SH_ShowCalendarError "date", Err.Number, Err.Description
+    errNumber = Err.Number
+    errDescription = Err.Description
+    SH_ShowCalendarError "date / " & stage, errNumber, errDescription
 End Sub
 
 Private Function SH_PickDateNative(ByVal initialDate As Date, ByRef selectedDate As Date) As Boolean
@@ -196,6 +213,7 @@ Failed:
     If parentHwnd <> 0 Then DestroyWindow parentHwnd
     SetForegroundWindow CLngPtr(Application.hwnd)
     On Error GoTo 0
+    If errNumber = 0 Then errNumber = vbObjectError + 553
     If Len(errDescription) = 0 Then errDescription = "Native calendar failed."
     Err.Raise errNumber, , errDescription
 End Function
@@ -207,23 +225,61 @@ Private Function SH_ReadCalendarDate(ByVal calendarHwnd As LongPtr, ByRef value 
     On Error GoTo InvalidDate
     value = DateSerial(CLng(st.wYear), CLng(st.wMonth), CLng(st.wDay))
     SH_ReadCalendarDate = True
+    Exit Function
 InvalidDate:
+    SH_ReadCalendarDate = False
 End Function
 
 Private Sub SH_ApplyReportCalendarDate(ByVal wb As Workbook, ByVal selectedDate As Date)
-    Dim prep As Worksheet
+    On Error GoTo Failed
+    Dim prep As Worksheet, stage As String, errDescription As String, errNumber As Long
+    Dim oldCalculation As XlCalculation, oldEvents As Boolean, oldScreenUpdating As Boolean
+    Dim appStateCaptured As Boolean
+
+    stage = "capture Excel state"
+    oldCalculation = Application.Calculation
+    oldEvents = Application.EnableEvents
+    oldScreenUpdating = Application.ScreenUpdating
+    appStateCaptured = True
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+    Application.ScreenUpdating = False
+
+    stage = "write report date"
     Set prep = SH_EnsurePrepSheet(wb)
-    prep.Range(SH_ReportDateCell()).Value = selectedDate
+    prep.Range(SH_ReportDateCell()).Value = DateValue(selectedDate)
     prep.Range(SH_ReportDateCell()).NumberFormat = "dd.mm.yyyy"
-    prep.Range("B4").Value = selectedDate - 1 + TimeSerial(7, 0, 0)
+    prep.Range("B4").Value = DateValue(selectedDate) - 1 + TimeSerial(7, 0, 0)
     prep.Range("B4").NumberFormat = "dd.mm.yyyy hh:mm"
-    prep.Range("B5").Value = selectedDate + TimeSerial(7, 0, 0)
+    prep.Range("B5").Value = DateValue(selectedDate) + TimeSerial(7, 0, 0)
     prep.Range("B5").NumberFormat = "dd.mm.yyyy hh:mm"
+
     If SH_ReportInputsReady(wb) Then
+        stage = "apply report formulas"
         SH_ApplyCriticalFormulas wb
+        stage = "refresh emergency outages"
         SH_RefreshEmergencyOutages wb
-        wb.Calculate
+        stage = "calculate report inputs"
+        SH_CalculateReportInputs wb
     End If
+
+    Application.Calculation = oldCalculation
+    Application.EnableEvents = oldEvents
+    Application.ScreenUpdating = oldScreenUpdating
+    Exit Sub
+Failed:
+    errNumber = Err.Number
+    errDescription = Err.Description
+    On Error Resume Next
+    If appStateCaptured Then
+        Application.Calculation = oldCalculation
+        Application.EnableEvents = oldEvents
+        Application.ScreenUpdating = oldScreenUpdating
+    End If
+    On Error GoTo 0
+    If errNumber = 0 Then errNumber = vbObjectError + 554
+    If Len(errDescription) = 0 Then errDescription = "Could not apply selected report date."
+    Err.Raise errNumber, , "Stage [" & stage & "]: " & errDescription
 End Sub
 
 Private Function SH_ReportInputsReady(ByVal wb As Workbook) As Boolean
@@ -232,6 +288,21 @@ Private Function SH_ReportInputsReady(ByVal wb As Workbook) As Boolean
         If Not SH_HasSheet(wb, SH_InputSheetName(i)) Then Exit Function
     Next i
     SH_ReportInputsReady = True
+End Function
+
+Private Function SH_CalendarTryDate(ByVal value As Variant, ByRef result As Date) As Boolean
+    On Error GoTo Failed
+    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+    If VarType(value) = vbString Then
+        If Len(Trim$(CStr(value))) = 0 Then Exit Function
+    End If
+    If IsDate(value) Or IsNumeric(value) Then
+        result = CDate(value)
+        SH_CalendarTryDate = True
+    End If
+    Exit Function
+Failed:
+    SH_CalendarTryDate = False
 End Function
 
 Private Sub SH_DateToSystemTime(ByVal value As Date, ByRef st As SH_SYSTEMTIME)
@@ -243,6 +314,6 @@ End Sub
 Private Sub SH_ShowCalendarError(ByVal operationName As String, ByVal errNumber As Long, ByVal errDescription As String)
     Dim message As String
     message = errDescription
-    If Len(message) = 0 Then message = "Calendar operation failed (" & CStr(errNumber) & ", " & operationName & ")."
-    MsgBox message, vbExclamation, "Shift-Helper"
+    If Len(message) = 0 Then message = "Calendar operation failed."
+    MsgBox "[#" & CStr(errNumber) & "] " & operationName & ": " & message, vbExclamation, "Shift-Helper"
 End Sub
