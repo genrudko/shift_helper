@@ -124,7 +124,7 @@ def test_calc_ui_and_oxt_builder_expose_parity_runtime() -> None:
         '"mail1": ("report", "mail_list_1")',
         '"foreignsheet": ("report", "mail_foreign_sheet")',
         '"mailbuttons": ("report", "refresh_mail_buttons")',
-        "install_calc_excel_parity",
+        "calc_excel_parity.install_calc_excel_parity",
     ):
         assert marker in controls
     for action in (
@@ -145,3 +145,12 @@ def test_calc_ui_and_oxt_builder_expose_parity_runtime() -> None:
     ):
         assert f"service:ru.kves.shifthelper.calc.controls?{action}" in addons
     assert "calc_excel_parity.py" in builder
+
+
+def test_calc_station_rebuild_preserves_styles_and_filename_is_station_aware() -> None:
+    controls = _source(CONTROLS)
+    assert "range_obj.clearContents(31)" in controls
+    assert "HARDATTR/STYLES" in controls
+    assert "runtime.default_report_filename = station_report_filename" in controls
+    assert 'return f"Рапорт НСС {station_name} от {report_date:%Y-%m-%d}.xlsx"' in controls
+    assert "parity.STATION_NAMES[station_id]" in controls
