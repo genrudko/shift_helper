@@ -28,6 +28,18 @@ _ACTIONS = {
     "calendar": ("tools", "show_calendar"),
     "calendarprep": ("report", "show_report_date_calendar"),
     "generationsettings": ("report", "show_generation_import_settings"),
+    "stationkoch": ("report", "select_koch_station"),
+    "stationkuz": ("report", "select_kuz_station"),
+    "mail1": ("report", "mail_list_1"),
+    "mail2": ("report", "mail_list_2"),
+    "mail3": ("report", "mail_list_3"),
+    "mailmorning": ("report", "mail_morning"),
+    "foreignmail1": ("report", "mail_foreign_list_1"),
+    "foreignmail2": ("report", "mail_foreign_list_2"),
+    "foreignmail3": ("report", "mail_foreign_list_3"),
+    "foreignmorning": ("report", "mail_foreign_morning"),
+    "foreignsheet": ("report", "mail_foreign_sheet"),
+    "mailbuttons": ("report", "refresh_mail_buttons"),
     "time": ("tools", "show_time_picker"),
     "autofit": ("tools", "auto_fit_selected_rows"),
     "clean": ("tools", "clean_selected_spaces"),
@@ -118,6 +130,7 @@ def _load_runtime(key: str) -> ModuleType:
         from shift_helper.core.acceptance_repairs_006 import (
             install_acceptance_repairs,
         )
+        from shift_helper.core.calc_excel_parity import install_calc_excel_parity
         from shift_helper.core.exact_migration_contract import (
             install_exact_migration_contract,
         )
@@ -129,6 +142,7 @@ def _load_runtime(key: str) -> ModuleType:
         exact_report_contract.install_exact_report_contract(runtime, root)
         install_acceptance_repairs(exact_report_contract, runtime, root)
         install_exact_migration_contract(exact_report_contract, runtime)
+        install_calc_excel_parity(exact_report_contract, runtime, root)
     elif key == "tools":
         from shift_helper.core.exact_tools_contract import install_exact_tools_contract
 
