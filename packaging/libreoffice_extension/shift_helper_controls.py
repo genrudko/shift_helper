@@ -126,11 +126,13 @@ def _load_runtime(key: str) -> ModuleType:
             scripts / "shift_helper_calc.py",
         )
         repairs.patch_report_runtime(runtime)
-        from shift_helper.core import exact_report_contract
+        from shift_helper.core import calc_excel_parity, exact_report_contract
         from shift_helper.core.acceptance_repairs_006 import (
             install_acceptance_repairs,
         )
-        from shift_helper.core.calc_excel_parity import install_calc_excel_parity
+        from shift_helper.core.calc_excel_parity_repair import (
+            install_calc_excel_parity_repair,
+        )
         from shift_helper.core.exact_migration_contract import (
             install_exact_migration_contract,
         )
@@ -142,7 +144,16 @@ def _load_runtime(key: str) -> ModuleType:
         exact_report_contract.install_exact_report_contract(runtime, root)
         install_acceptance_repairs(exact_report_contract, runtime, root)
         install_exact_migration_contract(exact_report_contract, runtime)
-        install_calc_excel_parity(exact_report_contract, runtime, root)
+        calc_excel_parity.install_calc_excel_parity(
+            exact_report_contract,
+            runtime,
+            root,
+        )
+        install_calc_excel_parity_repair(
+            calc_excel_parity,
+            exact_report_contract,
+            runtime,
+        )
     elif key == "tools":
         from shift_helper.core.exact_tools_contract import install_exact_tools_contract
 
