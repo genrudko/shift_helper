@@ -104,6 +104,20 @@ def _load_file(module_name: str, path: Path) -> ModuleType:
     return module
 
 
+def _install_parity_hardening(parity, module, runtime) -> None:
+    # clearContents flags: VALUE|DATETIME|STRING|ANNOTATION|FORMULA.  Do not
+    # clear HARDATTR/STYLES or the approved report-form formatting disappears.
+    parity._clear = lambda range_obj: range_obj.clearContents(31)
+
+    def station_report_filename(report_date) -> str:
+        document = runtime._document()
+        station_id = parity._station_id(module, runtime, document)
+        station_name = parity.STATION_NAMES[station_id]
+        return f"Рапорт НСС {station_name} от {report_date:%Y-%m-%d}.xlsx"
+
+    runtime.default_report_filename = station_report_filename
+
+
 def _load_runtime(key: str) -> ModuleType:
     cached = _RUNTIMES.get(key)
     if cached is not None:
@@ -130,9 +144,6 @@ def _load_runtime(key: str) -> ModuleType:
         from shift_helper.core.acceptance_repairs_006 import (
             install_acceptance_repairs,
         )
-        from shift_helper.core.calc_excel_parity_repair import (
-            install_calc_excel_parity_repair,
-        )
         from shift_helper.core.exact_migration_contract import (
             install_exact_migration_contract,
         )
@@ -149,7 +160,7 @@ def _load_runtime(key: str) -> ModuleType:
             runtime,
             root,
         )
-        install_calc_excel_parity_repair(
+        _install_parity_hardening(
             calc_excel_parity,
             exact_report_contract,
             runtime,
