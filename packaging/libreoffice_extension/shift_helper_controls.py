@@ -28,6 +28,18 @@ _ACTIONS = {
     "calendar": ("tools", "show_calendar"),
     "calendarprep": ("report", "show_report_date_calendar"),
     "generationsettings": ("report", "show_generation_import_settings"),
+    "stationkoch": ("report", "select_koch_station"),
+    "stationkuz": ("report", "select_kuz_station"),
+    "mail1": ("report", "mail_list_1"),
+    "mail2": ("report", "mail_list_2"),
+    "mail3": ("report", "mail_list_3"),
+    "mailmorning": ("report", "mail_morning"),
+    "foreignmail1": ("report", "mail_foreign_list_1"),
+    "foreignmail2": ("report", "mail_foreign_list_2"),
+    "foreignmail3": ("report", "mail_foreign_list_3"),
+    "foreignmorning": ("report", "mail_foreign_morning"),
+    "foreignsheet": ("report", "mail_foreign_sheet"),
+    "mailbuttons": ("report", "refresh_mail_buttons"),
     "time": ("tools", "show_time_picker"),
     "autofit": ("tools", "auto_fit_selected_rows"),
     "clean": ("tools", "clean_selected_spaces"),
@@ -92,6 +104,20 @@ def _load_file(module_name: str, path: Path) -> ModuleType:
     return module
 
 
+def _install_parity_hardening(parity, module, runtime) -> None:
+    # clearContents flags: VALUE|DATETIME|STRING|ANNOTATION|FORMULA.  Do not
+    # clear HARDATTR/STYLES or the approved report-form formatting disappears.
+    parity._clear = lambda range_obj: range_obj.clearContents(31)
+
+    def station_report_filename(report_date) -> str:
+        document = runtime._document()
+        station_id = parity._station_id(module, runtime, document)
+        station_name = parity.STATION_NAMES[station_id]
+        return f"Рапорт НСС {station_name} от {report_date:%Y-%m-%d}.xlsx"
+
+    runtime.default_report_filename = station_report_filename
+
+
 def _load_runtime(key: str) -> ModuleType:
     cached = _RUNTIMES.get(key)
     if cached is not None:
@@ -114,7 +140,7 @@ def _load_runtime(key: str) -> ModuleType:
             scripts / "shift_helper_calc.py",
         )
         repairs.patch_report_runtime(runtime)
-        from shift_helper.core import exact_report_contract
+        from shift_helper.core import calc_excel_parity, exact_report_contract
         from shift_helper.core.acceptance_repairs_006 import (
             install_acceptance_repairs,
         )
@@ -129,6 +155,16 @@ def _load_runtime(key: str) -> ModuleType:
         exact_report_contract.install_exact_report_contract(runtime, root)
         install_acceptance_repairs(exact_report_contract, runtime, root)
         install_exact_migration_contract(exact_report_contract, runtime)
+        calc_excel_parity.install_calc_excel_parity(
+            exact_report_contract,
+            runtime,
+            root,
+        )
+        _install_parity_hardening(
+            calc_excel_parity,
+            exact_report_contract,
+            runtime,
+        )
     elif key == "tools":
         from shift_helper.core.exact_tools_contract import install_exact_tools_contract
 

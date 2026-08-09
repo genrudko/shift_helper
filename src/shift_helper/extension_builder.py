@@ -48,6 +48,9 @@ _SOURCE_FILES = {
     "Scripts/python/pythonpath/shift_helper/core/operator_tools.py": (
         "src/shift_helper/core/operator_tools.py"
     ),
+    "Scripts/python/pythonpath/shift_helper/core/calc_excel_parity.py": (
+        "src/shift_helper/core/calc_excel_parity.py"
+    ),
     "Scripts/python/pythonpath/shift_helper/uno_adapter/calc_selection.py": (
         "src/shift_helper/uno_adapter/calc_selection.py"
     ),
@@ -198,6 +201,9 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
         helpers = archive.read(
             "Scripts/python/pythonpath/shift_helper/core/operator_tools.py"
         ).decode("utf-8")
+        parity = archive.read(
+            "Scripts/python/pythonpath/shift_helper/core/calc_excel_parity.py"
+        ).decode("utf-8")
         report = _decode_integrated_report(report_loader)
         controls = archive.read("shift_helper_controls.py").decode("utf-8")
         addons = archive.read("Addons.xcu").decode("utf-8")
@@ -211,6 +217,7 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
         compile(report_loader, "shift_helper_report.py", "exec")
         compile(tools_loader, "shift_helper_tools.py", "exec")
         compile(helpers, "operator_tools.py", "exec")
+        compile(parity, "calc_excel_parity.py", "exec")
 
         for script_name, script in (
             ("shift_helper_calc.py", macro),
@@ -301,23 +308,60 @@ def verify_calc_extension(path: Path) -> tuple[str, ...]:
             ),
         )
         _require_markers(
+            "calc_excel_parity.py",
+            parity,
+            (
+                "STATION_KOCH = 1",
+                "STATION_KUZ = 2",
+                "STATION_WTG_COUNTS",
+                "36814159",
+                "30154342",
+                '"GVIE0555"',
+                '"J26"',
+                '"Z26"',
+                "importSheet",
+                "Calc MS Excel 2007 XML",
+                "foreign-list:1",
+                "service:ru.kves.shifthelper.calc.controls?",
+                "install_calc_excel_parity",
+            ),
+        )
+        _require_markers(
             "shift_helper_controls.py",
             controls,
             (
                 '"prepare": ("report", "prepare_report_input_sheets")',
                 '"generation": ("report", "import_generation_from_outlook")',
                 '"report": ("report", "generate_full_report")',
+                '"stationkuz": ("report", "select_kuz_station")',
+                '"mail1": ("report", "mail_list_1")',
+                '"mailbuttons": ("report", "refresh_mail_buttons")',
                 '"calendar": ("tools", "show_calendar")',
                 '"time": ("tools", "show_time_picker")',
                 '"rotor": ("tools", "update_rotor_limits_from_log")',
                 '"mail": ("tools", "create_outlook_mail_draft")',
+                "install_calc_excel_parity",
                 "runtime.XSCRIPTCONTEXT",
             ),
         )
         addon_urls = (
+            "stationkoch",
+            "stationkuz",
             "prepare",
+            "calendarprep",
+            "generationsettings",
             "generation",
             "report",
+            "mail1",
+            "mail2",
+            "mail3",
+            "mailmorning",
+            "foreignmail1",
+            "foreignmail2",
+            "foreignmail3",
+            "foreignmorning",
+            "foreignsheet",
+            "mailbuttons",
             "calendar",
             "time",
             "autofit",
