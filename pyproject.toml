@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "shift-helper"
 version = "0.4.0.dev0"
-description = "Integrated Calc journal automation and full morning report test candidate"
+description = "Shared XLSX journal automation for LibreOffice Calc and Microsoft Excel"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
@@ -24,6 +24,9 @@ dev = [
 ]
 build = [
     "pyinstaller>=6.12,<7",
+]
+excel = [
+    "pyOpenVBA==3.4.0",
 ]
 
 [project.scripts]
