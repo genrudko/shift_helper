@@ -38,21 +38,24 @@ Public Sub SH_RefreshLWGUIBadge(Optional ByVal wb As Workbook)
         Exit Sub
     End If
 
-    desiredText = "LW GUI: " & passwordText
+    desiredText = passwordText
 
     If badge Is Nothing Then
         Set anchor = wsJournal.Range("P1")
         Set badge = wsJournal.Shapes.AddShape(msoShapeRoundedRectangle, _
-            anchor.Left, anchor.Top + 2, 135, 32)
+            anchor.Left, anchor.Top + 2, 135, 40)
         badge.Name = SH_LWGUI_BADGE_NAME
         badge.Placement = xlFreeFloating
         badge.Fill.ForeColor.RGB = RGB(242, 242, 242)
         badge.Line.ForeColor.RGB = RGB(166, 166, 166)
-        badge.TextFrame2.TextRange.Font.Size = 10
         badge.TextFrame2.TextRange.Font.Bold = msoTrue
         badge.TextFrame2.TextRange.ParagraphFormat.Alignment = msoAlignCenter
         badge.TextFrame2.VerticalAnchor = msoAnchorMiddle
     End If
+
+    ' Keep the presentation contract even when the badge already exists from an older XLAM.
+    If badge.TextFrame2.TextRange.Font.Size <> 24 Then badge.TextFrame2.TextRange.Font.Size = 24
+    If badge.Height <> 40 Then badge.Height = 40
 
     ' Avoid a needless workbook write on every activation: update only when value changed.
     If badge.TextFrame2.TextRange.Text <> desiredText Then
