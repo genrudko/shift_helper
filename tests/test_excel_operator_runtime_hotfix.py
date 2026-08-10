@@ -34,7 +34,10 @@ def test_lw_gui_badge_reads_shifted_day_d9_without_selection_side_effect() -> No
     assert 'SH_HasSheet(wb, "Day")' in source
     assert 'Set wsDay = wb.Worksheets("Day")' in source
     assert 'raw = wsDay.Range("D9").Value2' in source
-    assert 'desiredText = "LW GUI: " & passwordText' in source
+    assert 'desiredText = passwordText' in source
+    assert '"LW GUI: "' not in source
+    assert 'Font.Size <> 24' in source
+    assert 'Font.Size = 24' in source
     assert "If Application.CutCopyMode <> False Then Exit Sub" in source
     assert "SH_RefreshLWGUIBadge Wb" in events
     assert "SH_RefreshLWGUIBadge" not in selection_handler
