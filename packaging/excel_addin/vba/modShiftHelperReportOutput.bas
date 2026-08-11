@@ -5,7 +5,7 @@ Public Sub SH_GeneratePreparedReport()
     On Error GoTo Failed
     Dim wb As Workbook, outWb As Workbook, source As Worksheet, target As Worksheet
     Dim seed As Worksheet, reportDate As Date, offsetHours As Double
-    Dim outputFolder As String, suggested As String, outputPath As Variant
+    Dim suggested As String, outputPath As Variant, autoSave As Boolean
     Dim i As Long, stage As String, errNumber As Long, errDescription As String
     Dim oldAlerts As Boolean, alertsCaptured As Boolean
 
@@ -13,6 +13,7 @@ Public Sub SH_GeneratePreparedReport()
     Set wb = SH_JournalBook()
 
     stage = "prepare report contour"
+    SH_ApplyNssForCurrentStation wb
     SH_EnsureStationReportContour wb
     reportDate = SH_ReportDate(wb)
     offsetHours = SH_ReportOffset(wb)
@@ -56,15 +57,20 @@ Public Sub SH_GeneratePreparedReport()
 
     stage = "resolve output settings"
     suggested = SH_ReportSuggestedPath(wb, reportDate)
+    autoSave = SH_ReportAutoSaveEnabled(wb)
 
-    stage = "choose output file"
-    outputPath = Application.GetSaveAsFilename( _
-        suggested, "Excel Workbook (*.xlsx),*.xlsx", , SH_T("SAVE_REPORT") _
-    )
-    If VarType(outputPath) = vbBoolean Then
-        If outputPath = False Then
-            outWb.Close SaveChanges:=False
-            Exit Sub
+    If autoSave Then
+        outputPath = suggested
+    Else
+        stage = "choose output file"
+        outputPath = Application.GetSaveAsFilename( _
+            suggested, "Excel Workbook (*.xlsx),*.xlsx", , SH_T("SAVE_REPORT") _
+        )
+        If VarType(outputPath) = vbBoolean Then
+            If outputPath = False Then
+                outWb.Close SaveChanges:=False
+                Exit Sub
+            End If
         End If
     End If
 
