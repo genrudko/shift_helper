@@ -37,6 +37,9 @@ def test_nss_lists_and_selection_are_station_specific_and_feed_prep_b7() -> None
     assert "SH_ApplyNssForStation wb, stationId" in station_facts
     assert "SH_ApplyNssForCurrentStation wb" in station_facts
     assert "SH_ApplyNssForCurrentStation wb" in output
+    assert "Private Sub SH_OutputApplyNssCaption" in output
+    assert "If stationId <> SH_STATION_KUZ Then Exit Sub" in output
+    assert '" (" & selected & ")"' in output
 
 
 def test_nss_vba_remains_ascii_safe_and_module_name_fits_vba_storage() -> None:
