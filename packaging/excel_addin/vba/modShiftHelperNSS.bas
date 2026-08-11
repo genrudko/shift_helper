@@ -39,7 +39,7 @@ Public Function SH_NssMenuXml() As String
             itemText = SH_NssNameAt(listText, i)
             labelText = itemText
             If StrComp(itemText, selected, vbTextCompare) = 0 Then labelText = "* " & itemText
-            xml = xml & "<button id=""nssChoice""" & CStr(stationId) & """_""" & CStr(i) & _
+            xml = xml & "<button id=""nssChoice" & CStr(stationId) & "_" & CStr(i) & _
                 """ label=""" & SH_XmlEscape(SH_MenuText(labelText)) & _
                 """ tag=""select:" & CStr(stationId) & ":" & CStr(i) & _
                 """ onAction=""SH_RibbonNssAction""/>"
@@ -120,8 +120,8 @@ Public Function SH_NssSelected(ByVal wb As Workbook, ByVal stationId As Long) As
 End Function
 
 Private Sub SH_EditNssList(ByVal stationId As Long)
-    Dim wb As Workbook, raw As Variant, currentText As String, normalized As String
-    Dim promptText As String, selected As String
+    Dim wb As Workbook, prep As Worksheet, raw As Variant, currentText As String
+    Dim normalized As String, promptText As String, selected As String
 
     Set wb = SH_JournalBook()
     currentText = SH_NssListText(wb, stationId)
@@ -144,7 +144,8 @@ Private Sub SH_EditNssList(ByVal stationId As Long)
     If Len(normalized) = 0 Then
         SH_SetMetaValue wb, SH_NssSelectedKey(stationId), ""
         If SH_ReportStationId(wb, False) = stationId Then
-            SH_EnsurePrepSheet(wb).Range(SH_NSS_CELL).ClearContents
+            Set prep = SH_EnsurePrepSheet(wb)
+            prep.Range(SH_NSS_CELL).ClearContents
         End If
     ElseIf Len(selected) = 0 Or Not SH_NssListContains(normalized, selected) Then
         selected = SH_NssNameAt(normalized, 1)
