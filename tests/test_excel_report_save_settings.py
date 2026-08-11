@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 VBA_DIR = ROOT / "packaging" / "excel_addin" / "vba"
 RIBBON = ROOT / "packaging" / "excel_addin" / "customUI14.xml"
