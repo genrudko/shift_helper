@@ -27,6 +27,7 @@ def test_report_save_settings_use_workbook_metadata_and_date_tokens() -> None:
 
     assert '"report.output.folder"' in settings
     assert '"report.output.filename_template"' in settings
+    assert '"report.output.auto_save"' in settings
     assert "SH_MetaValue" in settings
     assert "SH_SetMetaValue" in settings
     assert '"{date}"' in settings
@@ -36,12 +37,17 @@ def test_report_save_settings_use_workbook_metadata_and_date_tokens() -> None:
     assert "msoFileDialogFolderPicker" in settings
     assert "Application.InputBox" in settings
     assert "SH_EnsurePrepSheet wb" in settings
+    assert 'Case "auto"' in settings
+    assert "SH_ToggleReportAutoSave" in settings
 
 
-def test_generated_report_uses_configured_suggested_path_but_keeps_save_dialog() -> None:
+def test_generated_report_switches_between_auto_save_and_native_save_dialog() -> None:
     output = _read("modShiftHelperReportOutput.bas")
 
     assert "suggested = SH_ReportSuggestedPath(wb, reportDate)" in output
+    assert "autoSave = SH_ReportAutoSaveEnabled(wb)" in output
+    assert "If autoSave Then" in output
+    assert "outputPath = suggested" in output
     assert "Application.GetSaveAsFilename" in output
     assert '"Shift-Helper-Report-" & Format$(reportDate' not in output
 
