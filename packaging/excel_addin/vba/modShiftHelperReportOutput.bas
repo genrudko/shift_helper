@@ -54,10 +54,8 @@ Public Sub SH_GeneratePreparedReport()
     stage = "validate output workbook"
     SH_OutputValidate outWb
 
-    outputFolder = wb.Path
-    If Len(outputFolder) = 0 Then outputFolder = Application.DefaultFilePath
-    suggested = outputFolder & Application.PathSeparator & _
-        "Shift-Helper-Report-" & Format$(reportDate, "yyyy-mm-dd") & ".xlsx"
+    stage = "resolve output settings"
+    suggested = SH_ReportSuggestedPath(wb, reportDate)
 
     stage = "choose output file"
     outputPath = Application.GetSaveAsFilename( _
