@@ -105,7 +105,15 @@ Private Sub SH_EditReportSaveFolder()
     Dim currentPath As String, selectedPath As String
 
     Set wb = SH_JournalBook()
-    currentPath = SH_ReportSaveFolder(wb)
+    currentPath = Trim$(CStr(SH_MetaValue(wb, SH_REPORT_FOLDER_KEY, "")))
+    If Len(currentPath) = 0 Or Not SH_ReportFolderExists(currentPath) Then
+        If Len(wb.Path) > 0 Then
+            currentPath = wb.Path
+        Else
+            currentPath = Application.DefaultFilePath
+        End If
+    End If
+
     Set picker = Application.FileDialog(msoFileDialogFolderPicker)
     With picker
         .Title = SH_U("0412044B0431043504400438044204350020043F0430043F043A044300200441043E044504400430043D0435043D0438044F00200443044204400435043D043D04350433043E002004400430043F043E044004420430")
@@ -134,6 +142,7 @@ Private Sub SH_EditReportFilename()
     Dim reportDate As Date, promptText As String
 
     Set wb = SH_JournalBook()
+    SH_EnsurePrepSheet wb
     reportDate = SH_ReportDate(wb)
     promptText = SH_U("04120432043504340438044204350020044804300431043B043E043D00200438043C0435043D04380020044404300439043B0430002E") & _
         vbCrLf & vbCrLf & _
