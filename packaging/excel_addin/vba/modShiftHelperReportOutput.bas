@@ -45,6 +45,7 @@ Public Sub SH_GeneratePreparedReport()
 
     stage = "apply report captions"
     SH_OutputApplyCaptions outWb, reportDate
+    SH_OutputApplyNssCaption outWb, wb
 
     stage = "apply output time offset"
     SH_OutputApplyOffset outWb, offsetHours
@@ -149,6 +150,24 @@ Private Sub SH_OutputApplyCaptions(ByVal wb As Workbook, ByVal reportDate As Dat
         Set ws = wb.Worksheets(SH_ReportSheetName(i))
         SH_OutputReplaceDateCell ws.Range("B1"), reportDate
     Next i
+End Sub
+
+Private Sub SH_OutputApplyNssCaption(ByVal outputWb As Workbook, ByVal sourceWb As Workbook)
+    Dim stationId As Long, selected As String, marker As String, value As String
+    Dim position As Long, main As Worksheet
+
+    stationId = SH_ReportStationId(sourceWb, False)
+    If stationId <> SH_STATION_KUZ Then Exit Sub
+    selected = SH_NssSelected(sourceWb, stationId)
+    If Len(selected) = 0 Then Exit Sub
+
+    Set main = outputWb.Worksheets(SH_ReportSheetName(1))
+    value = SH_OutputSafeText(main.Range("B1").Value2)
+    marker = SH_U("002E0020041F043E0441043B04350434043D04380435002004380437043C0435043D0435043D0438044F0020")
+    position = InStr(1, value, marker, vbTextCompare)
+    If position = 0 Then Exit Sub
+    main.Range("B1").Value = Left$(value, position - 1) & " (" & selected & ")" & _
+        Mid$(value, position)
 End Sub
 
 Private Sub SH_OutputReplaceDateCell(ByVal target As Range, ByVal value As Date)
