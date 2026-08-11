@@ -1,4 +1,4 @@
-Attribute VB_Name = "modShiftHelperReportSaveSettings"
+Attribute VB_Name = "modShiftHelperReportSave"
 Option Explicit
 
 Private Const SH_REPORT_FOLDER_KEY As String = "report.output.folder"
