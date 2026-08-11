@@ -26,6 +26,7 @@ def test_nss_lists_and_selection_are_station_specific_and_feed_prep_b7() -> None
     nss = _read("modShiftHelperNSS.bas")
     station_facts = _read("modShiftHelperStationFacts.bas")
     output = _read("modShiftHelperReportOutput.bas")
+    util = _read("modShiftHelperUtil.bas")
 
     assert '"report.nss.list."' in nss
     assert '"report.nss.selected."' in nss
@@ -40,6 +41,8 @@ def test_nss_lists_and_selection_are_station_specific_and_feed_prep_b7() -> None
     assert "Private Sub SH_OutputApplyNssCaption" in output
     assert "If stationId <> SH_STATION_KUZ Then Exit Sub" in output
     assert '" (" & selected & ")"' in output
+    assert 'ws.Range("A7").Value = SH_U("041D04210421")' in util
+    assert 'ws.Range("B7").Value = ""' in util
 
 
 def test_nss_vba_remains_ascii_safe_and_module_name_fits_vba_storage() -> None:
