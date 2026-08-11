@@ -3,6 +3,7 @@ Option Explicit
 
 Private Const SH_REPORT_FOLDER_KEY As String = "report.output.folder"
 Private Const SH_REPORT_FILENAME_KEY As String = "report.output.filename_template"
+Private Const SH_REPORT_AUTOSAVE_KEY As String = "report.output.auto_save"
 Private Const SH_REPORT_DEFAULT_TEMPLATE As String = "Shift-Helper-Report-{date_iso}.xlsx"
 
 Public Function SH_ReportSaveFolder(ByVal wb As Workbook) As String
@@ -33,6 +34,12 @@ Public Function SH_ReportFilenameTemplate(ByVal wb As Workbook) As String
     SH_ReportFilenameTemplate = configured
 End Function
 
+Public Function SH_ReportAutoSaveEnabled(ByVal wb As Workbook) As Boolean
+    Dim raw As String
+    raw = LCase$(Trim$(CStr(SH_MetaValue(wb, SH_REPORT_AUTOSAVE_KEY, "0"))))
+    SH_ReportAutoSaveEnabled = (raw = "1" Or raw = "true" Or raw = "yes")
+End Function
+
 Public Function SH_ReportSuggestedFilename(ByVal wb As Workbook, ByVal reportDate As Date) As String
     SH_ReportSuggestedFilename = SH_ReportFilenameFromTemplate( _
         SH_ReportFilenameTemplate(wb), reportDate)
@@ -47,11 +54,16 @@ End Function
 
 Public Function SH_ReportSaveSettingsMenuXml() As String
     On Error GoTo Fallback
-    Dim wb As Workbook, folderPath As String, filenameTemplate As String
+    Dim wb As Workbook, folderPath As String, filenameTemplate As String, autoLabel As String
 
     Set wb = SH_JournalBook()
     folderPath = SH_ReportSaveFolder(wb)
     filenameTemplate = SH_ReportFilenameTemplate(wb)
+    If SH_ReportAutoSaveEnabled(wb) Then
+        autoLabel = SH_U("041004320442043E0441043E044504400430043D0435043D04380435003A00200412041A041B")
+    Else
+        autoLabel = SH_U("041004320442043E0441043E044504400430043D0435043D04380435003A00200412042B041A041B")
+    End If
 
     SH_ReportSaveSettingsMenuXml = _
         "<menu xmlns=""http://schemas.microsoft.com/office/2009/07/customui"">" & _
@@ -67,6 +79,8 @@ Public Function SH_ReportSaveSettingsMenuXml() As String
         "<button id=""reportSaveNameEdit"" label=""" & _
             SH_U("04180437043C0435043D04380442044C0020044804300431043B043E043D00200438043C0435043D0438002E002E002E") & _
             """ tag=""name"" onAction=""SH_RibbonReportSaveSetting""/>" & _
+        "<button id=""reportAutoSaveToggle"" label=""" & SH_XmlEscape(autoLabel) & _
+            """ tag=""auto"" onAction=""SH_RibbonReportSaveSetting""/>" & _
         "<menuSeparator id=""reportSaveSeparator""/>" & _
         "<button id=""reportSaveReset"" label=""" & _
             SH_U("042104310440043E044104380442044C0020043D0430044104420440043E0439043A0438") & _
@@ -83,6 +97,7 @@ Fallback:
         "<button id=""reportSaveNameEdit"" label=""" & _
             SH_U("04180437043C0435043D04380442044C0020044804300431043B043E043D00200438043C0435043D0438002E002E002E") & _
             """ tag=""name"" onAction=""SH_RibbonReportSaveSetting""/>" & _
+        "<button id=""reportAutoSaveToggle"" label=""Auto save"" tag=""auto"" onAction=""SH_RibbonReportSaveSetting""/>" & _
         "</menu>"
 End Function
 
@@ -92,6 +107,8 @@ Public Sub SH_EditReportSaveSetting(ByVal settingName As String)
             SH_EditReportSaveFolder
         Case "name"
             SH_EditReportFilename
+        Case "auto"
+            SH_ToggleReportAutoSave
         Case "reset"
             SH_ResetReportSaveSettings
         Case Else
@@ -176,12 +193,39 @@ Failed:
     MsgBox Err.Description, vbExclamation, "Shift-Helper"
 End Sub
 
+Private Sub SH_ToggleReportAutoSave()
+    On Error GoTo Failed
+    Dim wb As Workbook, enabled As Boolean, answer As VbMsgBoxResult
+    Set wb = SH_JournalBook()
+    enabled = SH_ReportAutoSaveEnabled(wb)
+
+    If Not enabled Then
+        answer = MsgBox( _
+            SH_U("041F0440043800200432043A043B044E04470451043D043D043E043C0020043004320442043E0441043E044504400430043D0435043D04380438002004400430043F043E0440044200200441044004300437044300200441043E044504400430043D044F043504420441044F0020043F043E0020043D0430044104420440043E0435043D043D043E043C04430020043F04430442043800200431043504370020043E043A043D0430002000AB0421043E044504400430043D04380442044C0020043A0430043A00BB002E002004150441043B04380020044404300439043B00200441002004420430043A0438043C00200438043C0435043D0435043C002004430436043500200441044304490435044104420432044304350442002C0020043E043D002004310443043404350442002004370430043C0435043D0451043D002004310435043700200434043E043F043E043B043D043804420435043B044C043D043E0433043E0020043F043E04340442043204350440043604340435043D0438044F002E00200412043A043B044E044704380442044C0020043004320442043E0441043E044504400430043D0435043D04380435003F"), _
+            vbQuestion + vbYesNo + vbDefaultButton2, _
+            SH_U("041004320442043E0441043E044504400430043D0435043D0438043500200443044204400435043D043D04350433043E002004400430043F043E044004420430"))
+        If answer <> vbYes Then Exit Sub
+        SH_SetMetaValue wb, SH_REPORT_AUTOSAVE_KEY, "1"
+        MsgBox SH_U("041004320442043E0441043E044504400430043D0435043D0438043500200432043A043B044E04470435043D043E002E"), _
+            vbInformation, "Shift-Helper"
+    Else
+        SH_SetMetaValue wb, SH_REPORT_AUTOSAVE_KEY, "0"
+        MsgBox SH_U("041004320442043E0441043E044504400430043D0435043D0438043500200432044B043A043B044E04470435043D043E002E"), _
+            vbInformation, "Shift-Helper"
+    End If
+    Exit Sub
+
+Failed:
+    MsgBox Err.Description, vbExclamation, "Shift-Helper"
+End Sub
+
 Private Sub SH_ResetReportSaveSettings()
     On Error GoTo Failed
     Dim wb As Workbook
     Set wb = SH_JournalBook()
     SH_SetMetaValue wb, SH_REPORT_FOLDER_KEY, ""
     SH_SetMetaValue wb, SH_REPORT_FILENAME_KEY, ""
+    SH_SetMetaValue wb, SH_REPORT_AUTOSAVE_KEY, "0"
     MsgBox SH_U("041D0430044104420440043E0439043A043800200441043E044504400430043D0435043D0438044F002004400430043F043E0440044204300020044104310440043E04480435043D044B002E"), _
         vbInformation, "Shift-Helper"
     Exit Sub
