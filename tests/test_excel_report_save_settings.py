@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pathlib import Path
 
 
@@ -38,6 +36,7 @@ def test_report_save_settings_use_workbook_metadata_and_date_tokens() -> None:
     assert 'Format$(reportDate, "yyyy-mm-dd")' in settings
     assert "msoFileDialogFolderPicker" in settings
     assert "Application.InputBox" in settings
+    assert "SH_EnsurePrepSheet wb" in settings
 
 
 def test_generated_report_uses_configured_suggested_path_but_keeps_save_dialog() -> None:
