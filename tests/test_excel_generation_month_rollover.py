@@ -46,7 +46,8 @@ def test_cancelled_or_missing_import_cannot_reuse_stale_daily_values() -> None:
 def test_completed_month_history_is_not_hard_limited_to_july() -> None:
     source = _read("modShiftHelperStationFacts.bas")
 
-    assert 'Private Const SH_MONTH_FACT_PREFIX As String = "report.generation.month_fact."' in source
+    prefix = 'Private Const SH_MONTH_FACT_PREFIX As String = "report.generation.month_fact."'
+    assert prefix in source
     assert "lastKnownMonth = Month(reportDate) - 1" in source
     assert "Application.Min(7, Month(reportDate) - 1)" not in source
     assert "SH_TryStoredStationMonthFact" in source
