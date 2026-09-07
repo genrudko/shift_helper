@@ -58,6 +58,34 @@ def test_calendar_requires_explicit_acceptance_and_station_picker_skips_contour(
     assert "SH_ShowCalendar" in body
 
 
+def test_calendar_uses_native_date_cell_hit_testing() -> None:
+    calendar = source("modShiftHelperCalendar.bas")
+    assert "Private Type SH_MCHITTESTINFO" in calendar
+    assert "Private Const SH_MCM_HITTEST As Long = SH_MCM_FIRST + 14" in calendar
+    assert "Private Const SH_MCHT_CALENDARDATE As Long = &H20001" in calendar
+    assert "ScreenToClient(calendarHwnd, clientPoint)" in calendar
+    assert "SendMessageW calendarHwnd, SH_MCM_HITTEST, 0, hitInfo" in calendar
+    assert "hitInfo.uHit = SH_MCHT_CALENDARDATE" in calendar
+    assert "bounds.Top + 34" not in calendar
+    assert "bounds.Bottom - 12" not in calendar
+
+
+def test_colon_time_components_are_strict_and_combined_time_only_keeps_seconds() -> None:
+    quick = source("modShiftHelperQuickInput.bas")
+    time_parser = quick.split("Private Function SH_TryParseTime", 1)[1].split(
+        "End Function", 1
+    )[0]
+    combined = quick.split("Private Function SH_TryParseCombined", 1)[1].split(
+        "End Function", 1
+    )[0]
+    assert "SH_IsDigits(CStr(parts(0)))" in time_parser
+    assert "SH_IsDigits(CStr(parts(1)))" in time_parser
+    assert "SH_IsDigits(CStr(parts(2)))" in time_parser
+    assert "secondValue < 0 Or secondValue > 59" in time_parser
+    assert "TimeSerial(hourValue, minuteValue, secondValue)" in time_parser
+    assert "DateValue(previousValue) + TimeValue(parsedTime)" in combined
+
+
 def test_generation_has_one_boolean_core_and_explicit_station_override() -> None:
     profiles = source("modShiftHelperGenProfiles.bas")
     station = source("modShiftHelperStationImport.bas")
@@ -73,6 +101,12 @@ def test_generation_has_one_boolean_core_and_explicit_station_override() -> None
     assert "SH_ReadGenerationWorkbook" not in legacy
     assert "factDate = DateAdd(\"d\", -1, DateValue(reportDate))" in profiles
     assert 'If Not SH_G2TryDate(sumSheet.Range("A2").Value2, sourceDate) Then' in profiles
+    read_call = "SH_G2ReadWorkbook sourcePath, DateAdd(\"d\", -1, reportDate), daily, own, profileName"
+    profile_guard = "If Len(stationOverride) > 0 And LCase$(profileName) <> stationHint Then"
+    assert read_call in profiles
+    assert profile_guard in profiles
+    assert profiles.index(read_call) < profiles.index(profile_guard)
+    assert "Generation workbook profile does not match the selected station." in profiles
 
 
 def test_report_dates_use_strict_text_parser_and_cut_copy_guard_survives() -> None:

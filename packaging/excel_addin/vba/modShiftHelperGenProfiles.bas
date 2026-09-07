@@ -56,6 +56,10 @@ Public Function SH_ImportGenerationUniversalCore(Optional ByVal stationOverride 
 
     stage = "read generation workbook"
     SH_G2ReadWorkbook sourcePath, DateAdd("d", -1, reportDate), daily, own, profileName
+    If Len(stationOverride) > 0 And LCase$(profileName) <> stationHint Then
+        Err.Raise vbObjectError + 688, , _
+            "Generation workbook profile does not match the selected station."
+    End If
     factDate = DateAdd("d", -1, DateValue(reportDate))
 
     stage = "update generation totals"

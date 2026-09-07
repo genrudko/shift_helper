@@ -124,9 +124,9 @@ def parse_date_input(
     raise QuickInputError(f"Неподдерживаемый формат даты: {token!r}.")
 
 
-def _strict_time(hour: int, minute: int) -> time:
+def _strict_time(hour: int, minute: int, second: int = 0) -> time:
     try:
-        return time(hour, minute)
+        return time(hour, minute, second)
     except ValueError as exc:
         raise QuickInputError(f"Невозможное время: {hour:02d}:{minute:02d}.") from exc
 
@@ -170,7 +170,9 @@ def parse_time_input(
         second = int(match.group("second") or 0)
         if second > 59:
             raise QuickInputError(f"Невозможное время: {token!r}.")
-        return ParsedTime(_strict_time(int(match.group("hour")), int(match.group("minute"))))
+        return ParsedTime(
+            _strict_time(int(match.group("hour")), int(match.group("minute")), second)
+        )
 
     compact = token.replace(" ", "")
     if not _DIGITS_RE.fullmatch(compact):

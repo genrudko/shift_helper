@@ -13,6 +13,7 @@ Private Declare PtrSafe Function SendMessageW Lib "user32" (ByVal hwnd As LongPt
 Private Declare PtrSafe Function GetModuleHandleW Lib "kernel32" (ByVal lpModuleName As LongPtr) As LongPtr
 Private Declare PtrSafe Function GetAsyncKeyState Lib "user32" (ByVal vKey As Long) As Integer
 Private Declare PtrSafe Function GetCursorPos Lib "user32" (ByRef lpPoint As SH_POINT) As Long
+Private Declare PtrSafe Function ScreenToClient Lib "user32" (ByVal hwnd As LongPtr, ByRef lpPoint As SH_POINT) As Long
 Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
 #End If
 
@@ -44,6 +45,17 @@ Private Type SH_SYSTEMTIME
     wMilliseconds As Integer
 End Type
 
+Private Type SH_MCHITTESTINFO
+    cbSize As Long
+    pt As SH_POINT
+    uHit As Long
+    st As SH_SYSTEMTIME
+    rc As SH_RECT
+    iOffset As Long
+    iRow As Long
+    iCol As Long
+End Type
+
 Private Const SH_ICC_DATE_CLASSES As Long = &H100
 Private Const SH_WS_POPUP As Long = &H80000000
 Private Const SH_WS_CHILD As Long = &H40000000
@@ -57,6 +69,8 @@ Private Const SH_MCM_FIRST As Long = &H1000
 Private Const SH_MCM_GETCURSEL As Long = SH_MCM_FIRST + 1
 Private Const SH_MCM_SETCURSEL As Long = SH_MCM_FIRST + 2
 Private Const SH_MCM_GETMINREQRECT As Long = SH_MCM_FIRST + 9
+Private Const SH_MCM_HITTEST As Long = SH_MCM_FIRST + 14
+Private Const SH_MCHT_CALENDARDATE As Long = &H20001
 Private Const SH_VK_LBUTTON As Long = &H1
 Private Const SH_VK_RETURN As Long = &HD
 Private Const SH_VK_ESCAPE As Long = &H1B
@@ -123,7 +137,7 @@ End Sub
 Private Function SH_PickDateNative(ByVal initialDate As Date, ByRef selectedDate As Date) As Boolean
     On Error GoTo Failed
     Dim controls As SH_INITCOMMONCONTROLSEX, ownerRect As SH_RECT, calendarRect As SH_RECT
-    Dim parentRect As SH_RECT, point As SH_POINT, st As SH_SYSTEMTIME
+    Dim point As SH_POINT, st As SH_SYSTEMTIME
     Dim ownerHwnd As LongPtr, parentHwnd As LongPtr, calendarHwnd As LongPtr, instanceHwnd As LongPtr
     Dim parentClass As String, calendarClass As String, titleText As String
     Dim width As Long, height As Long, x As Long, y As Long
@@ -181,8 +195,8 @@ Private Function SH_PickDateNative(ByVal initialDate As Date, ByRef selectedDate
         End If
         mouseDown = (GetAsyncKeyState(SH_VK_LBUTTON) < 0)
         If wasMouseDown And Not mouseDown Then
-            If GetCursorPos(point) <> 0 And GetWindowRect(calendarHwnd, parentRect) <> 0 Then
-                If SH_CalendarPointInDayGrid(point, parentRect) Then
+            If GetCursorPos(point) <> 0 Then
+                If SH_CalendarPointInDayGrid(calendarHwnd, point) Then
                     If SH_ReadCalendarDate(calendarHwnd, selectedDate) Then SH_PickDateNative = True
                     Exit Do
                 End If
@@ -210,10 +224,17 @@ Failed:
     Err.Raise errNumber, , errDescription
 End Function
 
-Private Function SH_CalendarPointInDayGrid(ByRef point As SH_POINT, ByRef bounds As SH_RECT) As Boolean
-    ' Header/navigation and trailing footer are not valid day-grid acceptance targets.
-    SH_CalendarPointInDayGrid = (point.x >= bounds.Left And point.x <= bounds.Right And _
-        point.y >= bounds.Top + 34 And point.y <= bounds.Bottom - 12)
+Private Function SH_CalendarPointInDayGrid(ByVal calendarHwnd As LongPtr, ByRef point As SH_POINT) As Boolean
+    Dim clientPoint As SH_POINT, hitInfo As SH_MCHITTESTINFO
+    If calendarHwnd = 0 Then Exit Function
+    clientPoint.x = point.x
+    clientPoint.y = point.y
+    If ScreenToClient(calendarHwnd, clientPoint) = 0 Then Exit Function
+    hitInfo.cbSize = LenB(hitInfo)
+    hitInfo.pt.x = clientPoint.x
+    hitInfo.pt.y = clientPoint.y
+    SendMessageW calendarHwnd, SH_MCM_HITTEST, 0, hitInfo
+    SH_CalendarPointInDayGrid = (hitInfo.uHit = SH_MCHT_CALENDARDATE)
 End Function
 
 Private Function SH_ReadCalendarDate(ByVal calendarHwnd As LongPtr, ByRef value As Date) As Boolean

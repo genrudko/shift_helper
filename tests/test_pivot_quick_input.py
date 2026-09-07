@@ -54,7 +54,7 @@ def test_impossible_date_is_visible(raw: str) -> None:
         ("930", time(9, 30)),
         ("1530", time(15, 30)),
         ("15:30", time(15, 30)),
-        ("15:30:59", time(15, 30)),
+        ("15:30:59", time(15, 30, 59)),
     ],
 )
 def test_time_contract(raw: object, expected: time) -> None:
@@ -67,7 +67,10 @@ def test_time_increment_reports_midnight_rollover() -> None:
     assert parsed.day_offset == 1
 
 
-@pytest.mark.parametrize("raw", ["24", "1260", "999", "15:99", "abc"])
+@pytest.mark.parametrize(
+    "raw",
+    ["24", "1260", "999", "15:99", "09:30:-1", "09:+30", "09:30.5", "09:3e1", "abc"],
+)
 def test_impossible_time_is_visible(raw: str) -> None:
     with pytest.raises(QuickInputError):
         parse_time_input(raw, previous=None, now=NOW)
@@ -126,6 +129,12 @@ def test_combined_time_only_inherits_date_and_increment_rolls_midnight() -> None
     previous = datetime(2026, 9, 7, 23, 50)
     assert parse_combined_input("930", previous=previous, now=NOW).value == datetime(
         2026, 9, 7, 9, 30
+    )
+    assert parse_combined_input("09:30", previous=previous, now=NOW).value == datetime(
+        2026, 9, 7, 9, 30
+    )
+    assert parse_combined_input("09:30:45", previous=previous, now=NOW).value == datetime(
+        2026, 9, 7, 9, 30, 45
     )
     assert parse_combined_input("+20", previous=previous, now=NOW).value == datetime(
         2026, 9, 8, 0, 10

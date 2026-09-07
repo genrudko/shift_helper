@@ -376,7 +376,7 @@ End Function
 Private Function SH_TryParseTime(ByVal raw As Variant, ByVal previousTime As Date, ByVal hasPrevious As Boolean, ByRef result As Date, ByRef dayOffset As Long, ByRef errorText As String) As Boolean
     On Error GoTo InvalidValue
     Dim token As String, parts As Variant, n As Double, total As Long
-    Dim hourValue As Long, minuteValue As Long, amount As Long
+    Dim hourValue As Long, minuteValue As Long, secondValue As Long, amount As Long
 
     dayOffset = 0
     If VarType(raw) <> vbString And IsNumeric(raw) Then
@@ -414,8 +414,14 @@ Private Function SH_TryParseTime(ByVal raw As Variant, ByVal previousTime As Dat
     If InStr(token, ":") > 0 Then
         parts = Split(token, ":")
         If UBound(parts) < 1 Or UBound(parts) > 2 Then GoTo InvalidValue
+        If Not SH_IsDigits(CStr(parts(0))) Then GoTo InvalidValue
+        If Not SH_IsDigits(CStr(parts(1))) Then GoTo InvalidValue
         hourValue = CLng(parts(0)): minuteValue = CLng(parts(1))
-        If UBound(parts) = 2 Then If CLng(parts(2)) > 59 Then GoTo InvalidValue
+        If UBound(parts) = 2 Then
+            If Not SH_IsDigits(CStr(parts(2))) Then GoTo InvalidValue
+            secondValue = CLng(parts(2))
+            If secondValue < 0 Or secondValue > 59 Then GoTo InvalidValue
+        End If
     Else
         If Not IsNumeric(token) Then GoTo InvalidValue
         Select Case Len(token)
@@ -430,7 +436,7 @@ Private Function SH_TryParseTime(ByVal raw As Variant, ByVal previousTime As Dat
         End Select
     End If
     If hourValue < 0 Or hourValue > 23 Or minuteValue < 0 Or minuteValue > 59 Then GoTo InvalidValue
-    result = TimeSerial(hourValue, minuteValue, 0)
+    result = TimeSerial(hourValue, minuteValue, secondValue)
     SH_TryParseTime = True
     Exit Function
 InvalidValue:
@@ -438,6 +444,16 @@ InvalidValue:
     Exit Function
 NeedPrevious:
     errorText = SH_U("0422043E043A0435043D002004420440043504310443043504420020043F044004350434044B043404430449043504350433043E0020043A043E044004400435043A0442043D043E0433043E00200437043D043004470435043D0438044F00200432044B04480435002E")
+End Function
+
+Private Function SH_IsDigits(ByVal token As String) As Boolean
+    Dim i As Long, ch As String
+    If Len(token) = 0 Then Exit Function
+    For i = 1 To Len(token)
+        ch = Mid$(token, i, 1)
+        If ch < "0" Or ch > "9" Then Exit Function
+    Next i
+    SH_IsDigits = True
 End Function
 
 Private Function SH_StrictPositiveIncrement(ByVal token As String, ByRef amount As Long) As Boolean
