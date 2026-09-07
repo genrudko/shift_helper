@@ -1,11 +1,23 @@
+import hashlib
 from pathlib import Path
 
-
 VBA = Path(__file__).resolve().parents[1] / "packaging" / "excel_addin" / "vba"
+CALC_SHARED_QUICK_INPUT = (
+    Path(__file__).resolve().parents[1] / "src" / "shift_helper" / "core" / "quick_input.py"
+)
+BASE_CALC_SHARED_QUICK_INPUT_SHA256 = (
+    "94762b0be347f548abb7b1b121d194e7afe53e6898d347a0d8f0c2a67b604e73"
+)
 
 
 def source(name: str) -> str:
     return (VBA / name).read_text(encoding="ascii")
+
+
+def test_excel_repair_does_not_modify_calc_shared_quick_input() -> None:
+    assert hashlib.sha256(CALC_SHARED_QUICK_INPUT.read_bytes()).hexdigest() == (
+        BASE_CALC_SHARED_QUICK_INPUT_SHA256
+    )
 
 
 def test_quick_input_dispatches_multicolumn_ranges_and_has_explicit_combined_map() -> None:
@@ -20,7 +32,10 @@ def test_quick_input_dispatches_multicolumn_ranges_and_has_explicit_combined_map
         6: "9, 10",
         7: "3, 10",
     }.items():
-        expected = f"Case SH_InputSheetName({sheet_index}): SH_QuickCombinedColumns = Array({columns})"
+        expected = (
+            f"Case SH_InputSheetName({sheet_index}): "
+            f"SH_QuickCombinedColumns = Array({columns})"
+        )
         assert expected in quick
     assert "Sh.Name = SH_InputSheetName(5) And (col = 10 Or col = 11)" in quick
 
@@ -108,7 +123,10 @@ def test_generation_has_one_boolean_core_and_explicit_station_override() -> None
     assert "SH_ReadGenerationWorkbook" not in legacy
     assert "factDate = DateAdd(\"d\", -1, DateValue(reportDate))" in profiles
     assert 'If Not SH_G2TryDate(sumSheet.Range("A2").Value2, sourceDate) Then' in profiles
-    read_call = "SH_G2ReadWorkbook sourcePath, DateAdd(\"d\", -1, reportDate), daily, own, profileName"
+    read_call = (
+        'SH_G2ReadWorkbook sourcePath, DateAdd("d", -1, reportDate), '
+        "daily, own, profileName"
+    )
     profile_guard = "If Len(stationOverride) > 0 And LCase$(profileName) <> stationHint Then"
     assert read_call in profiles
     assert profile_guard in profiles
