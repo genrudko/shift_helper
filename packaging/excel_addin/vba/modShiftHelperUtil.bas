@@ -225,11 +225,39 @@ Failed:
 End Function
 
 Public Function SH_ReportDate(ByVal wb As Workbook) As Date
-    Dim value As Variant, ws As Worksheet
+    Dim value As Variant, ws As Worksheet, parsed As Date
     Set ws = SH_RequireSheet(wb, SH_PrepSheetName())
     value = ws.Range(SH_ReportDateCell()).Value
-    If Not IsDate(value) And Not IsNumeric(value) Then Err.Raise vbObjectError + 513, , "Invalid report date in B3."
-    SH_ReportDate = CDate(value)
+    If Not SH_TryParseReportDate(value, parsed) Then Err.Raise vbObjectError + 513, , "Invalid report date in B3."
+    SH_ReportDate = parsed
+End Function
+
+Public Function SH_TryParseReportDate(ByVal value As Variant, ByRef result As Date) As Boolean
+    On Error GoTo Failed
+    Dim token As String, normalized As String, parts As Variant
+    Dim dayValue As Long, monthValue As Long, yearValue As Long, candidate As Date
+    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+    If VarType(value) <> vbString Then
+        If Not IsNumeric(value) Then Exit Function
+        If CDbl(value) < 1# Or CDbl(value) >= 2958466# Then Exit Function
+        result = CDate(CDbl(value)): SH_TryParseReportDate = True: Exit Function
+    End If
+    token = Trim$(CStr(value))
+    If Len(token) = 0 Then Exit Function
+    normalized = Replace(Replace(token, "/", "."), "-", ".")
+    parts = Split(normalized, ".")
+    If UBound(parts) <> 2 Then Exit Function
+    If Len(parts(0)) = 4 Then
+        yearValue = CLng(parts(0)): monthValue = CLng(parts(1)): dayValue = CLng(parts(2))
+    Else
+        dayValue = CLng(parts(0)): monthValue = CLng(parts(1)): yearValue = CLng(parts(2))
+        If yearValue < 100 Then yearValue = 2000 + yearValue
+    End If
+    candidate = DateSerial(yearValue, monthValue, dayValue)
+    If Year(candidate) <> yearValue Or Month(candidate) <> monthValue Or Day(candidate) <> dayValue Then Exit Function
+    result = candidate
+    SH_TryParseReportDate = True
+Failed:
 End Function
 
 Public Function SH_ReportOffset(ByVal wb As Workbook) As Double

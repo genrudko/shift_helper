@@ -2,10 +2,15 @@ Attribute VB_Name = "modShiftHelperGenProfiles"
 Option Explicit
 
 Public Sub SH_ImportGenerationUniversal()
+    SH_ImportGenerationUniversalCore
+End Sub
+
+Public Function SH_ImportGenerationUniversalCore(Optional ByVal stationOverride As String = "") As Boolean
     On Error GoTo Failed
     Dim wb As Workbook, main As Worksheet, reportDate As Date, sourcePath As String
     Dim daily As Double, own As Double, monthGeneration As Double, monthOwn As Double
     Dim oldDaily As Double, oldOwn As Double, oldDateValue As Variant, oldDate As Date
+    Dim factDate As Date, oldFactDate As Date
     Dim hasOldDate As Boolean, stage As String, errDescription As String, errNumber As Long
     Dim oldCalculation As XlCalculation, oldEvents As Boolean, oldScreenUpdating As Boolean
     Dim appStateCaptured As Boolean, manualFallback As Double, searchDiagnostic As String
@@ -28,7 +33,8 @@ Public Sub SH_ImportGenerationUniversal()
     Set main = SH_RequireSheet(wb, SH_InputSheetName(1))
     reportDate = SH_ReportDate(wb)
     manualFallback = SH_G2SafeDouble(SH_MetaValue(wb, SH_Label(7), SH_DefaultSetting(7)))
-    stationHint = SH_G2StationHint(wb)
+    stationHint = LCase$(Trim$(stationOverride))
+    If Len(stationHint) = 0 Then stationHint = SH_G2StationHint(wb)
 
     stage = "search Outlook"
     sourcePath = SH_G2FindOutlookFile(wb, reportDate, stationHint, searchDiagnostic)
@@ -42,7 +48,7 @@ Public Sub SH_ImportGenerationUniversal()
         Application.ScreenUpdating = oldScreenUpdating
         MsgBox SH_T("OUTLOOK_NOT_FOUND") & vbCrLf & vbCrLf & searchDiagnostic, _
             vbInformation, "Shift-Helper"
-        Exit Sub
+        Exit Function
     End If
     If LCase$(Right$(sourcePath, 5)) <> ".xlsx" Then
         Err.Raise vbObjectError + 684, , "Only .xlsx generation attachments are allowed."
@@ -50,6 +56,7 @@ Public Sub SH_ImportGenerationUniversal()
 
     stage = "read generation workbook"
     SH_G2ReadWorkbook sourcePath, DateAdd("d", -1, reportDate), daily, own, profileName
+    factDate = DateAdd("d", -1, DateValue(reportDate))
 
     stage = "update generation totals"
     monthGeneration = SH_G2SafeDouble(main.Range("C11").Value2)
@@ -58,26 +65,27 @@ Public Sub SH_ImportGenerationUniversal()
     oldOwn = SH_G2SafeDouble(SH_MetaValue(wb, SH_Label(11), 0))
     oldDateValue = SH_MetaValue(wb, SH_Label(9), Empty)
     hasOldDate = SH_G2TryDate(oldDateValue, oldDate)
+    If hasOldDate Then oldFactDate = DateAdd("d", -1, DateValue(oldDate))
 
     If hasOldDate And DateValue(oldDate) = DateValue(reportDate) Then
         monthGeneration = monthGeneration + daily - oldDaily
         monthOwn = monthOwn + own - oldOwn
-    ElseIf hasOldDate And Year(oldDate) = Year(reportDate) And Month(oldDate) = Month(reportDate) Then
+    ElseIf hasOldDate And Year(oldFactDate) = Year(factDate) And Month(oldFactDate) = Month(factDate) Then
         monthGeneration = monthGeneration + daily
         monthOwn = monthOwn + own
-    ElseIf Day(reportDate) <= 2 Then
+    ElseIf Day(reportDate) = 1 Then
+        monthGeneration = monthGeneration + daily
+        monthOwn = monthOwn + own
+    Else
         monthGeneration = daily
         monthOwn = own
-    Else
-        monthGeneration = monthGeneration + daily
-        monthOwn = monthOwn + own
     End If
 
     main.Range("C10").Value2 = daily
     main.Range("C11").Value2 = monthGeneration
     main.Range("C16").Value2 = own
     main.Range("C17").Value2 = monthOwn
-    main.Cells(Month(reportDate) + 4, 10).Value2 = monthGeneration
+    main.Cells(Month(factDate) + 4, 10).Value2 = monthGeneration
     SH_SetMetaValue wb, SH_Label(8), sourcePath
     SH_SetMetaValue wb, SH_Label(9), reportDate
     SH_SetMetaValue wb, SH_Label(10), daily
@@ -86,6 +94,7 @@ Public Sub SH_ImportGenerationUniversal()
     stage = "recalculate report inputs"
     SH_ApplyCriticalFormulas wb
     SH_CalculateReportInputs wb
+    SH_ImportGenerationUniversalCore = True
 
     Application.Calculation = oldCalculation
     Application.EnableEvents = oldEvents
@@ -96,7 +105,7 @@ Public Sub SH_ImportGenerationUniversal()
         SH_U("0421043E04310441044204320435043D043D044B04350020043D044304360434044B003A0020") & _
         Format$(own, "0") & " kWh" & vbCrLf & _
         Format$(daily / 24000#, "0.00") & " MW", vbInformation, "Shift-Helper"
-    Exit Sub
+    Exit Function
 Failed:
     errNumber = Err.Number
     errDescription = Err.Description
@@ -111,7 +120,7 @@ Failed:
     If Len(errDescription) = 0 Then errDescription = "Generation import failed."
     MsgBox SH_T("GEN_BAD") & "[#" & CStr(errNumber) & "] Stage [" & stage & "]: " & _
         errDescription, vbExclamation, "Shift-Helper"
-End Sub
+End Function
 
 Private Function SH_G2PickFile() As String
     Dim selected As Variant
@@ -479,11 +488,12 @@ Private Sub SH_G2ReadWorkbook(ByVal path As String, ByVal expectedDate As Date, 
             "Generation workbook does not match the Kochubeevskaya or Kuzminskaya contract."
     End If
 
-    If SH_G2TryDate(sumSheet.Range("A2").Value2, sourceDate) Then
-        If DateValue(sourceDate) <> DateValue(expectedDate) Then
-            Err.Raise vbObjectError + 688, , _
-                "Generation workbook date does not match the report day."
-        End If
+    If Not SH_G2TryDate(sumSheet.Range("A2").Value2, sourceDate) Then
+        Err.Raise vbObjectError + 687, , "Generation workbook A2 must contain the expected date."
+    End If
+    If DateValue(sourceDate) <> DateValue(expectedDate) Then
+        Err.Raise vbObjectError + 688, , _
+            "Generation workbook date does not match the report day."
     End If
 
     daily = SH_G2RoundKwh(daily)
@@ -589,15 +599,7 @@ Failed:
 End Function
 
 Private Function SH_G2TryDate(ByVal value As Variant, ByRef result As Date) As Boolean
-    On Error GoTo Failed
-    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
-    If IsDate(value) Or IsNumeric(value) Then
-        result = CDate(value)
-        SH_G2TryDate = True
-    End If
-    Exit Function
-Failed:
-    SH_G2TryDate = False
+    SH_G2TryDate = SH_TryParseReportDate(value, result)
 End Function
 
 Private Function SH_G2SafeFileName(ByVal name As String) As String

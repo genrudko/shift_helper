@@ -9,38 +9,32 @@ def _read(name: str) -> str:
 
 
 def test_generation_is_bucketed_by_actual_generation_day() -> None:
-    source = _read("modShiftHelperStationImport.bas")
+    source = _read("modShiftHelperGenProfiles.bas")
 
     assert 'factDate = DateAdd("d", -1, DateValue(reportDate))' in source
-    assert 'oldFactDate = DateAdd("d", -1, DateValue(oldReportDate))' in source
-    assert "correctRow = Month(factDate) + 4" in source
-    assert "wrongRow = Month(reportDate) + 4" in source
-    assert "If wrongRow <> correctRow Then" in source
-    assert "main.Cells(correctRow, 10).Value2 = monthGeneration" in source
+    assert 'oldFactDate = DateAdd("d", -1, DateValue(oldDate))' in source
+    assert "main.Cells(Month(factDate) + 4, 10).Value2 = monthGeneration" in source
 
 
 def test_generation_month_total_resets_on_real_month_boundary() -> None:
-    source = _read("modShiftHelperStationImport.bas")
+    source = _read("modShiftHelperGenProfiles.bas")
 
-    assert "DateValue(oldReportDate) = DateValue(reportDate)" in source
+    assert "DateValue(oldDate) = DateValue(reportDate)" in source
     assert "Year(oldFactDate) = Year(factDate)" in source
     assert "Month(oldFactDate) = Month(factDate)" in source
-    assert "monthGeneration = priorMonthGeneration + daily" in source
+    assert "monthGeneration = monthGeneration + daily" in source
     assert "monthGeneration = daily" in source
-    assert "SH_StoreStationMonthFact wb, stationId, factDate, monthGeneration" in source
+    station = _read("modShiftHelperStationImport.bas")
+    assert "SH_StoreStationMonthFact wb, stationId, factDate" in station
 
 
 def test_cancelled_or_missing_import_cannot_reuse_stale_daily_values() -> None:
-    source = _read("modShiftHelperStationImport.bas")
-
-    assert 'originalDaily = main.Range("C10").Value' in source
-    assert 'originalOwn = main.Range("C16").Value' in source
-    assert 'main.Range("C10").Value2 = -1#' in source
-    assert 'main.Range("C16").Value2 = -1#' in source
-    assert "sentinelApplied = True" in source
-    assert 'main.Range("C10").Value = originalDaily' in source
-    assert 'main.Range("C16").Value = originalOwn' in source
-    assert "If sentinelApplied Then" in source
+    station = _read("modShiftHelperStationImport.bas")
+    assert "If Not SH_ImportGenerationUniversalCore(stationHint) Then GoTo CleanExit" in station
+    assert "SH_StoreStationMonthFact" in station
+    assert station.index("SH_ImportGenerationUniversalCore") < station.index(
+        "SH_StoreStationMonthFact"
+    )
 
 
 def test_completed_month_history_is_not_hard_limited_to_july() -> None:

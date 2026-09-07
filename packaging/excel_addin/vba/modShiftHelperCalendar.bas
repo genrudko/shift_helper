@@ -127,7 +127,7 @@ Private Function SH_PickDateNative(ByVal initialDate As Date, ByRef selectedDate
     Dim ownerHwnd As LongPtr, parentHwnd As LongPtr, calendarHwnd As LongPtr, instanceHwnd As LongPtr
     Dim parentClass As String, calendarClass As String, titleText As String
     Dim width As Long, height As Long, x As Long, y As Long
-    Dim currentDate As Date, mouseDown As Boolean, wasMouseDown As Boolean
+    Dim mouseDown As Boolean, wasMouseDown As Boolean
     Dim errNumber As Long, errDescription As String
 
     controls.dwSize = LenB(controls)
@@ -179,18 +179,10 @@ Private Function SH_PickDateNative(ByVal initialDate As Date, ByRef selectedDate
             If SH_ReadCalendarDate(calendarHwnd, selectedDate) Then SH_PickDateNative = True
             Exit Do
         End If
-        If SH_ReadCalendarDate(calendarHwnd, currentDate) Then
-            If DateValue(currentDate) <> DateValue(initialDate) Then
-                selectedDate = currentDate
-                SH_PickDateNative = True
-                Exit Do
-            End If
-        End If
         mouseDown = (GetAsyncKeyState(SH_VK_LBUTTON) < 0)
         If wasMouseDown And Not mouseDown Then
             If GetCursorPos(point) <> 0 And GetWindowRect(calendarHwnd, parentRect) <> 0 Then
-                If point.x >= parentRect.Left And point.x <= parentRect.Right And _
-                   point.y >= parentRect.Top + 34 And point.y <= parentRect.Bottom - 12 Then
+                If SH_CalendarPointInDayGrid(point, parentRect) Then
                     If SH_ReadCalendarDate(calendarHwnd, selectedDate) Then SH_PickDateNative = True
                     Exit Do
                 End If
@@ -216,6 +208,12 @@ Failed:
     If errNumber = 0 Then errNumber = vbObjectError + 553
     If Len(errDescription) = 0 Then errDescription = "Native calendar failed."
     Err.Raise errNumber, , errDescription
+End Function
+
+Private Function SH_CalendarPointInDayGrid(ByRef point As SH_POINT, ByRef bounds As SH_RECT) As Boolean
+    ' Header/navigation and trailing footer are not valid day-grid acceptance targets.
+    SH_CalendarPointInDayGrid = (point.x >= bounds.Left And point.x <= bounds.Right And _
+        point.y >= bounds.Top + 34 And point.y <= bounds.Bottom - 12)
 End Function
 
 Private Function SH_ReadCalendarDate(ByVal calendarHwnd As LongPtr, ByRef value As Date) As Boolean
@@ -291,18 +289,7 @@ Private Function SH_ReportInputsReady(ByVal wb As Workbook) As Boolean
 End Function
 
 Private Function SH_CalendarTryDate(ByVal value As Variant, ByRef result As Date) As Boolean
-    On Error GoTo Failed
-    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
-    If VarType(value) = vbString Then
-        If Len(Trim$(CStr(value))) = 0 Then Exit Function
-    End If
-    If IsDate(value) Or IsNumeric(value) Then
-        result = CDate(value)
-        SH_CalendarTryDate = True
-    End If
-    Exit Function
-Failed:
-    SH_CalendarTryDate = False
+    SH_CalendarTryDate = SH_TryParseReportDate(value, result)
 End Function
 
 Private Sub SH_DateToSystemTime(ByVal value As Date, ByRef st As SH_SYSTEMTIME)

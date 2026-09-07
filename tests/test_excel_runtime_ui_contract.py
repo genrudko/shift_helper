@@ -172,7 +172,7 @@ def test_quick_input_uses_application_events_and_covers_accepted_journal_columns
     assert "col = 2 Or col = 3 Or col = 9 Or col = 10" in quick
     assert 'If token = "." Then' in quick
     assert 'If token = "!" Then' in quick
-    assert 'Left$(token, 1) = "+"' in quick
+    assert "SH_StrictPositiveIncrement" in quick
     assert "dayOffset" in quick
     assert "Application.EnableEvents = False" in quick
     assert "SaveSetting" in quick
