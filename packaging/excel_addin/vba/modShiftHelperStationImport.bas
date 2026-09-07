@@ -9,6 +9,7 @@ Public Sub SH_ImportStationGenerationSelected()
     Dim priorMonthGeneration As Double, priorMonthOwn As Double
     Dim priorDaily As Double, priorOwn As Double, daily As Double, own As Double
     Dim monthGeneration As Double, monthOwn As Double
+    Dim originalDaily As Variant, originalOwn As Variant, sentinelApplied As Boolean
     Dim correctRow As Long, wrongRow As Long, wrongRowWasEmpty As Boolean
     Dim wrongRowFormula As Variant
     Dim oldPattern As Variant, changed As Boolean
@@ -41,9 +42,34 @@ Public Sub SH_ImportStationGenerationSelected()
         changed = True
     End If
 
+    originalDaily = main.Range("C10").Value
+    originalOwn = main.Range("C16").Value
+    main.Range("C10").Value2 = -1#
+    main.Range("C16").Value2 = -1#
+    sentinelApplied = True
+
     SH_ImportGenerationUniversal
 
-    If changed Then SH_SetMetaValue wb, SH_Label(3), oldPattern
+    Set main = SH_RequireSheet(wb, SH_InputSheetName(1))
+    If SH_StationImportSafeDouble(main.Range("C10").Value2) < 0# Or _
+        SH_StationImportSafeDouble(main.Range("C16").Value2) < 0# Then
+        main.Range("C10").Value = originalDaily
+        main.Range("C16").Value = originalOwn
+        sentinelApplied = False
+        If changed Then
+            SH_SetMetaValue wb, SH_Label(3), oldPattern
+            changed = False
+        End If
+        SH_ApplyCriticalFormulas wb
+        SH_CalculateReportInputs wb
+        Exit Sub
+    End If
+    sentinelApplied = False
+
+    If changed Then
+        SH_SetMetaValue wb, SH_Label(3), oldPattern
+        changed = False
+    End If
     SH_EnsureStationReportContour wb
     Set main = SH_RequireSheet(wb, SH_InputSheetName(1))
 
@@ -83,6 +109,11 @@ Failed:
     errNumber = Err.Number
     errDescription = Err.Description
     On Error Resume Next
+    If sentinelApplied Then
+        If main Is Nothing Then Set main = SH_RequireSheet(wb, SH_InputSheetName(1))
+        main.Range("C10").Value = originalDaily
+        main.Range("C16").Value = originalOwn
+    End If
     If changed Then SH_SetMetaValue wb, SH_Label(3), oldPattern
     On Error GoTo 0
     If Len(errDescription) = 0 Then errDescription = "Station generation import failed."
