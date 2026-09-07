@@ -30,6 +30,19 @@ def test_generation_month_total_resets_on_real_month_boundary() -> None:
     assert "SH_StoreStationMonthFact wb, stationId, factDate, monthGeneration" in source
 
 
+def test_cancelled_or_missing_import_cannot_reuse_stale_daily_values() -> None:
+    source = _read("modShiftHelperStationImport.bas")
+
+    assert 'originalDaily = main.Range("C10").Value' in source
+    assert 'originalOwn = main.Range("C16").Value' in source
+    assert 'main.Range("C10").Value2 = -1#' in source
+    assert 'main.Range("C16").Value2 = -1#' in source
+    assert "sentinelApplied = True" in source
+    assert 'main.Range("C10").Value = originalDaily' in source
+    assert 'main.Range("C16").Value = originalOwn' in source
+    assert "If sentinelApplied Then" in source
+
+
 def test_completed_month_history_is_not_hard_limited_to_july() -> None:
     source = _read("modShiftHelperStationFacts.bas")
 
