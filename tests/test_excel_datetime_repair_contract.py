@@ -41,10 +41,17 @@ def test_previous_scan_is_bounded_upward_and_status_checks_actual_viability() ->
 def test_vba_distinguishes_numeric_compact_dates_and_stored_time_integers() -> None:
     quick = source("modShiftHelperQuickInput.bas")
     compact = 'candidate = Right$("000000" & CStr(CLng(n)), 6)'
-    serial = "If n >= 20000# And n < 80000# Then"
+    serial = "SH_IsPlausibleOperationalDateSerial"
     assert compact in quick and serial in quick
-    assert quick.index(compact) < quick.index(serial)
+    assert quick.index(serial) < quick.index(compact)
     assert "If CDbl(value) = Int(CDbl(value)) Then Exit Function" in quick
+
+
+def test_public_station_generation_delegates_to_selected_station_path() -> None:
+    station = source("modShiftHelperStation.bas")
+    body = station.split("Public Sub SH_ImportStationGeneration()", 1)[1].split("End Sub", 1)[0]
+    assert "SH_ImportStationGenerationSelected" in body
+    assert "SH_ImportGenerationUniversal" not in body
 
 
 def test_calendar_requires_explicit_acceptance_and_station_picker_skips_contour() -> None:

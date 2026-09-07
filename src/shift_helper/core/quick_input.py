@@ -11,6 +11,9 @@ _DATE_FORMATS = ("%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d")
 _TIME_RE = re.compile(r"^(?P<hour>\d{1,2}):(?P<minute>\d{1,2})(?::(?P<second>\d{1,2}))?$")
 _PLUS_RE = re.compile(r"^\+(?P<amount>\d+)$")
 _DIGITS_RE = re.compile(r"^\d+$")
+_EXCEL_DATE_EPOCH = datetime(1899, 12, 30)
+_OPERATIONAL_SERIAL_START = date(1990, 1, 1)
+_OPERATIONAL_SERIAL_FUTURE_YEARS = 10
 
 
 class QuickInputError(ValueError):
@@ -55,6 +58,22 @@ def _strict_date(year: int, month: int, day: int) -> date:
         raise QuickInputError(f"Невозможная дата: {day:02d}.{month:02d}.{year:04d}.") from exc
 
 
+def _plausible_operational_serial_bounds(today: date) -> tuple[int, int]:
+    try:
+        future = today.replace(year=today.year + _OPERATIONAL_SERIAL_FUTURE_YEARS)
+    except ValueError:
+        future = today.replace(year=today.year + _OPERATIONAL_SERIAL_FUTURE_YEARS, day=28)
+    return (
+        (_OPERATIONAL_SERIAL_START - _EXCEL_DATE_EPOCH.date()).days,
+        (future - _EXCEL_DATE_EPOCH.date()).days,
+    )
+
+
+def _is_plausible_operational_excel_serial(numeric: float, today: date) -> bool:
+    lower, upper = _plausible_operational_serial_bounds(today)
+    return numeric.is_integer() and lower <= numeric <= upper
+
+
 def parse_date_input(
     raw: object,
     *,
@@ -70,6 +89,11 @@ def parse_date_input(
 
     if isinstance(raw, (int, float)) and not isinstance(raw, bool):
         numeric = float(raw)
+        # Numeric coercion loses provenance: if a compact DDMMYY integer also falls
+        # inside the operational serial window, it cannot be distinguished from a
+        # real Excel serial. Preserving the serial wins in that ambiguous case.
+        if _is_plausible_operational_excel_serial(numeric, today):
+            return (_EXCEL_DATE_EPOCH + timedelta(days=numeric)).date()
         if numeric.is_integer():
             compact = str(int(numeric)).zfill(6)
             if len(compact) == 6:
@@ -80,7 +104,7 @@ def parse_date_input(
                 except QuickInputError:
                     pass
         if 20_000 <= numeric <= 80_000:
-            return (datetime(1899, 12, 30) + timedelta(days=numeric)).date()
+            return (_EXCEL_DATE_EPOCH + timedelta(days=numeric)).date()
 
     token = _text(raw)
     if not token:
@@ -257,8 +281,6 @@ def accumulate_generation(
         fact_date.year,
         fact_date.month,
     ):
-        return current_month + daily, fact_date
-    if report_date.day == 1:
         return current_month + daily, fact_date
     return daily, fact_date
 

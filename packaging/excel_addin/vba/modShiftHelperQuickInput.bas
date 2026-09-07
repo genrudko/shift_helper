@@ -296,6 +296,13 @@ Private Function SH_TryParseDate(ByVal raw As Variant, ByVal previousDate As Dat
 
     If VarType(raw) <> vbString And IsNumeric(raw) Then
         n = CDbl(raw)
+        ' Numeric coercion loses provenance. A compact DDMMYY integer inside this
+        ' operational window is indistinguishable from a real serial; serial wins.
+        If SH_IsPlausibleOperationalDateSerial(n) Then
+            result = CDate(n)
+            SH_TryParseDate = True
+            Exit Function
+        End If
         If n = Int(n) Then
             candidate = Right$("000000" & CStr(CLng(n)), 6)
             If Len(CStr(CLng(n))) <= 6 Then
@@ -364,6 +371,13 @@ InvalidValue:
     Exit Function
 NeedPrevious:
     errorText = SH_U("0422043E043A0435043D002004420440043504310443043504420020043F044004350434044B043404430449043504350433043E0020043A043E044004400435043A0442043D043E0433043E00200437043D043004470435043D0438044F00200432044B04480435002E")
+End Function
+
+Private Function SH_IsPlausibleOperationalDateSerial(ByVal value As Double) As Boolean
+    If value <> Int(value) Then Exit Function
+    SH_IsPlausibleOperationalDateSerial = _
+        (value >= CDbl(DateSerial(1990, 1, 1)) And _
+         value <= CDbl(DateAdd("yyyy", 10, Date)))
 End Function
 
 Private Function SH_StrictDate(ByVal yearValue As Long, ByVal monthValue As Long, ByVal dayValue As Long, ByRef result As Date) As Boolean

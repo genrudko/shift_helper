@@ -100,6 +100,10 @@ def test_excel_numeric_compact_date_wins_only_when_it_is_a_valid_operator_date()
     assert parse_date_input(46272, previous=None, today=TODAY) == date(2026, 9, 7)
 
 
+def test_plausible_excel_serial_wins_over_ambiguous_compact_numeric_date() -> None:
+    assert parse_date_input(40926, previous=None, today=TODAY) == date(2012, 1, 18)
+
+
 @pytest.mark.parametrize("token", ["+0", "+1.5", "+1e2", "+ 2", "+-2"])
 def test_increment_is_a_strict_positive_integer(token: str) -> None:
     with pytest.raises(QuickInputError):
@@ -144,7 +148,13 @@ def test_combined_time_only_inherits_date_and_increment_rolls_midnight() -> None
 
 
 def test_generation_accumulation_uses_fact_date_and_replaces_same_report_date() -> None:
-    assert accumulate_generation(100, 5, date(2026, 10, 1), None, 0) == (105, date(2026, 9, 30))
+    assert accumulate_generation(100, 5, date(2026, 10, 1), None, 0) == (5, date(2026, 9, 30))
+    assert accumulate_generation(
+        999, 5, date(2026, 10, 1), date(2026, 8, 15), 4
+    ) == (5, date(2026, 9, 30))
+    assert accumulate_generation(
+        100, 5, date(2026, 10, 1), date(2026, 9, 30), 4
+    ) == (105, date(2026, 9, 30))
     assert accumulate_generation(105, 7, date(2026, 10, 1), date(2026, 10, 1), 5) == (
         107,
         date(2026, 9, 30),

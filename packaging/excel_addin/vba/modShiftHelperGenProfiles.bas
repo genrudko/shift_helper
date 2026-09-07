@@ -77,9 +77,6 @@ Public Function SH_ImportGenerationUniversalCore(Optional ByVal stationOverride 
     ElseIf hasOldDate And Year(oldFactDate) = Year(factDate) And Month(oldFactDate) = Month(factDate) Then
         monthGeneration = monthGeneration + daily
         monthOwn = monthOwn + own
-    ElseIf Day(reportDate) = 1 Then
-        monthGeneration = monthGeneration + daily
-        monthOwn = monthOwn + own
     Else
         monthGeneration = daily
         monthOwn = own
