@@ -15,7 +15,10 @@ def source(name: str) -> str:
 
 
 def test_excel_repair_does_not_modify_calc_shared_quick_input() -> None:
-    assert hashlib.sha256(CALC_SHARED_QUICK_INPUT.read_bytes()).hexdigest() == (
+    # Hash normalized text, not checkout-specific CRLF/LF bytes. The contract is
+    # that the Calc-shared source content stays identical to the accepted base.
+    normalized = CALC_SHARED_QUICK_INPUT.read_text(encoding="utf-8").replace("\r\n", "\n")
+    assert hashlib.sha256(normalized.encode("utf-8")).hexdigest() == (
         BASE_CALC_SHARED_QUICK_INPUT_SHA256
     )
 
