@@ -5,6 +5,7 @@ from excel_contract_model import (
     accumulate_generation,
     combined_time,
     excel_numeric_date,
+    stored_excel_time,
     strict_colon_time,
 )
 
@@ -23,6 +24,14 @@ def test_excel_time_model_is_strict_and_preserves_combined_seconds() -> None:
     for token in ("09:30:-1", "09:+30", "09:30.5", "09:3e1", "24:00"):
         with pytest.raises(ValueError):
             strict_colon_time(token)
+
+
+def test_stored_excel_time_accepts_midnight_but_rejects_raw_nonzero_integers() -> None:
+    assert stored_excel_time(0) == time(0, 0)
+    assert stored_excel_time(0.5) == time(12, 0)
+    for raw_value in (1, 930):
+        with pytest.raises(ValueError):
+            stored_excel_time(raw_value)
 
 
 def test_excel_generation_model_resets_adds_and_replaces() -> None:

@@ -29,6 +29,17 @@ def combined_time(previous: datetime, token: str) -> datetime:
     return datetime.combine(previous.date(), strict_colon_time(token))
 
 
+def stored_excel_time(value: float) -> time:
+    """Model which numeric cell values VBA accepts as previously stored times."""
+    if value != 0 and value == int(value):
+        raise ValueError(value)
+    fraction = value - int(value)
+    if not 0 <= fraction < 1:
+        raise ValueError(value)
+    seconds = round(fraction * 24 * 60 * 60)
+    return time(seconds // 3600, seconds % 3600 // 60, seconds % 60)
+
+
 def accumulate_generation(
     current_month: float,
     daily: float,

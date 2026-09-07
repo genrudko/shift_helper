@@ -59,7 +59,10 @@ def test_vba_distinguishes_numeric_compact_dates_and_stored_time_integers() -> N
     serial = "SH_IsPlausibleOperationalDateSerial"
     assert compact in quick and serial in quick
     assert quick.index(serial) < quick.index(compact)
-    assert "If CDbl(value) = Int(CDbl(value)) Then Exit Function" in quick
+    assert (
+        "If CDbl(value) <> 0 And CDbl(value) = Int(CDbl(value)) Then Exit Function"
+        in quick
+    )
 
 
 def test_public_station_generation_delegates_to_selected_station_path() -> None:

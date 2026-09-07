@@ -276,7 +276,7 @@ Private Function SH_ReadTimeCell(ByVal cell As Range, ByRef result As Date) As B
     Dim value As Variant, fraction As Double
     value = cell.Value2
     If IsNumeric(value) Then
-        If CDbl(value) = Int(CDbl(value)) Then Exit Function
+        If CDbl(value) <> 0 And CDbl(value) = Int(CDbl(value)) Then Exit Function
         fraction = CDbl(value) - Int(CDbl(value))
         If fraction >= 0 And fraction < 1 Then
             result = CDate(fraction)
