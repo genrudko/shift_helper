@@ -80,22 +80,42 @@ def test_calendar_requires_explicit_acceptance_and_station_picker_skips_contour(
     station = source("modShiftHelperStation.bas")
     navigation_commit = "If DateValue(currentDate) <> DateValue(initialDate) Then"
     assert navigation_commit not in calendar
-    assert "SH_CalendarPointInDayGrid" in calendar
+    assert "SH_CalendarTryHitDate" in calendar
     body = station.split("Public Sub SH_ShowStationCalendar()", 1)[1].split("End Sub", 1)[0]
     assert "SH_EnsureStationReportContour" not in body
     assert "SH_ShowCalendar" in body
 
 
-def test_calendar_uses_native_date_cell_hit_testing() -> None:
+def test_calendar_uses_compatible_native_date_hit_testing_and_returns_clicked_date() -> None:
     calendar = source("modShiftHelperCalendar.bas")
-    assert "Private Type SH_MCHITTESTINFO" in calendar
+    assert "Private Type SH_MCHITTESTINFO_V1" in calendar
     assert "Private Const SH_MCM_HITTEST As Long = SH_MCM_FIRST + 14" in calendar
     assert "Private Const SH_MCHT_CALENDARDATE As Long = &H20001" in calendar
     assert "ScreenToClient(calendarHwnd, clientPoint)" in calendar
     assert "SendMessageW calendarHwnd, SH_MCM_HITTEST, 0, hitInfo" in calendar
-    assert "hitInfo.uHit = SH_MCHT_CALENDARDATE" in calendar
+    assert "SH_CalendarTryHitDate" in calendar
+    assert "DateSerial(CLng(hitInfo.st.wYear), CLng(hitInfo.st.wMonth), CLng(hitInfo.st.wDay))" in calendar
+    assert "And &HFFFFFF" in calendar
     assert "bounds.Top + 34" not in calendar
     assert "bounds.Bottom - 12" not in calendar
+
+
+def test_calendar_cancel_does_not_run_report_refresh_wrapper() -> None:
+    facts = source("modShiftHelperStationFacts.bas")
+    body = facts.split("Public Sub SH_ShowStationCalendarForRibbon()", 1)[1].split("End Sub", 1)[0]
+    assert "If Not SH_ShowCalendar() Then Exit Sub" in body
+
+
+def test_report_date_parser_accepts_real_vba_date_values_and_reads_value2() -> None:
+    util = source("modShiftHelperUtil.bas")
+    calendar = source("modShiftHelperCalendar.bas")
+    report_date = util.split("Public Function SH_ReportDate", 1)[1].split("End Function", 1)[0]
+    parser = util.split("Public Function SH_TryParseReportDate", 1)[1].split("End Function", 1)[0]
+    assert ".Value2" in report_date
+    assert "If VarType(value) = vbDate Then" in parser
+    assert "DateValue(CDate(value))" in parser
+    show = calendar.split("Public Function SH_ShowCalendar() As Boolean", 1)[1].split("End Function", 1)[0]
+    assert ".Value2" in show
 
 
 def test_colon_time_components_are_strict_and_combined_time_only_keeps_seconds() -> None:

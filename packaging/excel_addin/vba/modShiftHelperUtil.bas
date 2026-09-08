@@ -227,7 +227,7 @@ End Function
 Public Function SH_ReportDate(ByVal wb As Workbook) As Date
     Dim value As Variant, ws As Worksheet, parsed As Date
     Set ws = SH_RequireSheet(wb, SH_PrepSheetName())
-    value = ws.Range(SH_ReportDateCell()).Value
+    value = ws.Range(SH_ReportDateCell()).Value2
     If Not SH_TryParseReportDate(value, parsed) Then Err.Raise vbObjectError + 513, , "Invalid report date in B3."
     SH_ReportDate = parsed
 End Function
@@ -237,6 +237,11 @@ Public Function SH_TryParseReportDate(ByVal value As Variant, ByRef result As Da
     Dim token As String, normalized As String, parts As Variant
     Dim dayValue As Long, monthValue As Long, yearValue As Long, candidate As Date
     If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+    If VarType(value) = vbDate Then
+        result = DateValue(CDate(value))
+        SH_TryParseReportDate = True
+        Exit Function
+    End If
     If VarType(value) <> vbString Then
         If Not IsNumeric(value) Then Exit Function
         If CDbl(value) < 1# Or CDbl(value) >= 2958466# Then Exit Function

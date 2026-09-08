@@ -45,15 +45,11 @@ Private Type SH_SYSTEMTIME
     wMilliseconds As Integer
 End Type
 
-Private Type SH_MCHITTESTINFO
+Private Type SH_MCHITTESTINFO_V1
     cbSize As Long
     pt As SH_POINT
     uHit As Long
     st As SH_SYSTEMTIME
-    rc As SH_RECT
-    iOffset As Long
-    iRow As Long
-    iCol As Long
 End Type
 
 Private Const SH_ICC_DATE_CLASSES As Long = &H100
@@ -75,7 +71,7 @@ Private Const SH_VK_LBUTTON As Long = &H1
 Private Const SH_VK_RETURN As Long = &HD
 Private Const SH_VK_ESCAPE As Long = &H1B
 
-Public Sub SH_ShowCalendar()
+Public Function SH_ShowCalendar() As Boolean
     On Error GoTo Failed
     Dim wb As Workbook, prep As Worksheet, initialDate As Date, selectedDate As Date
     Dim currentValue As Variant, picked As Boolean, stage As String
@@ -85,7 +81,7 @@ Public Sub SH_ShowCalendar()
     Set wb = SH_JournalBook()
     stage = "prepare report settings"
     Set prep = SH_EnsurePrepSheet(wb)
-    currentValue = prep.Range(SH_ReportDateCell()).Value
+    currentValue = prep.Range(SH_ReportDateCell()).Value2
     If SH_CalendarTryDate(currentValue, initialDate) Then
         initialDate = DateValue(initialDate)
     Else
@@ -97,13 +93,14 @@ Public Sub SH_ShowCalendar()
     If picked Then
         stage = "apply selected report date"
         SH_ApplyReportCalendarDate wb, selectedDate
+        SH_ShowCalendar = True
     End If
-    Exit Sub
+    Exit Function
 Failed:
     errNumber = Err.Number
     errDescription = Err.Description
     SH_ShowCalendarError "calendar / " & stage, errNumber, errDescription
-End Sub
+End Function
 
 Public Sub SH_InsertDateIntoSelection()
     On Error GoTo Failed
@@ -113,7 +110,7 @@ Public Sub SH_InsertDateIntoSelection()
     stage = "resolve journal selection"
     Set wb = SH_JournalBook()
     Set target = SH_SelectionRange(wb)
-    If SH_CalendarTryDate(target.Cells(1, 1).Value, initialDate) Then
+    If SH_CalendarTryDate(target.Cells(1, 1).Value2, initialDate) Then
         initialDate = DateValue(initialDate)
     Else
         initialDate = Date
@@ -196,8 +193,8 @@ Private Function SH_PickDateNative(ByVal initialDate As Date, ByRef selectedDate
         mouseDown = (GetAsyncKeyState(SH_VK_LBUTTON) < 0)
         If wasMouseDown And Not mouseDown Then
             If GetCursorPos(point) <> 0 Then
-                If SH_CalendarPointInDayGrid(calendarHwnd, point) Then
-                    If SH_ReadCalendarDate(calendarHwnd, selectedDate) Then SH_PickDateNative = True
+                If SH_CalendarTryHitDate(calendarHwnd, point, selectedDate) Then
+                    SH_PickDateNative = True
                     Exit Do
                 End If
             End If
@@ -224,8 +221,9 @@ Failed:
     Err.Raise errNumber, , errDescription
 End Function
 
-Private Function SH_CalendarPointInDayGrid(ByVal calendarHwnd As LongPtr, ByRef point As SH_POINT) As Boolean
-    Dim clientPoint As SH_POINT, hitInfo As SH_MCHITTESTINFO
+Private Function SH_CalendarTryHitDate(ByVal calendarHwnd As LongPtr, ByRef point As SH_POINT, _
+    ByRef value As Date) As Boolean
+    Dim clientPoint As SH_POINT, hitInfo As SH_MCHITTESTINFO_V1
     If calendarHwnd = 0 Then Exit Function
     clientPoint.x = point.x
     clientPoint.y = point.y
@@ -234,7 +232,13 @@ Private Function SH_CalendarPointInDayGrid(ByVal calendarHwnd As LongPtr, ByRef 
     hitInfo.pt.x = clientPoint.x
     hitInfo.pt.y = clientPoint.y
     SendMessageW calendarHwnd, SH_MCM_HITTEST, 0, hitInfo
-    SH_CalendarPointInDayGrid = (hitInfo.uHit = SH_MCHT_CALENDARDATE)
+    If (hitInfo.uHit And &HFFFFFF) <> SH_MCHT_CALENDARDATE Then Exit Function
+    On Error GoTo InvalidDate
+    value = DateSerial(CLng(hitInfo.st.wYear), CLng(hitInfo.st.wMonth), CLng(hitInfo.st.wDay))
+    SH_CalendarTryHitDate = True
+    Exit Function
+InvalidDate:
+    SH_CalendarTryHitDate = False
 End Function
 
 Private Function SH_ReadCalendarDate(ByVal calendarHwnd As LongPtr, ByRef value As Date) As Boolean

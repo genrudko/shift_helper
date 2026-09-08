@@ -105,7 +105,7 @@ End Sub
 
 Public Sub SH_ShowStationCalendarForRibbon()
     Dim wb As Workbook
-    SH_ShowStationCalendar
+    If Not SH_ShowCalendar() Then Exit Sub
     Set wb = SH_JournalBook()
     SH_ApplyNssForCurrentStation wb
     SH_SyncReportWindow wb
