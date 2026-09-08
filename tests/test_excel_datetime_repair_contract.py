@@ -94,7 +94,11 @@ def test_calendar_uses_compatible_native_date_hit_testing_and_returns_clicked_da
     assert "ScreenToClient(calendarHwnd, clientPoint)" in calendar
     assert "SendMessageW calendarHwnd, SH_MCM_HITTEST, 0, hitInfo" in calendar
     assert "SH_CalendarTryHitDate" in calendar
-    assert "DateSerial(CLng(hitInfo.st.wYear), CLng(hitInfo.st.wMonth), CLng(hitInfo.st.wDay))" in calendar
+    clicked_date = (
+        "DateSerial(CLng(hitInfo.st.wYear), CLng(hitInfo.st.wMonth), "
+        "CLng(hitInfo.st.wDay))"
+    )
+    assert clicked_date in calendar
     assert "And &HFFFFFF" in calendar
     assert "bounds.Top + 34" not in calendar
     assert "bounds.Bottom - 12" not in calendar
@@ -114,7 +118,9 @@ def test_report_date_parser_accepts_real_vba_date_values_and_reads_value2() -> N
     assert ".Value2" in report_date
     assert "If VarType(value) = vbDate Then" in parser
     assert "DateValue(CDate(value))" in parser
-    show = calendar.split("Public Function SH_ShowCalendar() As Boolean", 1)[1].split("End Function", 1)[0]
+    show = calendar.split("Public Function SH_ShowCalendar() As Boolean", 1)[1].split(
+        "End Function", 1
+    )[0]
     assert ".Value2" in show
 
 
