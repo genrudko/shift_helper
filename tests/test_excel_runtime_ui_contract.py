@@ -183,12 +183,12 @@ def test_quick_input_uses_application_events_and_covers_accepted_journal_columns
 def test_sort_matches_accepted_a_to_r_time_contract_and_freezes_formula_columns() -> None:
     journal = _source("modShiftHelperJournal.bas")
     assert 'ws.Range("A" & firstRow & ":R" & lastRow)' in journal
-    assert 'Key:=temp.Range("C1:C" & rowCount)' in journal
+    assert 'Key:=ws.Range("C" & firstRow & ":C" & lastRow)' in journal
     assert "Application.ConvertFormula" in journal
     assert "xlAbsolute" in journal
     assert "Array(11, 14, 15, 16, 17, 18)" in journal
-    assert "xlSheetVeryHidden" in journal
-    assert 'temp.Range("A1:S" & rowCount)' in journal
+    assert 'Set helperRange = ws.Range("S" & firstRow & ":S" & lastRow)' in journal
+    assert 'Set sortRange = ws.Range("A" & firstRow & ":S" & lastRow)' in journal
 
 
 def test_maintenance_text_and_outlook_draft_tools_are_present() -> None:
@@ -222,3 +222,24 @@ def test_selection_tools_cannot_mutate_a_transient_or_foreign_workbook() -> None
 def test_inspection_navigation_reports_missing_sheet_through_shared_guard() -> None:
     shift = _source("modShiftHelperShift.bas")
     assert "Set ws = SH_RequireSheet(wb, SH_InspectionSheetName())" in shift
+
+
+def test_journal_sort_never_creates_or_deletes_a_temporary_worksheet() -> None:
+    journal = _source("modShiftHelperJournal.bas")
+    body = journal.split("Public Sub SH_SortJournalByTime()", 1)[1].split("End Sub", 1)[0]
+    assert "Worksheets.Add" not in body
+    assert ".Delete" not in body
+    assert 'Range("S" & firstRow & ":S" & lastRow)' in body
+    assert '.SortFields.Add Key:=ws.Range("C" & firstRow & ":C" & lastRow)' in body
+    assert ".SortFields.Add Key:=helperRange" in body
+    assert "helperRange.ClearContents" in body
+    assert "Application.EnableEvents = hadEvents" in body
+
+
+def test_report_output_does_not_delete_seed_worksheet() -> None:
+    output = _source("modShiftHelperReportOutput.bas")
+    body = output.split("Public Sub SH_GeneratePreparedReport()", 1)[1].split("End Sub", 1)[0]
+    assert "seed.Delete" not in body
+    assert "Workbooks.Add(xlWBATWorksheet)" not in body
+    assert "source.Copy" in body
+    assert "Set outWb = ActiveWorkbook" in body

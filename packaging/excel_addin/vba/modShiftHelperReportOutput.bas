@@ -4,7 +4,7 @@ Option Explicit
 Public Sub SH_GeneratePreparedReport()
     On Error GoTo Failed
     Dim wb As Workbook, outWb As Workbook, source As Worksheet, target As Worksheet
-    Dim seed As Worksheet, reportDate As Date, offsetHours As Double
+    Dim reportDate As Date, offsetHours As Double
     Dim suggested As String, outputPath As Variant, autoSave As Boolean
     Dim i As Long, stage As String, errNumber As Long, errDescription As String
     Dim oldAlerts As Boolean, alertsCaptured As Boolean
@@ -22,26 +22,22 @@ Public Sub SH_GeneratePreparedReport()
     SH_RefreshEmergencyOutages wb
     SH_CalculateReportInputs wb
 
-    stage = "create output workbook"
-    Set outWb = Workbooks.Add(xlWBATWorksheet)
-    Set seed = outWb.Worksheets(1)
-
     For i = 1 To SH_ReportSheetCount()
         stage = "copy prepared sheet " & CStr(i)
         Set source = SH_RequireSheet(wb, SH_InputSheetName(i))
-        source.Copy After:=outWb.Worksheets(outWb.Worksheets.Count)
-        Set target = outWb.Worksheets(outWb.Worksheets.Count)
+        If i = 1 Then
+            stage = "create output workbook"
+            source.Copy
+            Set outWb = ActiveWorkbook
+            Set target = outWb.Worksheets(1)
+        Else
+            source.Copy After:=outWb.Worksheets(outWb.Worksheets.Count)
+            Set target = outWb.Worksheets(outWb.Worksheets.Count)
+        End If
         target.Name = SH_ReportSheetName(i)
         SH_OutputFreezeFormulas source, target
         If i = 5 Then SH_OutputRemoveWtgServiceColumns target
     Next i
-
-    stage = "remove seed sheet"
-    oldAlerts = Application.DisplayAlerts
-    alertsCaptured = True
-    Application.DisplayAlerts = False
-    seed.Delete
-    Application.DisplayAlerts = oldAlerts
 
     stage = "apply report captions"
     SH_OutputApplyCaptions outWb, reportDate
