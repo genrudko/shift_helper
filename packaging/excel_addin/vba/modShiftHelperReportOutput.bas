@@ -5,7 +5,7 @@ Public Sub SH_GeneratePreparedReport()
     On Error GoTo Failed
     Dim wb As Workbook, outWb As Workbook, source As Worksheet, target As Worksheet
     Dim seed As Worksheet, reportDate As Date, offsetHours As Double
-    Dim outputFolder As String, suggested As String, outputPath As Variant
+    Dim suggested As String, outputPath As Variant, autoSave As Boolean
     Dim i As Long, stage As String, errNumber As Long, errDescription As String
     Dim oldAlerts As Boolean, alertsCaptured As Boolean
 
@@ -13,6 +13,7 @@ Public Sub SH_GeneratePreparedReport()
     Set wb = SH_JournalBook()
 
     stage = "prepare report contour"
+    SH_ApplyNssForCurrentStation wb
     SH_EnsureStationReportContour wb
     reportDate = SH_ReportDate(wb)
     offsetHours = SH_ReportOffset(wb)
@@ -44,6 +45,7 @@ Public Sub SH_GeneratePreparedReport()
 
     stage = "apply report captions"
     SH_OutputApplyCaptions outWb, reportDate
+    SH_OutputApplyNssCaption outWb, wb
 
     stage = "apply output time offset"
     SH_OutputApplyOffset outWb, offsetHours
@@ -54,19 +56,22 @@ Public Sub SH_GeneratePreparedReport()
     stage = "validate output workbook"
     SH_OutputValidate outWb
 
-    outputFolder = wb.Path
-    If Len(outputFolder) = 0 Then outputFolder = Application.DefaultFilePath
-    suggested = outputFolder & Application.PathSeparator & _
-        "Shift-Helper-Report-" & Format$(reportDate, "yyyy-mm-dd") & ".xlsx"
+    stage = "resolve output settings"
+    suggested = SH_ReportSuggestedPath(wb, reportDate)
+    autoSave = SH_ReportAutoSaveEnabled(wb)
 
-    stage = "choose output file"
-    outputPath = Application.GetSaveAsFilename( _
-        suggested, "Excel Workbook (*.xlsx),*.xlsx", , SH_T("SAVE_REPORT") _
-    )
-    If VarType(outputPath) = vbBoolean Then
-        If outputPath = False Then
-            outWb.Close SaveChanges:=False
-            Exit Sub
+    If autoSave Then
+        outputPath = suggested
+    Else
+        stage = "choose output file"
+        outputPath = Application.GetSaveAsFilename( _
+            suggested, "Excel Workbook (*.xlsx),*.xlsx", , SH_T("SAVE_REPORT") _
+        )
+        If VarType(outputPath) = vbBoolean Then
+            If outputPath = False Then
+                outWb.Close SaveChanges:=False
+                Exit Sub
+            End If
         End If
     End If
 
@@ -145,6 +150,24 @@ Private Sub SH_OutputApplyCaptions(ByVal wb As Workbook, ByVal reportDate As Dat
         Set ws = wb.Worksheets(SH_ReportSheetName(i))
         SH_OutputReplaceDateCell ws.Range("B1"), reportDate
     Next i
+End Sub
+
+Private Sub SH_OutputApplyNssCaption(ByVal outputWb As Workbook, ByVal sourceWb As Workbook)
+    Dim stationId As Long, selected As String, marker As String, value As String
+    Dim position As Long, main As Worksheet
+
+    stationId = SH_ReportStationId(sourceWb, False)
+    If stationId <> SH_STATION_KUZ Then Exit Sub
+    selected = SH_NssSelected(sourceWb, stationId)
+    If Len(selected) = 0 Then Exit Sub
+
+    Set main = outputWb.Worksheets(SH_ReportSheetName(1))
+    value = SH_OutputSafeText(main.Range("B1").Value2)
+    marker = SH_U("002E0020041F043E0441043B04350434043D04380435002004380437043C0435043D0435043D0438044F0020")
+    position = InStr(1, value, marker, vbTextCompare)
+    If position = 0 Then Exit Sub
+    main.Range("B1").Value = Left$(value, position - 1) & " (" & selected & ")" & _
+        Mid$(value, position)
 End Sub
 
 Private Sub SH_OutputReplaceDateCell(ByVal target As Range, ByVal value As Date)

@@ -42,7 +42,7 @@ def test_generation_import_uses_hardened_runtime_and_bounded_outlook_scan() -> N
     assert "If receivedDate < cutoff Then Exit For" in generation
     assert "SH_G2TryDate(received, cutoff)" not in generation
     assert "SH_ImportStationGeneration" in ribbon
-    assert "SH_ImportGenerationUniversal" in station
+    assert "SH_ImportStationGenerationSelected" in station
 
 
 def test_generation_search_resolves_real_inbox_and_reports_search_evidence() -> None:

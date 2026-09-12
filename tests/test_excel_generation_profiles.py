@@ -17,7 +17,7 @@ def test_generation_import_supports_both_station_workbook_contracts() -> None:
 
     assert "Public Sub SH_ImportGenerationUniversal" in source
     assert "SH_ImportStationGeneration" in ribbon
-    assert "SH_ImportGenerationUniversal" in station
+    assert "SH_ImportStationGenerationSelected" in station
     assert "SH_ImportGenerationSafe" not in ribbon
 
     # Accepted Kochubeevskaya contract from the legacy macro.

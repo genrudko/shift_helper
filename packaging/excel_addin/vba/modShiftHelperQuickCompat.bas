@@ -6,7 +6,7 @@ Public Function SH_QuickInputEventAllowed(ByVal Sh As Object) As Boolean
     Dim wb As Workbook, fileName As String
 
     If TypeName(Sh) <> "Worksheet" Then Exit Function
-    If Sh.Name <> SH_JournalSheetName() Then Exit Function
+    If Sh.Name <> SH_JournalSheetName() And Not SH_IsReportInputSheet(Sh.Name) Then Exit Function
 
     Set wb = Sh.Parent
     If wb Is Nothing Then Exit Function
@@ -23,4 +23,11 @@ Public Function SH_QuickInputEventAllowed(ByVal Sh As Object) As Boolean
     Exit Function
 Blocked:
     SH_QuickInputEventAllowed = False
+End Function
+
+Private Function SH_IsReportInputSheet(ByVal sheetName As String) As Boolean
+    Dim i As Long
+    For i = 2 To 7
+        If sheetName = SH_InputSheetName(i) Then SH_IsReportInputSheet = True: Exit Function
+    Next i
 End Function

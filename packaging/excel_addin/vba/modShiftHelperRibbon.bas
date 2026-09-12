@@ -24,8 +24,8 @@ Private Function SH_RibbonImageId(ByVal controlId As String) As String
         Case "btnInsertDate", "btnCalendar": SH_RibbonImageId = "CalendarInsert"
         Case "btnTime": SH_RibbonImageId = "InsertTime"
         Case "btnPrepare": SH_RibbonImageId = "TableInsertRowsAbove"
-        Case "btnStation": SH_RibbonImageId = "BuildingBlocksOrganizer"
-        Case "btnGenerate": SH_RibbonImageId = "FileSaveAs"
+        Case "btnStation", "btnNss": SH_RibbonImageId = "BuildingBlocksOrganizer"
+        Case "btnGenerate", "btnReportSaveSettings": SH_RibbonImageId = "FileSaveAs"
         Case "btnGeneration": SH_RibbonImageId = "RefreshAll"
         Case "btnOutlook": SH_RibbonImageId = "Outlook"
         Case "btnMailing": SH_RibbonImageId = "FileSendAsAttachment"
@@ -80,8 +80,24 @@ Public Sub SH_RibbonSetStation(ByVal control As IRibbonControl)
     SH_SelectStationForRibbon CLng(control.Tag)
 End Sub
 
+Public Sub SH_RibbonNssMenu(ByVal control As IRibbonControl, ByRef returnedVal)
+    returnedVal = SH_NssMenuXml()
+End Sub
+
+Public Sub SH_RibbonNssAction(ByVal control As IRibbonControl)
+    SH_NssRibbonAction CStr(control.Tag)
+End Sub
+
 Public Sub SH_RibbonGenerate(ByVal control As IRibbonControl)
     SH_GenerateStationReportForRibbon
+End Sub
+
+Public Sub SH_RibbonReportSaveSettingsMenu(ByVal control As IRibbonControl, ByRef returnedVal)
+    returnedVal = SH_ReportSaveSettingsMenuXml()
+End Sub
+
+Public Sub SH_RibbonReportSaveSetting(ByVal control As IRibbonControl)
+    SH_EditReportSaveSetting CStr(control.Tag)
 End Sub
 
 Public Sub SH_RibbonImportGeneration(ByVal control As IRibbonControl)

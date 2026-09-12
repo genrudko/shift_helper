@@ -158,6 +158,8 @@ Private Sub SH_InitializePrepSheet(ByVal ws As Worksheet)
     ws.Range("B5").NumberFormat = "dd.mm.yyyy hh:mm"
     ws.Range("A6").Value = SH_U("0421043C043504490435043D043804350020043204400435043C0435043D04380020043200200433043E0442043E0432043E043C002004400430043F043E044004420435002C00200447")
     ws.Range("B6").Value = -3
+    ws.Range("A7").Value = SH_U("041D04210421")
+    ws.Range("B7").Value = ""
     ws.Range("E3").Value = SH_U("042004300431043E0447043804390020043604430440043D0430043B")
     ws.Range("F3").Value = SH_U("042D0442043E04420020044404300439043B")
     ws.Range("E4").Value = SH_U("04130435043D04350440043004460438044F")
@@ -223,11 +225,44 @@ Failed:
 End Function
 
 Public Function SH_ReportDate(ByVal wb As Workbook) As Date
-    Dim value As Variant, ws As Worksheet
+    Dim value As Variant, ws As Worksheet, parsed As Date
     Set ws = SH_RequireSheet(wb, SH_PrepSheetName())
-    value = ws.Range(SH_ReportDateCell()).Value
-    If Not IsDate(value) And Not IsNumeric(value) Then Err.Raise vbObjectError + 513, , "Invalid report date in B3."
-    SH_ReportDate = CDate(value)
+    value = ws.Range(SH_ReportDateCell()).Value2
+    If Not SH_TryParseReportDate(value, parsed) Then Err.Raise vbObjectError + 513, , "Invalid report date in B3."
+    SH_ReportDate = parsed
+End Function
+
+Public Function SH_TryParseReportDate(ByVal value As Variant, ByRef result As Date) As Boolean
+    On Error GoTo Failed
+    Dim token As String, normalized As String, parts As Variant
+    Dim dayValue As Long, monthValue As Long, yearValue As Long, candidate As Date
+    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+    If VarType(value) = vbDate Then
+        result = DateValue(CDate(value))
+        SH_TryParseReportDate = True
+        Exit Function
+    End If
+    If VarType(value) <> vbString Then
+        If Not IsNumeric(value) Then Exit Function
+        If CDbl(value) < 1# Or CDbl(value) >= 2958466# Then Exit Function
+        result = CDate(CDbl(value)): SH_TryParseReportDate = True: Exit Function
+    End If
+    token = Trim$(CStr(value))
+    If Len(token) = 0 Then Exit Function
+    normalized = Replace(Replace(token, "/", "."), "-", ".")
+    parts = Split(normalized, ".")
+    If UBound(parts) <> 2 Then Exit Function
+    If Len(parts(0)) = 4 Then
+        yearValue = CLng(parts(0)): monthValue = CLng(parts(1)): dayValue = CLng(parts(2))
+    Else
+        dayValue = CLng(parts(0)): monthValue = CLng(parts(1)): yearValue = CLng(parts(2))
+        If yearValue < 100 Then yearValue = 2000 + yearValue
+    End If
+    candidate = DateSerial(yearValue, monthValue, dayValue)
+    If Year(candidate) <> yearValue Or Month(candidate) <> monthValue Or Day(candidate) <> dayValue Then Exit Function
+    result = candidate
+    SH_TryParseReportDate = True
+Failed:
 End Function
 
 Public Function SH_ReportOffset(ByVal wb As Workbook) As Double

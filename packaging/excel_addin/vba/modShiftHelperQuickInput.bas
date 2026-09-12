@@ -4,6 +4,7 @@ Option Explicit
 Public SH_AppEvents As CShiftHelperAppEvents
 Private mQuickEnabled As Boolean
 Private mQuickGuard As Boolean
+Private Const SH_QUICK_PREVIOUS_LIMIT As Long = 1000
 
 Public Sub SH_InitializeAddin()
     On Error Resume Next
@@ -19,7 +20,16 @@ Public Sub SH_EnableQuickInput()
     SH_InitializeAddin
     mQuickEnabled = True
     SaveSetting "Shift-Helper", "Journal", "QuickInput", "1"
-    MsgBox SH_U("0411044B044104420440044B0439002004320432043E043400200432043A043B044E04470451043D002E"), vbInformation, "Shift-Helper"
+    On Error Resume Next
+    Application.EnableEvents = True
+    On Error GoTo 0
+    If Not Application.EnableEvents Then
+        MsgBox "Quick input is enabled but unavailable: Excel events are off.", vbExclamation, "Shift-Helper"
+    ElseIf TypeName(ActiveSheet) = "Worksheet" And Not SH_QuickInputEventAllowed(ActiveSheet) Then
+        MsgBox "Quick input is enabled globally but unavailable in this legacy workbook.", vbExclamation, "Shift-Helper"
+    Else
+        MsgBox SH_U("0411044B044104420440044B0439002004320432043E043400200432043A043B044E04470451043D002E"), vbInformation, "Shift-Helper"
+    End If
 End Sub
 
 Public Sub SH_DisableQuickInput()
@@ -31,10 +41,15 @@ End Sub
 
 Public Sub SH_ShowQuickInputStatus()
     SH_InitializeAddin
-    If mQuickEnabled Then
+    If mQuickEnabled And Application.EnableEvents And TypeName(ActiveSheet) = "Worksheet" And _
+        SH_QuickInputEventAllowed(ActiveSheet) Then
         MsgBox SH_U("0411044B044104420440044B0439002004320432043E0434003A00200432043A043B044E04470451043D002E"), vbInformation, "Shift-Helper"
-    Else
+    ElseIf Not mQuickEnabled Then
         MsgBox SH_U("0411044B044104420440044B0439002004320432043E0434003A00200432044B043A043B044E04470435043D002E"), vbInformation, "Shift-Helper"
+    ElseIf Not Application.EnableEvents Then
+        MsgBox "Quick input is enabled but unavailable: Excel events are off.", vbExclamation, "Shift-Helper"
+    Else
+        MsgBox "Quick input is enabled globally but unavailable in this legacy workbook.", vbExclamation, "Shift-Helper"
     End If
 End Sub
 
@@ -44,52 +59,50 @@ Public Sub SH_PrepareQuickInputSelection(ByVal Sh As Object, ByVal Target As Ran
     SH_InitializeAddin
     If Not mQuickEnabled Or mQuickGuard Then Exit Sub
     If TypeName(Sh) <> "Worksheet" Then Exit Sub
-    If Sh.Name <> SH_JournalSheetName() Then Exit Sub
     If Target Is Nothing Then Exit Sub
-    If Target.Areas.Count <> 1 Or Target.Columns.Count <> 1 Then Exit Sub
+    If Target.Areas.Count <> 1 Then Exit Sub
     If Target.Cells.CountLarge > 256 Then Exit Sub
-    col = Target.Column
-    If Not SH_IsQuickColumn(col) Then Exit Sub
     For Each cell In Target.Cells
-        If cell.Row > 1 And Len(CStr(cell.Value2)) = 0 And Not cell.HasFormula Then cell.NumberFormat = "@"
+        col = cell.Column
+        If SH_QuickFieldKind(Sh, col) <> 0 Then
+            If cell.Row > 1 And Len(CStr(cell.Value2)) = 0 And Not cell.HasFormula Then cell.NumberFormat = "@"
+        End If
     Next cell
 SafeExit:
 End Sub
 
 Public Sub SH_HandleQuickInputChange(ByVal Sh As Object, ByVal Target As Range)
     On Error GoTo Failed
-    Dim col As Long, previousDate As Date, previousTime As Date, hasPrevious As Boolean
+    Dim col As Long, rowOffset As Long, colOffset As Long, fieldKind As Long
     Dim cell As Range, raw As Variant, parsedDate As Date, parsedTime As Date, dayOffset As Long
+    Dim parsedCombined As Date, previousDate As Date, previousTime As Date, hasPrevious As Boolean
     Dim errorText As String, firstError As String, errorCount As Long
     Dim paired As Range, pairedDate As Date, hadEvents As Boolean
 
     SH_InitializeAddin
     If Not mQuickEnabled Or mQuickGuard Then Exit Sub
     If TypeName(Sh) <> "Worksheet" Then Exit Sub
-    If Sh.Name <> SH_JournalSheetName() Then Exit Sub
     If Target Is Nothing Then Exit Sub
-    If Target.Areas.Count <> 1 Or Target.Columns.Count <> 1 Then Exit Sub
+    If Target.Areas.Count <> 1 Then Exit Sub
     If Target.Cells.CountLarge > 256 Then Exit Sub
-    col = Target.Column
-    If Not SH_IsQuickColumn(col) Then Exit Sub
     If Target.Row <= 1 Then Exit Sub
 
     mQuickGuard = True
     hadEvents = Application.EnableEvents
     Application.EnableEvents = False
 
-    If col = 2 Or col = 9 Then
-        hasPrevious = SH_ReadDateCell(Sh.Cells(Target.Row - 1, col), previousDate)
-    Else
-        hasPrevious = SH_ReadTimeCell(Sh.Cells(Target.Row - 1, col), previousTime)
-    End If
-
-    For Each cell In Target.Cells
+    For rowOffset = 1 To Target.Rows.Count
+      For colOffset = 1 To Target.Columns.Count
+        Set cell = Target.Cells(rowOffset, colOffset)
         If cell.Row <= 1 Then GoTo NextCell
+        col = cell.Column
+        fieldKind = SH_QuickFieldKind(Sh, col)
+        If fieldKind = 0 Then GoTo NextCell
         raw = SH_QuickRawValue(cell)
         If SH_QuickBlank(raw) Then GoTo NextCell
         errorText = ""
-        If col = 2 Or col = 9 Then
+        If fieldKind = 1 Then
+            hasPrevious = SH_FindPreviousDate(Sh, cell.Row - 1, col, previousDate)
             If SH_TryParseDate(raw, previousDate, hasPrevious, parsedDate, errorText) Then
                 cell.Value2 = CDbl(parsedDate)
                 cell.NumberFormat = "dd.mm.yyyy"
@@ -99,7 +112,8 @@ Public Sub SH_HandleQuickInputChange(ByVal Sh As Object, ByVal Target As Range)
                 SH_KeepInvalidToken cell, raw
                 SH_RecordQuickError firstError, errorCount, cell.Address(False, False), errorText
             End If
-        Else
+        ElseIf fieldKind = 2 Then
+            hasPrevious = SH_FindPreviousTime(Sh, cell.Row - 1, col, previousTime)
             dayOffset = 0
             If SH_TryParseTime(raw, previousTime, hasPrevious, parsedTime, dayOffset, errorText) Then
                 cell.Value2 = CDbl(parsedTime) - Int(CDbl(parsedTime))
@@ -120,9 +134,23 @@ Public Sub SH_HandleQuickInputChange(ByVal Sh As Object, ByVal Target As Range)
                 SH_KeepInvalidToken cell, raw
                 SH_RecordQuickError firstError, errorCount, cell.Address(False, False), errorText
             End If
+        Else
+            hasPrevious = SH_FindPreviousCombined(Sh, cell.Row - 1, col, parsedCombined)
+            If SH_TryParseCombined(raw, parsedCombined, hasPrevious, parsedCombined, errorText) Then
+                cell.Value2 = CDbl(parsedCombined)
+                If SH_QuickCombinedNeedsSeconds(Sh, col) Then
+                    cell.NumberFormat = "dd.mm.yyyy hh:mm:ss"
+                Else
+                    cell.NumberFormat = "dd.mm.yyyy hh:mm"
+                End If
+            Else
+                SH_KeepInvalidToken cell, raw
+                SH_RecordQuickError firstError, errorCount, cell.Address(False, False), errorText
+            End If
         End If
 NextCell:
-    Next cell
+      Next colOffset
+    Next rowOffset
 
 SafeExit:
     On Error Resume Next
@@ -143,6 +171,60 @@ End Sub
 
 Private Function SH_IsQuickColumn(ByVal col As Long) As Boolean
     SH_IsQuickColumn = (col = 2 Or col = 3 Or col = 9 Or col = 10)
+End Function
+
+Private Function SH_QuickFieldKind(ByVal Sh As Object, ByVal col As Long) As Long
+    Dim columns As Variant, item As Variant
+    If Sh.Name = SH_JournalSheetName() Then
+        If col = 2 Or col = 9 Then SH_QuickFieldKind = 1
+        If col = 3 Or col = 10 Then SH_QuickFieldKind = 2
+        Exit Function
+    End If
+    columns = SH_QuickCombinedColumns(Sh.Name)
+    If IsEmpty(columns) Then Exit Function
+    For Each item In columns
+        If col = CLng(item) Then SH_QuickFieldKind = 3: Exit Function
+    Next item
+End Function
+
+Private Function SH_QuickCombinedColumns(ByVal sheetName As String) As Variant
+    Select Case sheetName
+        Case SH_InputSheetName(2): SH_QuickCombinedColumns = Array(3, 6)
+        Case SH_InputSheetName(3): SH_QuickCombinedColumns = Array(5, 6)
+        Case SH_InputSheetName(4): SH_QuickCombinedColumns = Array(4)
+        Case SH_InputSheetName(5): SH_QuickCombinedColumns = Array(10, 11)
+        Case SH_InputSheetName(6): SH_QuickCombinedColumns = Array(9, 10)
+        Case SH_InputSheetName(7): SH_QuickCombinedColumns = Array(3, 10)
+        Case Else: SH_QuickCombinedColumns = Empty
+    End Select
+End Function
+
+Private Function SH_QuickCombinedNeedsSeconds(ByVal Sh As Object, ByVal col As Long) As Boolean
+    SH_QuickCombinedNeedsSeconds = (Sh.Name = SH_InputSheetName(5) And (col = 10 Or col = 11))
+End Function
+
+Private Function SH_FindPreviousDate(ByVal Sh As Object, ByVal startRow As Long, ByVal col As Long, ByRef result As Date) As Boolean
+    Dim scanRow As Long
+    For scanRow = startRow To Application.Max(2, startRow - SH_QUICK_PREVIOUS_LIMIT) Step -1
+        If SH_ReadDateCell(Sh.Cells(scanRow, col), result) Then SH_FindPreviousDate = True: Exit Function
+    Next scanRow
+End Function
+
+Private Function SH_FindPreviousTime(ByVal Sh As Object, ByVal startRow As Long, ByVal col As Long, ByRef result As Date) As Boolean
+    Dim scanRow As Long
+    For scanRow = startRow To Application.Max(2, startRow - SH_QUICK_PREVIOUS_LIMIT) Step -1
+        If SH_ReadTimeCell(Sh.Cells(scanRow, col), result) Then SH_FindPreviousTime = True: Exit Function
+    Next scanRow
+End Function
+
+Private Function SH_FindPreviousCombined(ByVal Sh As Object, ByVal startRow As Long, ByVal col As Long, ByRef result As Date) As Boolean
+    Dim scanRow As Long, value As Variant
+    For scanRow = startRow To Application.Max(2, startRow - SH_QUICK_PREVIOUS_LIMIT) Step -1
+        value = Sh.Cells(scanRow, col).Value2
+        If IsNumeric(value) And CDbl(value) >= 20000# And CDbl(value) < 80000# Then
+            result = CDate(CDbl(value)): SH_FindPreviousCombined = True: Exit Function
+        End If
+    Next scanRow
 End Function
 
 Private Function SH_QuickRawValue(ByVal cell As Range) As Variant
@@ -194,6 +276,7 @@ Private Function SH_ReadTimeCell(ByVal cell As Range, ByRef result As Date) As B
     Dim value As Variant, fraction As Double
     value = cell.Value2
     If IsNumeric(value) Then
+        If CDbl(value) <> 0 And CDbl(value) = Int(CDbl(value)) Then Exit Function
         fraction = CDbl(value) - Int(CDbl(value))
         If fraction >= 0 And fraction < 1 Then
             result = CDate(fraction)
@@ -208,12 +291,26 @@ End Function
 
 Private Function SH_TryParseDate(ByVal raw As Variant, ByVal previousDate As Date, ByVal hasPrevious As Boolean, ByRef result As Date, ByRef errorText As String) As Boolean
     On Error GoTo InvalidValue
-    Dim token As String, normalized As String, parts As Variant, n As Double
+    Dim token As String, normalized As String, parts As Variant, n As Double, candidate As String
     Dim dayValue As Long, monthValue As Long, yearValue As Long, amount As Long
 
     If VarType(raw) <> vbString And IsNumeric(raw) Then
         n = CDbl(raw)
-        If n > 10000 Then
+        ' Numeric coercion loses provenance. A compact DDMMYY integer inside this
+        ' operational window is indistinguishable from a real serial; serial wins.
+        If SH_IsPlausibleOperationalDateSerial(n) Then
+            result = CDate(n)
+            SH_TryParseDate = True
+            Exit Function
+        End If
+        If n = Int(n) Then
+            candidate = Right$("000000" & CStr(CLng(n)), 6)
+            If Len(CStr(CLng(n))) <= 6 Then
+                If SH_StrictDate(2000 + CLng(Right$(candidate, 2)), CLng(Mid$(candidate, 3, 2)), _
+                    CLng(Left$(candidate, 2)), result) Then SH_TryParseDate = True: Exit Function
+            End If
+        End If
+        If n >= 20000# And n < 80000# Then
             result = CDate(n)
             SH_TryParseDate = True
             Exit Function
@@ -234,9 +331,8 @@ Private Function SH_TryParseDate(ByVal raw As Variant, ByVal previousDate As Dat
         SH_TryParseDate = True
         Exit Function
     End If
-    If Left$(token, 1) = "+" And Len(token) > 1 And IsNumeric(Mid$(token, 2)) Then
+    If SH_StrictPositiveIncrement(token, amount) Then
         If Not hasPrevious Then GoTo NeedPrevious
-        amount = CLng(Mid$(token, 2))
         result = DateAdd("d", amount, previousDate)
         SH_TryParseDate = True
         Exit Function
@@ -277,6 +373,13 @@ NeedPrevious:
     errorText = SH_U("0422043E043A0435043D002004420440043504310443043504420020043F044004350434044B043404430449043504350433043E0020043A043E044004400435043A0442043D043E0433043E00200437043D043004470435043D0438044F00200432044B04480435002E")
 End Function
 
+Private Function SH_IsPlausibleOperationalDateSerial(ByVal value As Double) As Boolean
+    If value <> Int(value) Then Exit Function
+    SH_IsPlausibleOperationalDateSerial = _
+        (value >= CDbl(DateSerial(1990, 1, 1)) And _
+         value <= CDbl(DateAdd("yyyy", 10, Date)))
+End Function
+
 Private Function SH_StrictDate(ByVal yearValue As Long, ByVal monthValue As Long, ByVal dayValue As Long, ByRef result As Date) As Boolean
     On Error GoTo InvalidValue
     result = DateSerial(yearValue, monthValue, dayValue)
@@ -287,7 +390,7 @@ End Function
 Private Function SH_TryParseTime(ByVal raw As Variant, ByVal previousTime As Date, ByVal hasPrevious As Boolean, ByRef result As Date, ByRef dayOffset As Long, ByRef errorText As String) As Boolean
     On Error GoTo InvalidValue
     Dim token As String, parts As Variant, n As Double, total As Long
-    Dim hourValue As Long, minuteValue As Long, amount As Long
+    Dim hourValue As Long, minuteValue As Long, secondValue As Long, amount As Long
 
     dayOffset = 0
     If VarType(raw) <> vbString And IsNumeric(raw) Then
@@ -313,9 +416,8 @@ Private Function SH_TryParseTime(ByVal raw As Variant, ByVal previousTime As Dat
         SH_TryParseTime = True
         Exit Function
     End If
-    If Left$(token, 1) = "+" And Len(token) > 1 And IsNumeric(Mid$(token, 2)) Then
+    If SH_StrictPositiveIncrement(token, amount) Then
         If Not hasPrevious Then GoTo NeedPrevious
-        amount = CLng(Mid$(token, 2))
         total = Hour(previousTime) * 60 + Minute(previousTime) + amount
         dayOffset = total \ 1440
         total = total Mod 1440
@@ -326,8 +428,14 @@ Private Function SH_TryParseTime(ByVal raw As Variant, ByVal previousTime As Dat
     If InStr(token, ":") > 0 Then
         parts = Split(token, ":")
         If UBound(parts) < 1 Or UBound(parts) > 2 Then GoTo InvalidValue
+        If Not SH_IsDigits(CStr(parts(0))) Then GoTo InvalidValue
+        If Not SH_IsDigits(CStr(parts(1))) Then GoTo InvalidValue
         hourValue = CLng(parts(0)): minuteValue = CLng(parts(1))
-        If UBound(parts) = 2 Then If CLng(parts(2)) > 59 Then GoTo InvalidValue
+        If UBound(parts) = 2 Then
+            If Not SH_IsDigits(CStr(parts(2))) Then GoTo InvalidValue
+            secondValue = CLng(parts(2))
+            If secondValue < 0 Or secondValue > 59 Then GoTo InvalidValue
+        End If
     Else
         If Not IsNumeric(token) Then GoTo InvalidValue
         Select Case Len(token)
@@ -342,7 +450,7 @@ Private Function SH_TryParseTime(ByVal raw As Variant, ByVal previousTime As Dat
         End Select
     End If
     If hourValue < 0 Or hourValue > 23 Or minuteValue < 0 Or minuteValue > 59 Then GoTo InvalidValue
-    result = TimeSerial(hourValue, minuteValue, 0)
+    result = TimeSerial(hourValue, minuteValue, secondValue)
     SH_TryParseTime = True
     Exit Function
 InvalidValue:
@@ -350,4 +458,72 @@ InvalidValue:
     Exit Function
 NeedPrevious:
     errorText = SH_U("0422043E043A0435043D002004420440043504310443043504420020043F044004350434044B043404430449043504350433043E0020043A043E044004400435043A0442043D043E0433043E00200437043D043004470435043D0438044F00200432044B04480435002E")
+End Function
+
+Private Function SH_IsDigits(ByVal token As String) As Boolean
+    Dim i As Long, ch As String
+    If Len(token) = 0 Then Exit Function
+    For i = 1 To Len(token)
+        ch = Mid$(token, i, 1)
+        If ch < "0" Or ch > "9" Then Exit Function
+    Next i
+    SH_IsDigits = True
+End Function
+
+Private Function SH_StrictPositiveIncrement(ByVal token As String, ByRef amount As Long) As Boolean
+    Dim i As Long, ch As String
+    If Len(token) < 2 Or Left$(token, 1) <> "+" Then Exit Function
+    For i = 2 To Len(token)
+        ch = Mid$(token, i, 1)
+        If ch < "0" Or ch > "9" Then Exit Function
+    Next i
+    On Error GoTo InvalidValue
+    amount = CLng(Mid$(token, 2))
+    SH_StrictPositiveIncrement = (amount > 0)
+InvalidValue:
+End Function
+
+Private Function SH_TryParseCombined(ByVal raw As Variant, ByVal previousValue As Date, _
+    ByVal hasPrevious As Boolean, ByRef result As Date, ByRef errorText As String) As Boolean
+    On Error GoTo InvalidValue
+    Dim token As String, pieces As Variant, parsedDate As Date, parsedTime As Date
+    Dim ignoredOffset As Long, amount As Long, hasSeconds As Boolean
+    If VarType(raw) <> vbString And IsNumeric(raw) Then
+        If CDbl(raw) >= 20000# And CDbl(raw) < 80000# Then
+            result = CDate(CDbl(raw)): SH_TryParseCombined = True: Exit Function
+        End If
+    End If
+    token = Trim$(CStr(raw))
+    If token = "!" Then result = Now: SH_TryParseCombined = True: Exit Function
+    If token = "." Then
+        If Not hasPrevious Then GoTo NeedPrevious
+        result = previousValue: SH_TryParseCombined = True: Exit Function
+    End If
+    If SH_StrictPositiveIncrement(token, amount) Then
+        If Not hasPrevious Then GoTo NeedPrevious
+        result = DateAdd("n", amount, previousValue): SH_TryParseCombined = True: Exit Function
+    End If
+    pieces = Split(token, " ")
+    If UBound(pieces) = 0 Then
+        If Not hasPrevious Then GoTo NeedPrevious
+        If SH_TryParseTime(pieces(0), 0, False, parsedTime, ignoredOffset, errorText) Then
+            result = DateValue(previousValue) + TimeValue(parsedTime)
+            SH_TryParseCombined = True
+            Exit Function
+        End If
+        GoTo InvalidValue
+    End If
+    If UBound(pieces) <> 1 Then GoTo InvalidValue
+    If Not SH_TryParseDate(pieces(0), 0, False, parsedDate, errorText) Then GoTo InvalidValue
+    If Not SH_TryParseTime(pieces(1), 0, False, parsedTime, ignoredOffset, errorText) Then GoTo InvalidValue
+    hasSeconds = (Len(pieces(1)) - Len(Replace(pieces(1), ":", "")) = 2)
+    If hasSeconds Then parsedTime = TimeSerial(Hour(parsedTime), Minute(parsedTime), CLng(Split(pieces(1), ":")(2)))
+    result = DateValue(parsedDate) + TimeValue(parsedTime)
+    SH_TryParseCombined = True
+    Exit Function
+InvalidValue:
+    errorText = "Invalid combined date/time."
+    Exit Function
+NeedPrevious:
+    errorText = "A previous valid combined date/time is required."
 End Function
