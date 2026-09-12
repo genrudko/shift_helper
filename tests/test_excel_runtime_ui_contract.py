@@ -236,10 +236,10 @@ def test_journal_sort_never_creates_or_deletes_a_temporary_worksheet() -> None:
     assert "Application.EnableEvents = hadEvents" in body
 
 
-def test_report_output_does_not_delete_seed_worksheet() -> None:
+def test_report_output_uses_seed_workbook_copy_path() -> None:
     output = _source("modShiftHelperReportOutput.bas")
     body = output.split("Public Sub SH_GeneratePreparedReport()", 1)[1].split("End Sub", 1)[0]
-    assert "seed.Delete" not in body
-    assert "Workbooks.Add(xlWBATWorksheet)" not in body
-    assert "source.Copy" in body
-    assert "Set outWb = ActiveWorkbook" in body
+    assert "Set outWb = Workbooks.Add(xlWBATWorksheet)" in body
+    assert "Set seed = outWb.Worksheets(1)" in body
+    assert "source.Copy After:=outWb.Worksheets(outWb.Worksheets.Count)" in body
+    assert "seed.Delete" in body
