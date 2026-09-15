@@ -1,6 +1,17 @@
 Attribute VB_Name = "modShiftHelperQuickCompat"
 Option Explicit
 
+Public Function SH_IsShiftHelperWorkbook(ByVal wb As Workbook) As Boolean
+    On Error GoTo Blocked
+    If wb Is Nothing Then Exit Function
+    If wb Is ThisWorkbook Then Exit Function
+    If Not SH_HasSheet(wb, SH_JournalSheetName()) Then Exit Function
+    SH_IsShiftHelperWorkbook = True
+    Exit Function
+Blocked:
+    SH_IsShiftHelperWorkbook = False
+End Function
+
 Public Function SH_QuickInputEventAllowed(ByVal Sh As Object) As Boolean
     On Error GoTo Blocked
     Dim wb As Workbook, fileName As String
@@ -9,7 +20,7 @@ Public Function SH_QuickInputEventAllowed(ByVal Sh As Object) As Boolean
     If Sh.Name <> SH_JournalSheetName() And Not SH_IsReportInputSheet(Sh.Name) Then Exit Function
 
     Set wb = Sh.Parent
-    If wb Is Nothing Then Exit Function
+    If Not SH_IsShiftHelperWorkbook(wb) Then Exit Function
     fileName = LCase$(Trim$(wb.Name))
 
     ' Legacy macro-enabled workbooks can already own Worksheet_Change/Workbook events.
