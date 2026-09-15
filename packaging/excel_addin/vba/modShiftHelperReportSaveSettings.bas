@@ -60,9 +60,9 @@ Public Function SH_ReportSaveSettingsMenuXml() As String
     folderPath = SH_ReportSaveFolder(wb)
     filenameTemplate = SH_ReportFilenameTemplate(wb)
     If SH_ReportAutoSaveEnabled(wb) Then
-        autoLabel = SH_U("041004320442043E0441043E044504400430043D0435043D04380435003A00200412041A041B")
+        autoLabel = SH_U("0411043504370020043404380430043B043E0433043000200441043E044504400430043D0435043D0438044F003A00200412041A041B")
     Else
-        autoLabel = SH_U("041004320442043E0441043E044504400430043D0435043D04380435003A00200412042B041A041B")
+        autoLabel = SH_U("0411043504370020043404380430043B043E0433043000200441043E044504400430043D0435043D0438044F003A00200412042B041A041B")
     End If
 
     SH_ReportSaveSettingsMenuXml = _
@@ -97,7 +97,9 @@ Fallback:
         "<button id=""reportSaveNameEdit"" label=""" & _
             SH_U("04180437043C0435043D04380442044C0020044804300431043B043E043D00200438043C0435043D0438002E002E002E") & _
             """ tag=""name"" onAction=""SH_RibbonReportSaveSetting""/>" & _
-        "<button id=""reportAutoSaveToggle"" label=""Auto save"" tag=""auto"" onAction=""SH_RibbonReportSaveSetting""/>" & _
+        "<button id=""reportAutoSaveToggle"" label=""" & _
+            SH_U("0411043504370020043404380430043B043E0433043000200441043E044504400430043D0435043D0438044F") & _
+            """ tag=""auto"" onAction=""SH_RibbonReportSaveSetting""/>" & _
         "</menu>"
 End Function
 
@@ -193,6 +195,40 @@ Failed:
     MsgBox Err.Description, vbExclamation, "Shift-Helper"
 End Sub
 
+Private Function SH_EnsureReportAutoSaveFolder(ByVal wb As Workbook) As Boolean
+    On Error GoTo Failed
+    Dim configured As String, selectedPath As String, initialPath As String
+    Dim picker As FileDialog
+    configured = Trim$(CStr(SH_MetaValue(wb, SH_REPORT_FOLDER_KEY, "")))
+    If Len(configured) > 0 Then
+        If SH_ReportFolderExists(configured) Then
+            SH_EnsureReportAutoSaveFolder = True
+            Exit Function
+        End If
+    End If
+    If Len(wb.Path) > 0 Then
+        initialPath = wb.Path
+    Else
+        initialPath = Application.DefaultFilePath
+    End If
+    Set picker = Application.FileDialog(msoFileDialogFolderPicker)
+    With picker
+        .Title = SH_U("0412044B0431043504400438044204350020043F0430043F043A044300200434043B044F0020043004320442043E043C043004420438044704350441043A043E0433043E00200441043E044504400430043D0435043D0438044F002004400430043F043E04400442043E043200200431043504370020043404380430043B043E04330430002E")
+        .AllowMultiSelect = False
+        If Len(initialPath) > 0 Then .InitialFileName = initialPath
+        If .Show <> -1 Then Exit Function
+        selectedPath = CStr(.SelectedItems(1))
+    End With
+    If Not SH_ReportFolderExists(selectedPath) Then
+        Err.Raise vbObjectError + 754, , "Selected report output folder does not exist."
+    End If
+    SH_SetMetaValue wb, SH_REPORT_FOLDER_KEY, selectedPath
+    SH_EnsureReportAutoSaveFolder = True
+    Exit Function
+Failed:
+    Err.Raise Err.Number, , "Could not select automatic report output folder: " & Err.Description
+End Function
+
 Private Sub SH_ToggleReportAutoSave()
     On Error GoTo Failed
     Dim wb As Workbook, enabled As Boolean, answer As VbMsgBoxResult
@@ -205,6 +241,7 @@ Private Sub SH_ToggleReportAutoSave()
             vbQuestion + vbYesNo + vbDefaultButton2, _
             SH_U("041004320442043E0441043E044504400430043D0435043D0438043500200443044204400435043D043D04350433043E002004400430043F043E044004420430"))
         If answer <> vbYes Then Exit Sub
+        If Not SH_EnsureReportAutoSaveFolder(wb) Then Exit Sub
         SH_SetMetaValue wb, SH_REPORT_AUTOSAVE_KEY, "1"
         MsgBox SH_U("041004320442043E0441043E044504400430043D0435043D0438043500200432043A043B044E04470435043D043E002E"), _
             vbInformation, "Shift-Helper"

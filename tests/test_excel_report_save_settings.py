@@ -55,3 +55,21 @@ def test_generated_report_switches_between_auto_save_and_native_save_dialog() ->
 def test_report_save_settings_vba_remains_ascii_safe() -> None:
     raw = (VBA_DIR / "modShiftHelperReportSaveSettings.bas").read_bytes()
     raw.decode("ascii")
+
+
+def test_no_dialog_save_mode_requires_or_prompts_for_selected_folder() -> None:
+    settings = _read("modShiftHelperReportSaveSettings.bas")
+    assert "Private Function SH_EnsureReportAutoSaveFolder" in settings
+    assert "msoFileDialogFolderPicker" in settings
+    assert "SH_SetMetaValue wb, SH_REPORT_FOLDER_KEY, selectedPath" in settings
+    toggle = settings.split("Private Sub SH_ToggleReportAutoSave()", 1)[1].split("End Sub", 1)[0]
+    assert "If Not SH_EnsureReportAutoSaveFolder(wb) Then Exit Sub" in toggle
+
+
+def test_save_menu_calls_no_dialog_mode_explicitly() -> None:
+    settings = _read("modShiftHelperReportSaveSettings.bas")
+    marker = (
+        "0411043504370020043404380430043B043E043304300020"
+        "0441043E044504400430043D0435043D0438044F"
+    )
+    assert marker in settings

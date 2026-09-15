@@ -122,3 +122,36 @@ def test_live_repair_preserves_shared_journal_boundary() -> None:
     assert "VBProject" not in combined
     assert "ActiveX" not in combined
     assert "SaveAs Filename:=wb." not in combined
+
+
+def test_report_generation_suspends_excel_events_for_entire_ribbon_flow() -> None:
+    station = _source("modShiftHelperStationFacts.bas")
+    body = station.split("Public Sub SH_GenerateStationReportForRibbon()", 1)[1]
+    body = body.split("End Sub", 1)[0]
+    assert "hadEvents = Application.EnableEvents" in body
+    assert "Application.EnableEvents = False" in body
+    assert body.index("Application.EnableEvents = False") < body.index(
+        "SH_ApplyNssForCurrentStation wb"
+    )
+    assert "Application.EnableEvents = hadEvents" in body
+    assert "On Error GoTo Failed" in body
+
+
+def test_prepared_report_export_also_suspends_events_when_called_directly() -> None:
+    output = _source("modShiftHelperReportOutput.bas")
+    body = output.split("Public Sub SH_GeneratePreparedReport()", 1)[1]
+    body = body.split("End Sub", 1)[0]
+    assert "oldEvents = Application.EnableEvents" in body
+    assert "Application.EnableEvents = False" in body
+    assert body.index("Application.EnableEvents = False") < body.index(
+        "SH_RefreshEmergencyOutages wb"
+    )
+    assert "Application.EnableEvents = oldEvents" in body
+
+
+def test_report_output_validation_rejects_excel_error_values() -> None:
+    output = _source("modShiftHelperReportOutput.bas")
+    validate = output.split("Private Sub SH_OutputValidate", 1)[1]
+    assert "xlCellTypeConstants, xlErrors" in validate
+    assert "Output report contains an Excel error" in validate
+    assert ".Address(False, False)" in validate

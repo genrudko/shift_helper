@@ -8,6 +8,12 @@ Public Sub SH_GeneratePreparedReport()
     Dim suggested As String, outputPath As Variant, autoSave As Boolean
     Dim i As Long, stage As String, errNumber As Long, errDescription As String
     Dim oldAlerts As Boolean, alertsCaptured As Boolean
+    Dim oldEvents As Boolean, eventsCaptured As Boolean
+
+    stage = "capture Excel events"
+    oldEvents = Application.EnableEvents
+    eventsCaptured = True
+    Application.EnableEvents = False
 
     stage = "resolve journal workbook"
     Set wb = SH_JournalBook()
@@ -64,6 +70,7 @@ Public Sub SH_GeneratePreparedReport()
         If VarType(outputPath) = vbBoolean Then
             If outputPath = False Then
                 outWb.Close SaveChanges:=False
+                Application.EnableEvents = oldEvents
                 Exit Sub
             End If
         End If
@@ -80,6 +87,7 @@ Public Sub SH_GeneratePreparedReport()
     stage = "register generated report"
     SH_RegisterGeneratedReport wb, CStr(outputPath)
 
+    Application.EnableEvents = oldEvents
     MsgBox SH_T("OK_REPORT") & CStr(outputPath), vbInformation, "Shift-Helper"
     Exit Sub
 Failed:
@@ -87,6 +95,7 @@ Failed:
     errDescription = Err.Description
     On Error Resume Next
     If alertsCaptured Then Application.DisplayAlerts = oldAlerts
+    If eventsCaptured Then Application.EnableEvents = oldEvents
     If Not outWb Is Nothing Then outWb.Close SaveChanges:=False
     On Error GoTo 0
     If errNumber = 0 Then errNumber = vbObjectError + 640
@@ -255,13 +264,23 @@ Private Sub SH_OutputBreakLinks(ByVal wb As Workbook)
 End Sub
 
 Private Sub SH_OutputValidate(ByVal wb As Workbook)
-    Dim i As Long, wtg As Worksheet
+    Dim i As Long, wtg As Worksheet, ws As Worksheet, errorCells As Range
     If wb.Worksheets.Count <> SH_ReportSheetCount() Then
         Err.Raise vbObjectError + 641, , "Output report must contain exactly seven worksheets."
     End If
     For i = 1 To SH_ReportSheetCount()
         If wb.Worksheets(i).Name <> SH_ReportSheetName(i) Then
             Err.Raise vbObjectError + 642, , "Output report worksheet order mismatch."
+        End If
+        Set ws = wb.Worksheets(i)
+        Set errorCells = Nothing
+        On Error Resume Next
+        Set errorCells = ws.UsedRange.SpecialCells(xlCellTypeConstants, xlErrors)
+        On Error GoTo 0
+        If Not errorCells Is Nothing Then
+            Err.Raise vbObjectError + 644, , _
+                "Output report contains an Excel error on sheet '" & ws.Name & _
+                "' at " & errorCells.Cells(1, 1).Address(False, False) & "."
         End If
     Next i
 

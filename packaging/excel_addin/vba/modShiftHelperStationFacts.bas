@@ -114,14 +114,39 @@ Public Sub SH_ShowStationCalendarForRibbon()
 End Sub
 
 Public Sub SH_GenerateStationReportForRibbon()
-    Dim wb As Workbook
+    On Error GoTo Failed
+    Dim wb As Workbook, hadEvents As Boolean, eventsCaptured As Boolean
+    Dim stage As String, errNumber As Long, errDescription As String
+    stage = "capture Excel events"
+    hadEvents = Application.EnableEvents
+    eventsCaptured = True
+    Application.EnableEvents = False
+    stage = "resolve journal workbook"
     Set wb = SH_JournalBook()
+    stage = "apply NSS"
     SH_ApplyNssForCurrentStation wb
+    stage = "sync report window"
     SH_SyncReportWindow wb
+    stage = "ensure station report contour"
     SH_EnsureStationReportContour wb
+    stage = "apply historical facts"
     SH_ApplyStationHistoricalFacts wb
+    stage = "calculate report inputs"
     SH_CalculateReportInputs wb
+    stage = "generate prepared report"
     SH_GeneratePreparedReport
+    Application.EnableEvents = hadEvents
+    Exit Sub
+Failed:
+    errNumber = Err.Number
+    errDescription = Err.Description
+    On Error Resume Next
+    If eventsCaptured Then Application.EnableEvents = hadEvents
+    On Error GoTo 0
+    If errNumber = 0 Then errNumber = vbObjectError + 733
+    If Len(errDescription) = 0 Then errDescription = "Station report generation failed."
+    MsgBox SH_T("ERR_REPORT") & "[#" & CStr(errNumber) & "] Stage [" & stage & "]: " & _
+        errDescription, vbExclamation, "Shift-Helper"
 End Sub
 
 Private Function SH_StationHistoricalFact2026(ByVal stationId As Long, _
