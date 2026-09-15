@@ -236,10 +236,20 @@ def test_journal_sort_never_creates_or_deletes_a_temporary_worksheet() -> None:
     assert "Application.EnableEvents = hadEvents" in body
 
 
-def test_report_output_uses_seed_workbook_copy_path() -> None:
+def test_report_output_uses_embedded_template_value_copy_path() -> None:
     output = _source("modShiftHelperReportOutput.bas")
     body = output.split("Public Sub SH_GeneratePreparedReport()", 1)[1].split("End Sub", 1)[0]
-    assert "Set outWb = Workbooks.Add(xlWBATWorksheet)" in body
-    assert "Set seed = outWb.Worksheets(1)" in body
-    assert "source.Copy After:=outWb.Worksheets(outWb.Worksheets.Count)" in body
-    assert "seed.Delete" in body
+    assert "SH_ExtractEmbeddedReportTemplate()" in body
+    assert "Workbooks.Open" in body
+    assert "source.Copy" not in body
+    assert "SH_OutputCopyValuesIntoTemplate source, target" in body
+
+
+def test_report_generation_uses_embedded_template_without_worksheet_copy() -> None:
+    output = _source("modShiftHelperReportOutput.bas")
+    body = output.split("Public Sub SH_GeneratePreparedReport()", 1)[1].split("End Sub", 1)[0]
+    assert "SH_ExtractEmbeddedReportTemplate()" in body
+    assert "Workbooks.Open" in body
+    assert "source.Copy" not in body
+    assert "Worksheet.Copy" not in body
+    assert "SH_OutputCopyValuesIntoTemplate source, target" in body

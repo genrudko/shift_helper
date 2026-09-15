@@ -4,7 +4,7 @@ Option Explicit
 Public Sub SH_GeneratePreparedReport()
     On Error GoTo Failed
     Dim wb As Workbook, outWb As Workbook, source As Worksheet, target As Worksheet
-    Dim seed As Worksheet, reportDate As Date, offsetHours As Double
+    Dim reportDate As Date, offsetHours As Double, templatePath As String
     Dim suggested As String, outputPath As Variant, autoSave As Boolean
     Dim i As Long, stage As String, errNumber As Long, errDescription As String
     Dim oldAlerts As Boolean, alertsCaptured As Boolean
@@ -22,26 +22,20 @@ Public Sub SH_GeneratePreparedReport()
     SH_RefreshEmergencyOutages wb
     SH_CalculateReportInputs wb
 
-    stage = "create output workbook"
-    Set outWb = Workbooks.Add(xlWBATWorksheet)
-    Set seed = outWb.Worksheets(1)
+    stage = "extract embedded report template"
+    templatePath = SH_ExtractEmbeddedReportTemplate()
+    stage = "open embedded report template"
+    Set outWb = Workbooks.Open(Filename:=templatePath, UpdateLinks:=0, ReadOnly:=False, AddToMru:=False)
+    If outWb.Worksheets.Count <> SH_ReportSheetCount() Then Err.Raise vbObjectError + 640, , "Embedded report template sheet count mismatch."
 
     For i = 1 To SH_ReportSheetCount()
-        stage = "copy prepared sheet " & CStr(i)
+        If outWb.Worksheets(i).Name <> SH_ReportSheetName(i) Then Err.Raise vbObjectError + 640, , "Embedded report template sheet order mismatch."
+        stage = "copy prepared values " & CStr(i)
         Set source = SH_RequireSheet(wb, SH_InputSheetName(i))
-        source.Copy After:=outWb.Worksheets(outWb.Worksheets.Count)
-        Set target = outWb.Worksheets(outWb.Worksheets.Count)
-        target.Name = SH_ReportSheetName(i)
-        SH_OutputFreezeFormulas source, target
+        Set target = outWb.Worksheets(SH_ReportSheetName(i))
+        SH_OutputCopyValuesIntoTemplate source, target
         If i = 5 Then SH_OutputRemoveWtgServiceColumns target
     Next i
-
-    stage = "remove seed sheet"
-    oldAlerts = Application.DisplayAlerts
-    alertsCaptured = True
-    Application.DisplayAlerts = False
-    seed.Delete
-    Application.DisplayAlerts = oldAlerts
 
     stage = "apply report captions"
     SH_OutputApplyCaptions outWb, reportDate
@@ -99,6 +93,13 @@ Failed:
     If Len(errDescription) = 0 Then errDescription = "Prepared report export failed."
     MsgBox SH_T("ERR_REPORT") & "[#" & CStr(errNumber) & "] Stage [" & stage & "]: " & _
         errDescription, vbExclamation, "Shift-Helper"
+End Sub
+
+Private Sub SH_OutputCopyValuesIntoTemplate(ByVal source As Worksheet, ByVal target As Worksheet)
+    Dim targetRange As Range, sourceRange As Range
+    Set targetRange = target.UsedRange
+    Set sourceRange = source.Range(targetRange.Address)
+    targetRange.Value = sourceRange.Value
 End Sub
 
 Private Sub SH_OutputFreezeFormulas(ByVal source As Worksheet, ByVal target As Worksheet)

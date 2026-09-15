@@ -69,8 +69,8 @@ def test_report_output_uses_prepared_sheets_and_keeps_wtg_status_service_only() 
     station_facts = _source("modShiftHelperStationFacts.bas")
 
     assert "Public Sub SH_GeneratePreparedReport" in output
-    assert "source.Copy After:=outWb.Worksheets" in output
-    assert "SH_OutputFreezeFormulas source, target" in output
+    assert "SH_OutputCopyValuesIntoTemplate source, target" in output
+    assert "targetRange.Value = sourceRange.Value" in output
     assert "SH_OutputRemoveWtgServiceColumns target" in output
     assert "target.Columns(12).Delete" in output
     assert "SH_OutputApplyCaptions outWb, reportDate" in output
@@ -78,7 +78,7 @@ def test_report_output_uses_prepared_sheets_and_keeps_wtg_status_service_only() 
     assert "SH_OutputBreakLinks outWb" in output
     assert "SH_OutputValidate outWb" in output
     assert "target.UsedRange.Value" not in output
-    assert "SH_ExtractEmbeddedReportTemplate" not in output
+    assert "SH_ExtractEmbeddedReportTemplate" in output
     assert "SH_GenerateStationReportForRibbon" in ribbon
     assert "SH_GeneratePreparedReport" in station_facts
     assert "SH_ApplyStationHistoricalFacts wb" in station_facts

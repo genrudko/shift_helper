@@ -68,3 +68,19 @@ def test_operator_hotfix_vba_sources_remain_ascii_safe() -> None:
         "modShiftHelperShift.bas",
     ):
         (VBA / name).read_text(encoding="ascii")
+
+
+def test_native_excel_copy_paste_bypasses_sheet_change_quick_input() -> None:
+    events = _source("CShiftHelperAppEvents.cls")
+    body = events.split("Private Sub App_SheetChange", 1)[1].split("End Sub", 1)[0]
+    assert "If Application.CutCopyMode <> False Then Exit Sub" in body
+    guard = "If Application.CutCopyMode <> False Then Exit Sub"
+    assert body.index(guard) < body.index("SH_HandleQuickInputChange")
+
+
+def test_workbook_activation_does_not_mutate_during_native_copy_mode() -> None:
+    events = _source("CShiftHelperAppEvents.cls")
+    body = events.split("Private Sub App_WorkbookActivate", 1)[1].split("End Sub", 1)[0]
+    guard = "If Application.CutCopyMode <> False Then Exit Sub"
+    assert guard in body
+    assert body.index(guard) < body.index("SH_RepairMailButtonBindings")

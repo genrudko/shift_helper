@@ -17,6 +17,7 @@ Private Sub App_WorkbookOpen(ByVal Wb As Workbook)
 End Sub
 
 Private Sub App_WorkbookActivate(ByVal Wb As Workbook)
+    If Application.CutCopyMode <> False Then Exit Sub
     SH_RepairMailButtonBindings Wb, False
     SH_RefreshLWGUIBadge Wb
 End Sub
@@ -40,6 +41,7 @@ End Sub
 
 Private Sub App_SheetChange(ByVal Sh As Object, ByVal Target As Range)
     SH_HandlePrepReportDateChange Sh, Target
+    If Application.CutCopyMode <> False Then Exit Sub
     If Not SH_QuickInputEventAllowed(Sh) Then Exit Sub
     SH_HandleQuickInputChange Sh, Target
 End Sub
