@@ -6,22 +6,6 @@ Private mQuickEnabled As Boolean
 Private mQuickGuard As Boolean
 Private Const SH_QUICK_PREVIOUS_LIMIT As Long = 1000
 
-Public Sub SH_DisableDuplicateAddins()
-    On Error Resume Next
-    Dim addin As AddIn, nameText As String
-    For Each addin In Application.AddIns
-        If addin.Installed Then
-            nameText = LCase$(Trim$(addin.Name))
-            If nameText Like "shift-helper-excel*.xlam" Then
-                If StrComp(addin.FullName, ThisWorkbook.FullName, vbTextCompare) <> 0 Then
-                    addin.Installed = False
-                End If
-            End If
-        End If
-    Next addin
-    On Error GoTo 0
-End Sub
-
 Public Sub SH_InitializeAddin()
     On Error Resume Next
     If SH_AppEvents Is Nothing Then

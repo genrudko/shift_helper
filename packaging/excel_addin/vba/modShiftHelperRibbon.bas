@@ -2,7 +2,6 @@ Attribute VB_Name = "modShiftHelperRibbon"
 Option Explicit
 
 Public Sub SH_RibbonOnLoad(ByVal ribbon As IRibbonUI)
-    SH_DisableDuplicateAddins
     SH_InitializeAddin
 End Sub
 

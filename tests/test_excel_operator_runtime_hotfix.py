@@ -86,20 +86,12 @@ def test_workbook_activation_does_not_mutate_during_native_copy_mode() -> None:
     assert body.index(guard) < body.index("SH_RepairMailButtonBindings")
 
 
-def test_ribbon_load_disables_other_shift_helper_addins_before_events() -> None:
+def test_ribbon_load_does_not_disable_other_excel_addins() -> None:
     ribbon = _source("modShiftHelperRibbon.bas")
-    body = ribbon.split("Public Sub SH_RibbonOnLoad", 1)[1].split("End Sub", 1)[0]
-    assert "SH_DisableDuplicateAddins" in body
-    assert body.index("SH_DisableDuplicateAddins") < body.index("SH_InitializeAddin")
-
-
-def test_duplicate_addin_cleanup_only_targets_other_shift_helper_xlams() -> None:
     quick = _source("modShiftHelperQuickInput.bas")
-    assert "Public Sub SH_DisableDuplicateAddins()" in quick
-    assert "For Each addin In Application.AddIns" in quick
-    assert 'Like "shift-helper-excel*.xlam"' in quick
-    assert "StrComp(addin.FullName, ThisWorkbook.FullName" in quick
-    assert "addin.Installed = False" in quick
+    assert "SH_DisableDuplicateAddins" not in ribbon
+    assert "SH_DisableDuplicateAddins" not in quick
+    assert "addin.Installed = False" not in quick
 
 
 def test_all_application_events_are_scoped_to_shift_helper_workbooks() -> None:
