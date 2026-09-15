@@ -176,3 +176,11 @@ def test_report_dates_use_strict_text_parser_and_cut_copy_guard_survives() -> No
     assert "IsDate(value) Or IsNumeric(value)" not in calendar_parser
     assert "SH_TryParseReportDate(raw, reportDate)" in report_window
     assert "If Application.CutCopyMode <> False Then Exit Sub" in events
+
+
+def test_combined_datetime_previous_scan_does_not_coerce_text_rows() -> None:
+    quick = source("modShiftHelperQuickInput.bas")
+    body = quick.split("Private Function SH_FindPreviousCombined", 1)[1].split("End Function", 1)[0]
+    assert "If IsNumeric(value) Then" in body
+    assert "IsNumeric(value) And CDbl(value)" not in body
+    assert body.index("If IsNumeric(value) Then") < body.index("CDbl(value)")

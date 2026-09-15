@@ -221,8 +221,10 @@ Private Function SH_FindPreviousCombined(ByVal Sh As Object, ByVal startRow As L
     Dim scanRow As Long, value As Variant
     For scanRow = startRow To Application.Max(2, startRow - SH_QUICK_PREVIOUS_LIMIT) Step -1
         value = Sh.Cells(scanRow, col).Value2
-        If IsNumeric(value) And CDbl(value) >= 20000# And CDbl(value) < 80000# Then
-            result = CDate(CDbl(value)): SH_FindPreviousCombined = True: Exit Function
+        If IsNumeric(value) Then
+            If CDbl(value) >= 20000# And CDbl(value) < 80000# Then
+                result = CDate(CDbl(value)): SH_FindPreviousCombined = True: Exit Function
+            End If
         End If
     Next scanRow
 End Function

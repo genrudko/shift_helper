@@ -1,8 +1,17 @@
 Attribute VB_Name = "modShiftHelperRibbon"
 Option Explicit
 
+Private SH_RibbonUI As IRibbonUI
+
 Public Sub SH_RibbonOnLoad(ByVal ribbon As IRibbonUI)
+    Set SH_RibbonUI = ribbon
     SH_InitializeAddin
+End Sub
+
+Public Sub SH_RibbonInvalidateNss()
+    On Error Resume Next
+    If Not SH_RibbonUI Is Nothing Then SH_RibbonUI.InvalidateControl "btnNss"
+    On Error GoTo 0
 End Sub
 
 Public Sub SH_RibbonImage(ByVal control As IRibbonControl, ByRef returnedVal)
@@ -78,6 +87,7 @@ End Sub
 
 Public Sub SH_RibbonSetStation(ByVal control As IRibbonControl)
     SH_SelectStationForRibbon CLng(control.Tag)
+    SH_RibbonInvalidateNss
 End Sub
 
 Public Sub SH_RibbonNssMenu(ByVal control As IRibbonControl, ByRef returnedVal)
@@ -86,6 +96,7 @@ End Sub
 
 Public Sub SH_RibbonNssAction(ByVal control As IRibbonControl)
     SH_NssRibbonAction CStr(control.Tag)
+    SH_RibbonInvalidateNss
 End Sub
 
 Public Sub SH_RibbonGenerate(ByVal control As IRibbonControl)

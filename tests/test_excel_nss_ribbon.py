@@ -51,3 +51,17 @@ def test_nss_vba_remains_ascii_safe_and_module_name_fits_vba_storage() -> None:
 
     assert 'Attribute VB_Name = "modShiftHelperNSS"' in source
     assert len("modShiftHelperNSS") <= 31
+
+
+def test_nss_dynamic_menu_is_invalidated_after_edit_and_station_change() -> None:
+    ribbon = _read("modShiftHelperRibbon.bas")
+    assert "Private SH_RibbonUI As IRibbonUI" in ribbon
+    onload = ribbon.split("Public Sub SH_RibbonOnLoad", 1)[1].split("End Sub", 1)[0]
+    assert "Set SH_RibbonUI = ribbon" in onload
+    assert "Public Sub SH_RibbonInvalidateNss()" in ribbon
+    invalidate = ribbon.split("Public Sub SH_RibbonInvalidateNss()", 1)[1].split("End Sub", 1)[0]
+    assert 'SH_RibbonUI.InvalidateControl "btnNss"' in invalidate
+    station = ribbon.split("Public Sub SH_RibbonSetStation", 1)[1].split("End Sub", 1)[0]
+    nss = ribbon.split("Public Sub SH_RibbonNssAction", 1)[1].split("End Sub", 1)[0]
+    assert "SH_RibbonInvalidateNss" in station
+    assert "SH_RibbonInvalidateNss" in nss
