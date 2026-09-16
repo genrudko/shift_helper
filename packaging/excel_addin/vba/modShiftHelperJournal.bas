@@ -3,13 +3,12 @@ Option Explicit
 
 Public Sub SH_SortJournalByTime()
     On Error GoTo Failed
-    Dim wb As Workbook, ws As Worksheet, selected As Range, temp As Worksheet
+    Dim wb As Workbook, ws As Worksheet, selected As Range, helperRange As Range
     Dim firstRow As Long, lastRow As Long, rowCount As Long, r As Long, col As Variant
     Dim sortRange As Range, formulaText As String, converted As Variant
-    Dim hadEvents As Boolean, hadAlerts As Boolean, errDescription As String
+    Dim hadEvents As Boolean, errDescription As String
 
     hadEvents = Application.EnableEvents
-    hadAlerts = Application.DisplayAlerts
     Set wb = SH_JournalBook()
     Set ws = SH_RequireSheet(wb, SH_JournalSheetName())
     Set selected = SH_SelectionRange(wb)
@@ -18,9 +17,9 @@ Public Sub SH_SortJournalByTime()
     lastRow = selected.Row + selected.Rows.Count - 1
     If lastRow <= firstRow Then Err.Raise vbObjectError + 519, , SH_U("0412044B04340435043B043804420435002004340432043500200438043B043800200431043E043B044C044804350020044104420440043E043A002E")
     rowCount = lastRow - firstRow + 1
+    Set helperRange = ws.Range("S" & firstRow & ":S" & lastRow)
 
     Application.EnableEvents = False
-    Application.DisplayAlerts = False
 
     For Each col In Array(11, 14, 15, 16, 17, 18)
         For r = firstRow To lastRow
@@ -35,28 +34,21 @@ Public Sub SH_SortJournalByTime()
         Next r
     Next col
 
-    Set temp = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
-    temp.Visible = xlSheetVeryHidden
-    ws.Range("A" & firstRow & ":R" & lastRow).Copy Destination:=temp.Range("A1")
     For r = 1 To rowCount
-        temp.Cells(r, 19).Value2 = r
+        helperRange.Cells(r, 1).Value2 = r
     Next r
-    Set sortRange = temp.Range("A1:S" & rowCount)
-    With temp.Sort
+    Set sortRange = ws.Range("A" & firstRow & ":S" & lastRow)
+    With ws.Sort
         .SortFields.Clear
-        .SortFields.Add Key:=temp.Range("C1:C" & rowCount), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:=xlSortNormal
-        .SortFields.Add Key:=temp.Range("S1:S" & rowCount), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:=xlSortNormal
+        .SortFields.Add Key:=ws.Range("C" & firstRow & ":C" & lastRow), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:=xlSortNormal
+        .SortFields.Add Key:=helperRange, SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:=xlSortNormal
         .SetRange sortRange
         .Header = xlNo
         .MatchCase = False
         .Orientation = xlTopToBottom
         .Apply
     End With
-    temp.Range("A1:R" & rowCount).Copy Destination:=ws.Range("A" & firstRow)
-    temp.Delete
-    Set temp = Nothing
-    Application.CutCopyMode = False
-    Application.DisplayAlerts = hadAlerts
+    helperRange.ClearContents
     Application.EnableEvents = hadEvents
     ws.Activate
     ws.Range("A" & firstRow & ":R" & lastRow).Select
@@ -64,9 +56,7 @@ Public Sub SH_SortJournalByTime()
 Failed:
     errDescription = Err.Description
     On Error Resume Next
-    If Not temp Is Nothing Then temp.Delete
-    Application.CutCopyMode = False
-    Application.DisplayAlerts = hadAlerts
+    If Not helperRange Is Nothing Then helperRange.ClearContents
     Application.EnableEvents = hadEvents
     On Error GoTo 0
     If Len(errDescription) = 0 Then errDescription = "Journal sort failed."

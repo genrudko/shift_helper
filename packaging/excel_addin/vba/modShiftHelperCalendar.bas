@@ -13,6 +13,7 @@ Private Declare PtrSafe Function SendMessageW Lib "user32" (ByVal hwnd As LongPt
 Private Declare PtrSafe Function GetModuleHandleW Lib "kernel32" (ByVal lpModuleName As LongPtr) As LongPtr
 Private Declare PtrSafe Function GetAsyncKeyState Lib "user32" (ByVal vKey As Long) As Integer
 Private Declare PtrSafe Function GetCursorPos Lib "user32" (ByRef lpPoint As SH_POINT) As Long
+Private Declare PtrSafe Function ScreenToClient Lib "user32" (ByVal hwnd As LongPtr, ByRef lpPoint As SH_POINT) As Long
 Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
 #End If
 
@@ -44,6 +45,13 @@ Private Type SH_SYSTEMTIME
     wMilliseconds As Integer
 End Type
 
+Private Type SH_MCHITTESTINFO_V1
+    cbSize As Long
+    pt As SH_POINT
+    uHit As Long
+    st As SH_SYSTEMTIME
+End Type
+
 Private Const SH_ICC_DATE_CLASSES As Long = &H100
 Private Const SH_WS_POPUP As Long = &H80000000
 Private Const SH_WS_CHILD As Long = &H40000000
@@ -57,11 +65,13 @@ Private Const SH_MCM_FIRST As Long = &H1000
 Private Const SH_MCM_GETCURSEL As Long = SH_MCM_FIRST + 1
 Private Const SH_MCM_SETCURSEL As Long = SH_MCM_FIRST + 2
 Private Const SH_MCM_GETMINREQRECT As Long = SH_MCM_FIRST + 9
+Private Const SH_MCM_HITTEST As Long = SH_MCM_FIRST + 14
+Private Const SH_MCHT_CALENDARDATE As Long = &H20001
 Private Const SH_VK_LBUTTON As Long = &H1
 Private Const SH_VK_RETURN As Long = &HD
 Private Const SH_VK_ESCAPE As Long = &H1B
 
-Public Sub SH_ShowCalendar()
+Public Function SH_ShowCalendar() As Boolean
     On Error GoTo Failed
     Dim wb As Workbook, prep As Worksheet, initialDate As Date, selectedDate As Date
     Dim currentValue As Variant, picked As Boolean, stage As String
@@ -71,7 +81,7 @@ Public Sub SH_ShowCalendar()
     Set wb = SH_JournalBook()
     stage = "prepare report settings"
     Set prep = SH_EnsurePrepSheet(wb)
-    currentValue = prep.Range(SH_ReportDateCell()).Value
+    currentValue = prep.Range(SH_ReportDateCell()).Value2
     If SH_CalendarTryDate(currentValue, initialDate) Then
         initialDate = DateValue(initialDate)
     Else
@@ -83,13 +93,14 @@ Public Sub SH_ShowCalendar()
     If picked Then
         stage = "apply selected report date"
         SH_ApplyReportCalendarDate wb, selectedDate
+        SH_ShowCalendar = True
     End If
-    Exit Sub
+    Exit Function
 Failed:
     errNumber = Err.Number
     errDescription = Err.Description
     SH_ShowCalendarError "calendar / " & stage, errNumber, errDescription
-End Sub
+End Function
 
 Public Sub SH_InsertDateIntoSelection()
     On Error GoTo Failed
@@ -99,7 +110,7 @@ Public Sub SH_InsertDateIntoSelection()
     stage = "resolve journal selection"
     Set wb = SH_JournalBook()
     Set target = SH_SelectionRange(wb)
-    If SH_CalendarTryDate(target.Cells(1, 1).Value, initialDate) Then
+    If SH_CalendarTryDate(target.Cells(1, 1).Value2, initialDate) Then
         initialDate = DateValue(initialDate)
     Else
         initialDate = Date
@@ -123,11 +134,11 @@ End Sub
 Private Function SH_PickDateNative(ByVal initialDate As Date, ByRef selectedDate As Date) As Boolean
     On Error GoTo Failed
     Dim controls As SH_INITCOMMONCONTROLSEX, ownerRect As SH_RECT, calendarRect As SH_RECT
-    Dim parentRect As SH_RECT, point As SH_POINT, st As SH_SYSTEMTIME
+    Dim point As SH_POINT, st As SH_SYSTEMTIME
     Dim ownerHwnd As LongPtr, parentHwnd As LongPtr, calendarHwnd As LongPtr, instanceHwnd As LongPtr
     Dim parentClass As String, calendarClass As String, titleText As String
     Dim width As Long, height As Long, x As Long, y As Long
-    Dim currentDate As Date, mouseDown As Boolean, wasMouseDown As Boolean
+    Dim mouseDown As Boolean, wasMouseDown As Boolean
     Dim errNumber As Long, errDescription As String
 
     controls.dwSize = LenB(controls)
@@ -179,19 +190,11 @@ Private Function SH_PickDateNative(ByVal initialDate As Date, ByRef selectedDate
             If SH_ReadCalendarDate(calendarHwnd, selectedDate) Then SH_PickDateNative = True
             Exit Do
         End If
-        If SH_ReadCalendarDate(calendarHwnd, currentDate) Then
-            If DateValue(currentDate) <> DateValue(initialDate) Then
-                selectedDate = currentDate
-                SH_PickDateNative = True
-                Exit Do
-            End If
-        End If
         mouseDown = (GetAsyncKeyState(SH_VK_LBUTTON) < 0)
         If wasMouseDown And Not mouseDown Then
-            If GetCursorPos(point) <> 0 And GetWindowRect(calendarHwnd, parentRect) <> 0 Then
-                If point.x >= parentRect.Left And point.x <= parentRect.Right And _
-                   point.y >= parentRect.Top + 34 And point.y <= parentRect.Bottom - 12 Then
-                    If SH_ReadCalendarDate(calendarHwnd, selectedDate) Then SH_PickDateNative = True
+            If GetCursorPos(point) <> 0 Then
+                If SH_CalendarTryHitDate(calendarHwnd, point, selectedDate) Then
+                    SH_PickDateNative = True
                     Exit Do
                 End If
             End If
@@ -216,6 +219,26 @@ Failed:
     If errNumber = 0 Then errNumber = vbObjectError + 553
     If Len(errDescription) = 0 Then errDescription = "Native calendar failed."
     Err.Raise errNumber, , errDescription
+End Function
+
+Private Function SH_CalendarTryHitDate(ByVal calendarHwnd As LongPtr, ByRef point As SH_POINT, _
+    ByRef value As Date) As Boolean
+    Dim clientPoint As SH_POINT, hitInfo As SH_MCHITTESTINFO_V1
+    If calendarHwnd = 0 Then Exit Function
+    clientPoint.x = point.x
+    clientPoint.y = point.y
+    If ScreenToClient(calendarHwnd, clientPoint) = 0 Then Exit Function
+    hitInfo.cbSize = LenB(hitInfo)
+    hitInfo.pt.x = clientPoint.x
+    hitInfo.pt.y = clientPoint.y
+    SendMessageW calendarHwnd, SH_MCM_HITTEST, 0, hitInfo
+    If (hitInfo.uHit And &HFFFFFF) <> SH_MCHT_CALENDARDATE Then Exit Function
+    On Error GoTo InvalidDate
+    value = DateSerial(CLng(hitInfo.st.wYear), CLng(hitInfo.st.wMonth), CLng(hitInfo.st.wDay))
+    SH_CalendarTryHitDate = True
+    Exit Function
+InvalidDate:
+    SH_CalendarTryHitDate = False
 End Function
 
 Private Function SH_ReadCalendarDate(ByVal calendarHwnd As LongPtr, ByRef value As Date) As Boolean
@@ -291,18 +314,7 @@ Private Function SH_ReportInputsReady(ByVal wb As Workbook) As Boolean
 End Function
 
 Private Function SH_CalendarTryDate(ByVal value As Variant, ByRef result As Date) As Boolean
-    On Error GoTo Failed
-    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
-    If VarType(value) = vbString Then
-        If Len(Trim$(CStr(value))) = 0 Then Exit Function
-    End If
-    If IsDate(value) Or IsNumeric(value) Then
-        result = CDate(value)
-        SH_CalendarTryDate = True
-    End If
-    Exit Function
-Failed:
-    SH_CalendarTryDate = False
+    SH_CalendarTryDate = SH_TryParseReportDate(value, result)
 End Function
 
 Private Sub SH_DateToSystemTime(ByVal value As Date, ByRef st As SH_SYSTEMTIME)

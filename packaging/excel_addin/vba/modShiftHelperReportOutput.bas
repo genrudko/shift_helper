@@ -4,15 +4,22 @@ Option Explicit
 Public Sub SH_GeneratePreparedReport()
     On Error GoTo Failed
     Dim wb As Workbook, outWb As Workbook, source As Worksheet, target As Worksheet
-    Dim seed As Worksheet, reportDate As Date, offsetHours As Double
-    Dim outputFolder As String, suggested As String, outputPath As Variant
+    Dim reportDate As Date, offsetHours As Double, templatePath As String
+    Dim suggested As String, outputPath As Variant, autoSave As Boolean
     Dim i As Long, stage As String, errNumber As Long, errDescription As String
     Dim oldAlerts As Boolean, alertsCaptured As Boolean
+    Dim oldEvents As Boolean, eventsCaptured As Boolean
+
+    stage = "capture Excel events"
+    oldEvents = Application.EnableEvents
+    eventsCaptured = True
+    Application.EnableEvents = False
 
     stage = "resolve journal workbook"
     Set wb = SH_JournalBook()
 
     stage = "prepare report contour"
+    SH_ApplyNssForCurrentStation wb
     SH_EnsureStationReportContour wb
     reportDate = SH_ReportDate(wb)
     offsetHours = SH_ReportOffset(wb)
@@ -21,29 +28,24 @@ Public Sub SH_GeneratePreparedReport()
     SH_RefreshEmergencyOutages wb
     SH_CalculateReportInputs wb
 
-    stage = "create output workbook"
-    Set outWb = Workbooks.Add(xlWBATWorksheet)
-    Set seed = outWb.Worksheets(1)
+    stage = "extract embedded report template"
+    templatePath = SH_ExtractEmbeddedReportTemplate()
+    stage = "open embedded report template"
+    Set outWb = Workbooks.Open(Filename:=templatePath, UpdateLinks:=0, ReadOnly:=False, AddToMru:=False)
+    If outWb.Worksheets.Count <> SH_ReportSheetCount() Then Err.Raise vbObjectError + 640, , "Embedded report template sheet count mismatch."
 
     For i = 1 To SH_ReportSheetCount()
-        stage = "copy prepared sheet " & CStr(i)
+        If outWb.Worksheets(i).Name <> SH_ReportSheetName(i) Then Err.Raise vbObjectError + 640, , "Embedded report template sheet order mismatch."
+        stage = "copy prepared values " & CStr(i)
         Set source = SH_RequireSheet(wb, SH_InputSheetName(i))
-        source.Copy After:=outWb.Worksheets(outWb.Worksheets.Count)
-        Set target = outWb.Worksheets(outWb.Worksheets.Count)
-        target.Name = SH_ReportSheetName(i)
-        SH_OutputFreezeFormulas source, target
+        Set target = outWb.Worksheets(SH_ReportSheetName(i))
+        SH_OutputCopyValuesIntoTemplate source, target
         If i = 5 Then SH_OutputRemoveWtgServiceColumns target
     Next i
 
-    stage = "remove seed sheet"
-    oldAlerts = Application.DisplayAlerts
-    alertsCaptured = True
-    Application.DisplayAlerts = False
-    seed.Delete
-    Application.DisplayAlerts = oldAlerts
-
     stage = "apply report captions"
     SH_OutputApplyCaptions outWb, reportDate
+    SH_OutputApplyNssCaption outWb, wb
 
     stage = "apply output time offset"
     SH_OutputApplyOffset outWb, offsetHours
@@ -54,19 +56,23 @@ Public Sub SH_GeneratePreparedReport()
     stage = "validate output workbook"
     SH_OutputValidate outWb
 
-    outputFolder = wb.Path
-    If Len(outputFolder) = 0 Then outputFolder = Application.DefaultFilePath
-    suggested = outputFolder & Application.PathSeparator & _
-        "Shift-Helper-Report-" & Format$(reportDate, "yyyy-mm-dd") & ".xlsx"
+    stage = "resolve output settings"
+    suggested = SH_ReportSuggestedPath(wb, reportDate)
+    autoSave = SH_ReportAutoSaveEnabled(wb)
 
-    stage = "choose output file"
-    outputPath = Application.GetSaveAsFilename( _
-        suggested, "Excel Workbook (*.xlsx),*.xlsx", , SH_T("SAVE_REPORT") _
-    )
-    If VarType(outputPath) = vbBoolean Then
-        If outputPath = False Then
-            outWb.Close SaveChanges:=False
-            Exit Sub
+    If autoSave Then
+        outputPath = suggested
+    Else
+        stage = "choose output file"
+        outputPath = Application.GetSaveAsFilename( _
+            suggested, "Excel Workbook (*.xlsx),*.xlsx", , SH_T("SAVE_REPORT") _
+        )
+        If VarType(outputPath) = vbBoolean Then
+            If outputPath = False Then
+                outWb.Close SaveChanges:=False
+                Application.EnableEvents = oldEvents
+                Exit Sub
+            End If
         End If
     End If
 
@@ -81,6 +87,7 @@ Public Sub SH_GeneratePreparedReport()
     stage = "register generated report"
     SH_RegisterGeneratedReport wb, CStr(outputPath)
 
+    Application.EnableEvents = oldEvents
     MsgBox SH_T("OK_REPORT") & CStr(outputPath), vbInformation, "Shift-Helper"
     Exit Sub
 Failed:
@@ -88,12 +95,75 @@ Failed:
     errDescription = Err.Description
     On Error Resume Next
     If alertsCaptured Then Application.DisplayAlerts = oldAlerts
+    If eventsCaptured Then Application.EnableEvents = oldEvents
     If Not outWb Is Nothing Then outWb.Close SaveChanges:=False
     On Error GoTo 0
     If errNumber = 0 Then errNumber = vbObjectError + 640
     If Len(errDescription) = 0 Then errDescription = "Prepared report export failed."
     MsgBox SH_T("ERR_REPORT") & "[#" & CStr(errNumber) & "] Stage [" & stage & "]: " & _
         errDescription, vbExclamation, "Shift-Helper"
+End Sub
+
+Private Sub SH_OutputCopyValuesIntoTemplate(ByVal source As Worksheet, ByVal target As Worksheet)
+    Dim templateRange As Range, targetRange As Range, sourceRange As Range
+    Dim firstRow As Long, firstCol As Long, lastCol As Long
+    Dim templateLastRow As Long, sourceLastRow As Long, requiredLastRow As Long
+
+    Set templateRange = target.UsedRange
+    firstRow = templateRange.Row
+    firstCol = templateRange.Column
+    lastCol = firstCol + templateRange.Columns.Count - 1
+    templateLastRow = firstRow + templateRange.Rows.Count - 1
+    sourceLastRow = SH_OutputLastContentRow(source, firstCol, lastCol)
+    requiredLastRow = templateLastRow
+    If sourceLastRow > requiredLastRow Then requiredLastRow = sourceLastRow
+
+    If requiredLastRow > templateLastRow Then
+        SH_OutputExtendTemplateRows target, templateLastRow, requiredLastRow, firstCol, lastCol
+    End If
+
+    Set targetRange = target.Range( _
+        target.Cells(firstRow, firstCol), target.Cells(requiredLastRow, lastCol))
+    Set sourceRange = source.Range( _
+        source.Cells(firstRow, firstCol), source.Cells(requiredLastRow, lastCol))
+    targetRange.Value = sourceRange.Value
+End Sub
+
+Private Function SH_OutputLastContentRow(ByVal source As Worksheet, ByVal firstCol As Long, _
+    ByVal lastCol As Long) As Long
+    Dim searchRange As Range, found As Range
+    Set searchRange = source.Range(source.Cells(1, firstCol), source.Cells(source.Rows.Count, lastCol))
+    On Error Resume Next
+    Set found = searchRange.Find( _
+        What:="*", _
+        After:=searchRange.Cells(1, 1), _
+        LookIn:=xlFormulas, _
+        LookAt:=xlPart, _
+        SearchOrder:=xlByRows, _
+        SearchDirection:=xlPrevious, _
+        MatchCase:=False)
+    On Error GoTo 0
+    If found Is Nothing Then
+        SH_OutputLastContentRow = 1
+    Else
+        SH_OutputLastContentRow = found.Row
+    End If
+End Function
+
+Private Sub SH_OutputExtendTemplateRows(ByVal target As Worksheet, ByVal templateLastRow As Long, _
+    ByVal requiredLastRow As Long, ByVal firstCol As Long, ByVal lastCol As Long)
+    Dim templateRow As Range, targetRow As Range, rowIndex As Long
+    Dim templateHeight As Double
+    Set templateRow = target.Range( _
+        target.Cells(templateLastRow, firstCol), target.Cells(templateLastRow, lastCol))
+    templateHeight = target.Rows(templateLastRow).RowHeight
+    For rowIndex = templateLastRow + 1 To requiredLastRow
+        Set targetRow = target.Range( _
+            target.Cells(rowIndex, firstCol), target.Cells(rowIndex, lastCol))
+        templateRow.Copy Destination:=targetRow
+        target.Rows(rowIndex).RowHeight = templateHeight
+    Next rowIndex
+    Application.CutCopyMode = False
 End Sub
 
 Private Sub SH_OutputFreezeFormulas(ByVal source As Worksheet, ByVal target As Worksheet)
@@ -145,6 +215,24 @@ Private Sub SH_OutputApplyCaptions(ByVal wb As Workbook, ByVal reportDate As Dat
         Set ws = wb.Worksheets(SH_ReportSheetName(i))
         SH_OutputReplaceDateCell ws.Range("B1"), reportDate
     Next i
+End Sub
+
+Private Sub SH_OutputApplyNssCaption(ByVal outputWb As Workbook, ByVal sourceWb As Workbook)
+    Dim stationId As Long, selected As String, marker As String, value As String
+    Dim position As Long, main As Worksheet
+
+    stationId = SH_ReportStationId(sourceWb, False)
+    If stationId <> SH_STATION_KUZ Then Exit Sub
+    selected = SH_NssSelected(sourceWb, stationId)
+    If Len(selected) = 0 Then Exit Sub
+
+    Set main = outputWb.Worksheets(SH_ReportSheetName(1))
+    value = SH_OutputSafeText(main.Range("B1").Value2)
+    marker = SH_U("002E0020041F043E0441043B04350434043D04380435002004380437043C0435043D0435043D0438044F0020")
+    position = InStr(1, value, marker, vbTextCompare)
+    If position = 0 Then Exit Sub
+    main.Range("B1").Value = Left$(value, position - 1) & " (" & selected & ")" & _
+        Mid$(value, position)
 End Sub
 
 Private Sub SH_OutputReplaceDateCell(ByVal target As Range, ByVal value As Date)
@@ -231,13 +319,23 @@ Private Sub SH_OutputBreakLinks(ByVal wb As Workbook)
 End Sub
 
 Private Sub SH_OutputValidate(ByVal wb As Workbook)
-    Dim i As Long, wtg As Worksheet
+    Dim i As Long, wtg As Worksheet, ws As Worksheet, errorCells As Range
     If wb.Worksheets.Count <> SH_ReportSheetCount() Then
         Err.Raise vbObjectError + 641, , "Output report must contain exactly seven worksheets."
     End If
     For i = 1 To SH_ReportSheetCount()
         If wb.Worksheets(i).Name <> SH_ReportSheetName(i) Then
             Err.Raise vbObjectError + 642, , "Output report worksheet order mismatch."
+        End If
+        Set ws = wb.Worksheets(i)
+        Set errorCells = Nothing
+        On Error Resume Next
+        Set errorCells = ws.UsedRange.SpecialCells(xlCellTypeConstants, xlErrors)
+        On Error GoTo 0
+        If Not errorCells Is Nothing Then
+            Err.Raise vbObjectError + 644, , _
+                "Output report contains an Excel error on sheet '" & ws.Name & _
+                "' at " & errorCells.Cells(1, 1).Address(False, False) & "."
         End If
     Next i
 

@@ -42,7 +42,7 @@ def test_generation_import_uses_hardened_runtime_and_bounded_outlook_scan() -> N
     assert "If receivedDate < cutoff Then Exit For" in generation
     assert "SH_G2TryDate(received, cutoff)" not in generation
     assert "SH_ImportStationGeneration" in ribbon
-    assert "SH_ImportGenerationUniversal" in station
+    assert "SH_ImportStationGenerationSelected" in station
 
 
 def test_generation_search_resolves_real_inbox_and_reports_search_evidence() -> None:
@@ -69,8 +69,8 @@ def test_report_output_uses_prepared_sheets_and_keeps_wtg_status_service_only() 
     station_facts = _source("modShiftHelperStationFacts.bas")
 
     assert "Public Sub SH_GeneratePreparedReport" in output
-    assert "source.Copy After:=outWb.Worksheets" in output
-    assert "SH_OutputFreezeFormulas source, target" in output
+    assert "SH_OutputCopyValuesIntoTemplate source, target" in output
+    assert "targetRange.Value = sourceRange.Value" in output
     assert "SH_OutputRemoveWtgServiceColumns target" in output
     assert "target.Columns(12).Delete" in output
     assert "SH_OutputApplyCaptions outWb, reportDate" in output
@@ -78,7 +78,7 @@ def test_report_output_uses_prepared_sheets_and_keeps_wtg_status_service_only() 
     assert "SH_OutputBreakLinks outWb" in output
     assert "SH_OutputValidate outWb" in output
     assert "target.UsedRange.Value" not in output
-    assert "SH_ExtractEmbeddedReportTemplate" not in output
+    assert "SH_ExtractEmbeddedReportTemplate" in output
     assert "SH_GenerateStationReportForRibbon" in ribbon
     assert "SH_GeneratePreparedReport" in station_facts
     assert "SH_ApplyStationHistoricalFacts wb" in station_facts
@@ -122,3 +122,49 @@ def test_live_repair_preserves_shared_journal_boundary() -> None:
     assert "VBProject" not in combined
     assert "ActiveX" not in combined
     assert "SaveAs Filename:=wb." not in combined
+
+
+def test_report_generation_suspends_excel_events_for_entire_ribbon_flow() -> None:
+    station = _source("modShiftHelperStationFacts.bas")
+    body = station.split("Public Sub SH_GenerateStationReportForRibbon()", 1)[1]
+    body = body.split("End Sub", 1)[0]
+    assert "hadEvents = Application.EnableEvents" in body
+    assert "Application.EnableEvents = False" in body
+    assert body.index("Application.EnableEvents = False") < body.index(
+        "SH_ApplyNssForCurrentStation wb"
+    )
+    assert "Application.EnableEvents = hadEvents" in body
+    assert "On Error GoTo Failed" in body
+
+
+def test_prepared_report_export_also_suspends_events_when_called_directly() -> None:
+    output = _source("modShiftHelperReportOutput.bas")
+    body = output.split("Public Sub SH_GeneratePreparedReport()", 1)[1]
+    body = body.split("End Sub", 1)[0]
+    assert "oldEvents = Application.EnableEvents" in body
+    assert "Application.EnableEvents = False" in body
+    assert body.index("Application.EnableEvents = False") < body.index(
+        "SH_RefreshEmergencyOutages wb"
+    )
+    assert "Application.EnableEvents = oldEvents" in body
+
+
+def test_report_output_validation_rejects_excel_error_values() -> None:
+    output = _source("modShiftHelperReportOutput.bas")
+    validate = output.split("Private Sub SH_OutputValidate", 1)[1]
+    assert "xlCellTypeConstants, xlErrors" in validate
+    assert "Output report contains an Excel error" in validate
+    assert ".Address(False, False)" in validate
+
+
+def test_report_output_expands_template_to_last_prepared_content_row() -> None:
+    output = _source("modShiftHelperReportOutput.bas")
+    body = output.split("Private Sub SH_OutputCopyValuesIntoTemplate", 1)[1].split("End Sub", 1)[0]
+    assert "sourceLastRow = SH_OutputLastContentRow(source, firstCol, lastCol)" in body
+    assert "If sourceLastRow > requiredLastRow Then requiredLastRow = sourceLastRow" in body
+    assert "SH_OutputExtendTemplateRows target" in body
+    assert "target.Cells(requiredLastRow, lastCol)" in body
+    assert "source.Cells(requiredLastRow, lastCol)" in body
+    assert "Set targetRange = target.UsedRange" not in body
+    assert "Private Function SH_OutputLastContentRow" in output
+    assert "SearchDirection:=xlPrevious" in output

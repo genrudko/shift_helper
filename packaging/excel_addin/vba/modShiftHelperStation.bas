@@ -114,19 +114,11 @@ Failed:
 End Sub
 
 Public Sub SH_ShowStationCalendar()
-    Dim wb As Workbook
-    Set wb = SH_JournalBook()
-    SH_EnsureStationReportContour wb
     SH_ShowCalendar
-    SH_EnsureStationReportContour wb
 End Sub
 
 Public Sub SH_ImportStationGeneration()
-    Dim wb As Workbook
-    Set wb = SH_JournalBook()
-    SH_EnsureStationReportContour wb
-    SH_ImportGenerationUniversal
-    SH_EnsureStationReportContour wb
+    SH_ImportStationGenerationSelected
 End Sub
 
 Public Sub SH_UpdateStationRotorLimits()
