@@ -155,3 +155,16 @@ def test_report_output_validation_rejects_excel_error_values() -> None:
     assert "xlCellTypeConstants, xlErrors" in validate
     assert "Output report contains an Excel error" in validate
     assert ".Address(False, False)" in validate
+
+
+def test_report_output_expands_template_to_last_prepared_content_row() -> None:
+    output = _source("modShiftHelperReportOutput.bas")
+    body = output.split("Private Sub SH_OutputCopyValuesIntoTemplate", 1)[1].split("End Sub", 1)[0]
+    assert "sourceLastRow = SH_OutputLastContentRow(source, firstCol, lastCol)" in body
+    assert "If sourceLastRow > requiredLastRow Then requiredLastRow = sourceLastRow" in body
+    assert "SH_OutputExtendTemplateRows target" in body
+    assert "target.Cells(requiredLastRow, lastCol)" in body
+    assert "source.Cells(requiredLastRow, lastCol)" in body
+    assert "Set targetRange = target.UsedRange" not in body
+    assert "Private Function SH_OutputLastContentRow" in output
+    assert "SearchDirection:=xlPrevious" in output

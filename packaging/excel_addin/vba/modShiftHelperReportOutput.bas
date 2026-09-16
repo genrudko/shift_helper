@@ -105,10 +105,65 @@ Failed:
 End Sub
 
 Private Sub SH_OutputCopyValuesIntoTemplate(ByVal source As Worksheet, ByVal target As Worksheet)
-    Dim targetRange As Range, sourceRange As Range
-    Set targetRange = target.UsedRange
-    Set sourceRange = source.Range(targetRange.Address)
+    Dim templateRange As Range, targetRange As Range, sourceRange As Range
+    Dim firstRow As Long, firstCol As Long, lastCol As Long
+    Dim templateLastRow As Long, sourceLastRow As Long, requiredLastRow As Long
+
+    Set templateRange = target.UsedRange
+    firstRow = templateRange.Row
+    firstCol = templateRange.Column
+    lastCol = firstCol + templateRange.Columns.Count - 1
+    templateLastRow = firstRow + templateRange.Rows.Count - 1
+    sourceLastRow = SH_OutputLastContentRow(source, firstCol, lastCol)
+    requiredLastRow = templateLastRow
+    If sourceLastRow > requiredLastRow Then requiredLastRow = sourceLastRow
+
+    If requiredLastRow > templateLastRow Then
+        SH_OutputExtendTemplateRows target, templateLastRow, requiredLastRow, firstCol, lastCol
+    End If
+
+    Set targetRange = target.Range( _
+        target.Cells(firstRow, firstCol), target.Cells(requiredLastRow, lastCol))
+    Set sourceRange = source.Range( _
+        source.Cells(firstRow, firstCol), source.Cells(requiredLastRow, lastCol))
     targetRange.Value = sourceRange.Value
+End Sub
+
+Private Function SH_OutputLastContentRow(ByVal source As Worksheet, ByVal firstCol As Long, _
+    ByVal lastCol As Long) As Long
+    Dim searchRange As Range, found As Range
+    Set searchRange = source.Range(source.Cells(1, firstCol), source.Cells(source.Rows.Count, lastCol))
+    On Error Resume Next
+    Set found = searchRange.Find( _
+        What:="*", _
+        After:=searchRange.Cells(1, 1), _
+        LookIn:=xlFormulas, _
+        LookAt:=xlPart, _
+        SearchOrder:=xlByRows, _
+        SearchDirection:=xlPrevious, _
+        MatchCase:=False)
+    On Error GoTo 0
+    If found Is Nothing Then
+        SH_OutputLastContentRow = 1
+    Else
+        SH_OutputLastContentRow = found.Row
+    End If
+End Function
+
+Private Sub SH_OutputExtendTemplateRows(ByVal target As Worksheet, ByVal templateLastRow As Long, _
+    ByVal requiredLastRow As Long, ByVal firstCol As Long, ByVal lastCol As Long)
+    Dim templateRow As Range, targetRow As Range, rowIndex As Long
+    Dim templateHeight As Double
+    Set templateRow = target.Range( _
+        target.Cells(templateLastRow, firstCol), target.Cells(templateLastRow, lastCol))
+    templateHeight = target.Rows(templateLastRow).RowHeight
+    For rowIndex = templateLastRow + 1 To requiredLastRow
+        Set targetRow = target.Range( _
+            target.Cells(rowIndex, firstCol), target.Cells(rowIndex, lastCol))
+        templateRow.Copy Destination:=targetRow
+        target.Rows(rowIndex).RowHeight = templateHeight
+    Next rowIndex
+    Application.CutCopyMode = False
 End Sub
 
 Private Sub SH_OutputFreezeFormulas(ByVal source As Worksheet, ByVal target As Worksheet)
