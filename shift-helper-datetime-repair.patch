@@ -1,0 +1,1721 @@
+diff --git a/packaging/excel_addin/vba/modShiftHelperCalendar.bas b/packaging/excel_addin/vba/modShiftHelperCalendar.bas
+index 459a2b603e0ffd204f057a76600daef225e7491b..6748ec82c5a6dda953afa19026f50a4a2a04303f 100644
+--- a/packaging/excel_addin/vba/modShiftHelperCalendar.bas
++++ b/packaging/excel_addin/vba/modShiftHelperCalendar.bas
+@@ -127,7 +127,7 @@ Private Function SH_PickDateNative(ByVal initialDate As Date, ByRef selectedDate
+     Dim ownerHwnd As LongPtr, parentHwnd As LongPtr, calendarHwnd As LongPtr, instanceHwnd As LongPtr
+     Dim parentClass As String, calendarClass As String, titleText As String
+     Dim width As Long, height As Long, x As Long, y As Long
+-    Dim currentDate As Date, mouseDown As Boolean, wasMouseDown As Boolean
++    Dim mouseDown As Boolean, wasMouseDown As Boolean
+     Dim errNumber As Long, errDescription As String
+ 
+     controls.dwSize = LenB(controls)
+@@ -179,18 +179,10 @@ Private Function SH_PickDateNative(ByVal initialDate As Date, ByRef selectedDate
+             If SH_ReadCalendarDate(calendarHwnd, selectedDate) Then SH_PickDateNative = True
+             Exit Do
+         End If
+-        If SH_ReadCalendarDate(calendarHwnd, currentDate) Then
+-            If DateValue(currentDate) <> DateValue(initialDate) Then
+-                selectedDate = currentDate
+-                SH_PickDateNative = True
+-                Exit Do
+-            End If
+-        End If
+         mouseDown = (GetAsyncKeyState(SH_VK_LBUTTON) < 0)
+         If wasMouseDown And Not mouseDown Then
+             If GetCursorPos(point) <> 0 And GetWindowRect(calendarHwnd, parentRect) <> 0 Then
+-                If point.x >= parentRect.Left And point.x <= parentRect.Right And _
+-                   point.y >= parentRect.Top + 34 And point.y <= parentRect.Bottom - 12 Then
++                If SH_CalendarPointInDayGrid(point, parentRect) Then
+                     If SH_ReadCalendarDate(calendarHwnd, selectedDate) Then SH_PickDateNative = True
+                     Exit Do
+                 End If
+@@ -218,6 +210,12 @@ Failed:
+     Err.Raise errNumber, , errDescription
+ End Function
+ 
++Private Function SH_CalendarPointInDayGrid(ByRef point As SH_POINT, ByRef bounds As SH_RECT) As Boolean
++    ' Header/navigation and trailing footer are not valid day-grid acceptance targets.
++    SH_CalendarPointInDayGrid = (point.x >= bounds.Left And point.x <= bounds.Right And _
++        point.y >= bounds.Top + 34 And point.y <= bounds.Bottom - 12)
++End Function
++
+ Private Function SH_ReadCalendarDate(ByVal calendarHwnd As LongPtr, ByRef value As Date) As Boolean
+     Dim st As SH_SYSTEMTIME
+     If calendarHwnd = 0 Then Exit Function
+@@ -291,18 +289,7 @@ Private Function SH_ReportInputsReady(ByVal wb As Workbook) As Boolean
+ End Function
+ 
+ Private Function SH_CalendarTryDate(ByVal value As Variant, ByRef result As Date) As Boolean
+-    On Error GoTo Failed
+-    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+-    If VarType(value) = vbString Then
+-        If Len(Trim$(CStr(value))) = 0 Then Exit Function
+-    End If
+-    If IsDate(value) Or IsNumeric(value) Then
+-        result = CDate(value)
+-        SH_CalendarTryDate = True
+-    End If
+-    Exit Function
+-Failed:
+-    SH_CalendarTryDate = False
++    SH_CalendarTryDate = SH_TryParseReportDate(value, result)
+ End Function
+ 
+ Private Sub SH_DateToSystemTime(ByVal value As Date, ByRef st As SH_SYSTEMTIME)
+diff --git a/packaging/excel_addin/vba/modShiftHelperGenProfiles.bas b/packaging/excel_addin/vba/modShiftHelperGenProfiles.bas
+index b0b98426ced991ce45a7f4c0c6169d516809fa81..a20fcdc781f8dcf337a18a83942c3402ba028d39 100644
+--- a/packaging/excel_addin/vba/modShiftHelperGenProfiles.bas
++++ b/packaging/excel_addin/vba/modShiftHelperGenProfiles.bas
+@@ -2,10 +2,15 @@ Attribute VB_Name = "modShiftHelperGenProfiles"
+ Option Explicit
+ 
+ Public Sub SH_ImportGenerationUniversal()
++    SH_ImportGenerationUniversalCore
++End Sub
++
++Public Function SH_ImportGenerationUniversalCore(Optional ByVal stationOverride As String = "") As Boolean
+     On Error GoTo Failed
+     Dim wb As Workbook, main As Worksheet, reportDate As Date, sourcePath As String
+     Dim daily As Double, own As Double, monthGeneration As Double, monthOwn As Double
+     Dim oldDaily As Double, oldOwn As Double, oldDateValue As Variant, oldDate As Date
++    Dim factDate As Date, oldFactDate As Date
+     Dim hasOldDate As Boolean, stage As String, errDescription As String, errNumber As Long
+     Dim oldCalculation As XlCalculation, oldEvents As Boolean, oldScreenUpdating As Boolean
+     Dim appStateCaptured As Boolean, manualFallback As Double, searchDiagnostic As String
+@@ -28,7 +33,8 @@ Public Sub SH_ImportGenerationUniversal()
+     Set main = SH_RequireSheet(wb, SH_InputSheetName(1))
+     reportDate = SH_ReportDate(wb)
+     manualFallback = SH_G2SafeDouble(SH_MetaValue(wb, SH_Label(7), SH_DefaultSetting(7)))
+-    stationHint = SH_G2StationHint(wb)
++    stationHint = LCase$(Trim$(stationOverride))
++    If Len(stationHint) = 0 Then stationHint = SH_G2StationHint(wb)
+ 
+     stage = "search Outlook"
+     sourcePath = SH_G2FindOutlookFile(wb, reportDate, stationHint, searchDiagnostic)
+@@ -42,7 +48,7 @@ Public Sub SH_ImportGenerationUniversal()
+         Application.ScreenUpdating = oldScreenUpdating
+         MsgBox SH_T("OUTLOOK_NOT_FOUND") & vbCrLf & vbCrLf & searchDiagnostic, _
+             vbInformation, "Shift-Helper"
+-        Exit Sub
++        Exit Function
+     End If
+     If LCase$(Right$(sourcePath, 5)) <> ".xlsx" Then
+         Err.Raise vbObjectError + 684, , "Only .xlsx generation attachments are allowed."
+@@ -50,6 +56,7 @@ Public Sub SH_ImportGenerationUniversal()
+ 
+     stage = "read generation workbook"
+     SH_G2ReadWorkbook sourcePath, DateAdd("d", -1, reportDate), daily, own, profileName
++    factDate = DateAdd("d", -1, DateValue(reportDate))
+ 
+     stage = "update generation totals"
+     monthGeneration = SH_G2SafeDouble(main.Range("C11").Value2)
+@@ -58,26 +65,27 @@ Public Sub SH_ImportGenerationUniversal()
+     oldOwn = SH_G2SafeDouble(SH_MetaValue(wb, SH_Label(11), 0))
+     oldDateValue = SH_MetaValue(wb, SH_Label(9), Empty)
+     hasOldDate = SH_G2TryDate(oldDateValue, oldDate)
++    If hasOldDate Then oldFactDate = DateAdd("d", -1, DateValue(oldDate))
+ 
+     If hasOldDate And DateValue(oldDate) = DateValue(reportDate) Then
+         monthGeneration = monthGeneration + daily - oldDaily
+         monthOwn = monthOwn + own - oldOwn
+-    ElseIf hasOldDate And Year(oldDate) = Year(reportDate) And Month(oldDate) = Month(reportDate) Then
++    ElseIf hasOldDate And Year(oldFactDate) = Year(factDate) And Month(oldFactDate) = Month(factDate) Then
+         monthGeneration = monthGeneration + daily
+         monthOwn = monthOwn + own
+-    ElseIf Day(reportDate) <= 2 Then
+-        monthGeneration = daily
+-        monthOwn = own
+-    Else
++    ElseIf Day(reportDate) = 1 Then
+         monthGeneration = monthGeneration + daily
+         monthOwn = monthOwn + own
++    Else
++        monthGeneration = daily
++        monthOwn = own
+     End If
+ 
+     main.Range("C10").Value2 = daily
+     main.Range("C11").Value2 = monthGeneration
+     main.Range("C16").Value2 = own
+     main.Range("C17").Value2 = monthOwn
+-    main.Cells(Month(reportDate) + 4, 10).Value2 = monthGeneration
++    main.Cells(Month(factDate) + 4, 10).Value2 = monthGeneration
+     SH_SetMetaValue wb, SH_Label(8), sourcePath
+     SH_SetMetaValue wb, SH_Label(9), reportDate
+     SH_SetMetaValue wb, SH_Label(10), daily
+@@ -86,6 +94,7 @@ Public Sub SH_ImportGenerationUniversal()
+     stage = "recalculate report inputs"
+     SH_ApplyCriticalFormulas wb
+     SH_CalculateReportInputs wb
++    SH_ImportGenerationUniversalCore = True
+ 
+     Application.Calculation = oldCalculation
+     Application.EnableEvents = oldEvents
+@@ -96,7 +105,7 @@ Public Sub SH_ImportGenerationUniversal()
+         SH_U("0421043E04310441044204320435043D043D044B04350020043D044304360434044B003A0020") & _
+         Format$(own, "0") & " kWh" & vbCrLf & _
+         Format$(daily / 24000#, "0.00") & " MW", vbInformation, "Shift-Helper"
+-    Exit Sub
++    Exit Function
+ Failed:
+     errNumber = Err.Number
+     errDescription = Err.Description
+@@ -111,7 +120,7 @@ Failed:
+     If Len(errDescription) = 0 Then errDescription = "Generation import failed."
+     MsgBox SH_T("GEN_BAD") & "[#" & CStr(errNumber) & "] Stage [" & stage & "]: " & _
+         errDescription, vbExclamation, "Shift-Helper"
+-End Sub
++End Function
+ 
+ Private Function SH_G2PickFile() As String
+     Dim selected As Variant
+@@ -479,11 +488,12 @@ Private Sub SH_G2ReadWorkbook(ByVal path As String, ByVal expectedDate As Date,
+             "Generation workbook does not match the Kochubeevskaya or Kuzminskaya contract."
+     End If
+ 
+-    If SH_G2TryDate(sumSheet.Range("A2").Value2, sourceDate) Then
+-        If DateValue(sourceDate) <> DateValue(expectedDate) Then
+-            Err.Raise vbObjectError + 688, , _
+-                "Generation workbook date does not match the report day."
+-        End If
++    If Not SH_G2TryDate(sumSheet.Range("A2").Value2, sourceDate) Then
++        Err.Raise vbObjectError + 687, , "Generation workbook A2 must contain the expected date."
++    End If
++    If DateValue(sourceDate) <> DateValue(expectedDate) Then
++        Err.Raise vbObjectError + 688, , _
++            "Generation workbook date does not match the report day."
+     End If
+ 
+     daily = SH_G2RoundKwh(daily)
+@@ -589,15 +599,7 @@ Failed:
+ End Function
+ 
+ Private Function SH_G2TryDate(ByVal value As Variant, ByRef result As Date) As Boolean
+-    On Error GoTo Failed
+-    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+-    If IsDate(value) Or IsNumeric(value) Then
+-        result = CDate(value)
+-        SH_G2TryDate = True
+-    End If
+-    Exit Function
+-Failed:
+-    SH_G2TryDate = False
++    SH_G2TryDate = SH_TryParseReportDate(value, result)
+ End Function
+ 
+ Private Function SH_G2SafeFileName(ByVal name As String) As String
+diff --git a/packaging/excel_addin/vba/modShiftHelperGeneration.bas b/packaging/excel_addin/vba/modShiftHelperGeneration.bas
+index 5ae895450c5ca4e4c1066f3e502e68da27fe4765..dd5ba13ee9b146fdf3559c9a43873a6345fe3527 100644
+--- a/packaging/excel_addin/vba/modShiftHelperGeneration.bas
++++ b/packaging/excel_addin/vba/modShiftHelperGeneration.bas
+@@ -2,534 +2,5 @@ Attribute VB_Name = "modShiftHelperGeneration"
+ Option Explicit
+ 
+ Public Sub SH_ImportGenerationSafe()
+-    On Error GoTo Failed
+-    Dim wb As Workbook, main As Worksheet, reportDate As Date, sourcePath As String
+-    Dim daily As Double, own As Double, monthGeneration As Double, monthOwn As Double
+-    Dim oldDaily As Double, oldOwn As Double, oldDateValue As Variant, oldDate As Date
+-    Dim hasOldDate As Boolean, stage As String, errDescription As String, errNumber As Long
+-    Dim oldCalculation As XlCalculation, oldEvents As Boolean, oldScreenUpdating As Boolean
+-    Dim appStateCaptured As Boolean, manualFallback As Double, searchDiagnostic As String
+-
+-    stage = "capture Excel state"
+-    oldCalculation = Application.Calculation
+-    oldEvents = Application.EnableEvents
+-    oldScreenUpdating = Application.ScreenUpdating
+-    appStateCaptured = True
+-    Application.Calculation = xlCalculationManual
+-    Application.EnableEvents = False
+-    Application.ScreenUpdating = False
+-
+-    stage = "prepare report contour"
+-    Set wb = SH_JournalBook()
+-    SH_EnsureReportContour wb
+-
+-    stage = "read report settings"
+-    Set main = SH_RequireSheet(wb, SH_InputSheetName(1))
+-    reportDate = SH_ReportDate(wb)
+-    manualFallback = SH_GenSafeDouble(SH_MetaValue(wb, SH_Label(7), SH_DefaultSetting(7)))
+-
+-    stage = "search Outlook"
+-    sourcePath = SH_GenFindOutlookFile(wb, reportDate, searchDiagnostic)
+-    If Len(sourcePath) = 0 And manualFallback <> 0 Then
+-        stage = "choose generation workbook"
+-        sourcePath = SH_GenPickFile()
+-    End If
+-    If Len(sourcePath) = 0 Then
+-        Application.Calculation = oldCalculation
+-        Application.EnableEvents = oldEvents
+-        Application.ScreenUpdating = oldScreenUpdating
+-        MsgBox SH_T("OUTLOOK_NOT_FOUND") & vbCrLf & vbCrLf & searchDiagnostic, _
+-            vbInformation, "Shift-Helper"
+-        Exit Sub
+-    End If
+-    If LCase$(Right$(sourcePath, 5)) <> ".xlsx" Then
+-        Err.Raise vbObjectError + 584, , "Only .xlsx generation attachments are allowed."
+-    End If
+-
+-    stage = "read generation workbook"
+-    SH_GenReadWorkbook sourcePath, daily, own
+-
+-    stage = "update generation totals"
+-    monthGeneration = SH_GenSafeDouble(main.Range("C11").Value2)
+-    monthOwn = SH_GenSafeDouble(main.Range("C17").Value2)
+-    oldDaily = SH_GenSafeDouble(SH_MetaValue(wb, SH_Label(10), 0))
+-    oldOwn = SH_GenSafeDouble(SH_MetaValue(wb, SH_Label(11), 0))
+-    oldDateValue = SH_MetaValue(wb, SH_Label(9), Empty)
+-    hasOldDate = SH_GenTryDate(oldDateValue, oldDate)
+-
+-    If hasOldDate And DateValue(oldDate) = DateValue(reportDate) Then
+-        monthGeneration = monthGeneration + daily - oldDaily
+-        monthOwn = monthOwn + own - oldOwn
+-    ElseIf hasOldDate And Year(oldDate) = Year(reportDate) And Month(oldDate) = Month(reportDate) Then
+-        monthGeneration = monthGeneration + daily
+-        monthOwn = monthOwn + own
+-    ElseIf Day(reportDate) <= 2 Then
+-        monthGeneration = daily
+-        monthOwn = own
+-    Else
+-        monthGeneration = monthGeneration + daily
+-        monthOwn = monthOwn + own
+-    End If
+-
+-    main.Range("C10").Value2 = daily
+-    main.Range("C11").Value2 = monthGeneration
+-    main.Range("C16").Value2 = own
+-    main.Range("C17").Value2 = monthOwn
+-    main.Cells(Month(reportDate) + 4, 10).Value2 = monthGeneration
+-    SH_SetMetaValue wb, SH_Label(8), sourcePath
+-    SH_SetMetaValue wb, SH_Label(9), reportDate
+-    SH_SetMetaValue wb, SH_Label(10), daily
+-    SH_SetMetaValue wb, SH_Label(11), own
+-
+-    stage = "recalculate report inputs"
+-    SH_ApplyCriticalFormulas wb
+-    SH_CalculateReportInputs wb
+-
+-    Application.Calculation = oldCalculation
+-    Application.EnableEvents = oldEvents
+-    Application.ScreenUpdating = oldScreenUpdating
+-    MsgBox SH_T("GEN_OK") & vbCrLf & Format$(daily, "0") & " kWh" & vbCrLf & _
+-        Format$(daily / 24000#, "0.00") & " MW", vbInformation, "Shift-Helper"
+-    Exit Sub
+-Failed:
+-    errNumber = Err.Number
+-    errDescription = Err.Description
+-    On Error Resume Next
+-    If appStateCaptured Then
+-        Application.Calculation = oldCalculation
+-        Application.EnableEvents = oldEvents
+-        Application.ScreenUpdating = oldScreenUpdating
+-    End If
+-    On Error GoTo 0
+-    If errNumber = 0 Then errNumber = vbObjectError + 587
+-    If Len(errDescription) = 0 Then errDescription = "Generation import failed."
+-    MsgBox SH_T("GEN_BAD") & "[#" & CStr(errNumber) & "] Stage [" & stage & "]: " & _
+-        errDescription, vbExclamation, "Shift-Helper"
++    SH_ImportGenerationUniversal
+ End Sub
+-
+-Private Function SH_GenPickFile() As String
+-    Dim selected As Variant
+-    selected = Application.GetOpenFilename( _
+-        "Excel Workbook (*.xlsx),*.xlsx", , SH_T("GEN_PICK") _
+-    )
+-    If VarType(selected) <> vbBoolean Then SH_GenPickFile = CStr(selected)
+-End Function
+-
+-Private Function SH_GenSetting(ByVal wb As Workbook, ByVal index As Long) As String
+-    Dim fallback As String, value As Variant
+-    fallback = GetSetting("Shift-Helper", "Outlook", SH_Label(index), SH_DefaultSetting(index))
+-    value = SH_MetaValue(wb, SH_Label(index), fallback)
+-    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then
+-        SH_GenSetting = fallback
+-    Else
+-        SH_GenSetting = CStr(value)
+-    End If
+-End Function
+-
+-Private Function SH_GenFindOutlookFile(ByVal wb As Workbook, ByVal reportDate As Date, _
+-    ByRef diagnostic As String) As String
+-    On Error GoTo Unavailable
+-    Dim outlook As Object, ns As Object, folder As Object, items As Object
+-    Dim item As Object, att As Object, received As Variant, receivedDate As Date
+-    Dim mailbox As String, folderPath As String, pattern As String, patternTemplate As String
+-    Dim subjectFilter As String, senderFilter As String, senderText As String
+-    Dim depthDays As Long, cutoff As Date, expectedDate As Date
+-    Dim tempRoot As String, target As String, fileName As String, resolvedFolder As String
+-    Dim itemsScanned As Long, filteredMessages As Long, attachmentsSeen As Long, xlsxSeen As Long
+-    Dim sampleNames As String, errNumber As Long, errDescription As String
+-
+-    mailbox = Trim$(SH_GenSetting(wb, 1))
+-    folderPath = Trim$(SH_GenSetting(wb, 2))
+-    patternTemplate = Trim$(SH_GenSetting(wb, 3))
+-    expectedDate = DateAdd("d", -1, DateValue(reportDate))
+-    pattern = Replace(patternTemplate, "{date}", Format$(expectedDate, "dd_mm_yyyy"))
+-    subjectFilter = LCase$(Trim$(SH_GenSetting(wb, 4)))
+-    senderFilter = LCase$(Trim$(SH_GenSetting(wb, 5)))
+-    depthDays = CLng(SH_GenSafeDouble(SH_GenSetting(wb, 6)))
+-    If depthDays < 1 Then depthDays = 1
+-    If depthDays > 60 Then depthDays = 60
+-    cutoff = DateAdd("d", -depthDays, DateValue(reportDate))
+-
+-    diagnostic = SH_GenSearchDiagnostic( _
+-        mailbox, folderPath, pattern, cutoff, "", 0, 0, 0, 0, "" _
+-    )
+-
+-    On Error Resume Next
+-    Set outlook = GetObject(, "Outlook.Application")
+-    If outlook Is Nothing Then Set outlook = CreateObject("Outlook.Application")
+-    On Error GoTo Unavailable
+-    If outlook Is Nothing Then
+-        diagnostic = diagnostic & vbCrLf & "Outlook application is unavailable."
+-        Exit Function
+-    End If
+-
+-    Set ns = outlook.GetNamespace("MAPI")
+-    Set folder = SH_GenOutlookFolder(ns, mailbox, folderPath)
+-    If folder Is Nothing Then
+-        diagnostic = diagnostic & vbCrLf & "Configured mailbox/folder could not be opened."
+-        Exit Function
+-    End If
+-    resolvedFolder = SH_GenFolderPath(folder)
+-    Set items = folder.Items
+-    items.Sort "[ReceivedTime]", True
+-
+-    tempRoot = Environ$("TEMP") & Application.PathSeparator & "ShiftHelper"
+-    If Dir$(tempRoot, vbDirectory) = vbNullString Then MkDir tempRoot
+-
+-    For Each item In items
+-        received = Empty
+-        On Error Resume Next
+-        Err.Clear
+-        received = item.ReceivedTime
+-        If Err.Number <> 0 Then
+-            Err.Clear
+-            On Error GoTo Unavailable
+-            GoTo NextItem
+-        End If
+-        On Error GoTo Unavailable
+-        If SH_GenTryDate(received, receivedDate) Then
+-            If receivedDate < cutoff Then Exit For
+-        End If
+-        itemsScanned = itemsScanned + 1
+-
+-        If Len(subjectFilter) > 0 Then
+-            If InStr(1, LCase$(SH_GenSafeText(item.Subject)), subjectFilter, vbTextCompare) = 0 Then _
+-                GoTo NextItem
+-        End If
+-        senderText = LCase$(SH_GenSafeText(item.SenderName) & " " & _
+-            SH_GenSafeText(item.SenderEmailAddress))
+-        If Len(senderFilter) > 0 Then
+-            If InStr(1, senderText, senderFilter, vbTextCompare) = 0 Then GoTo NextItem
+-        End If
+-        filteredMessages = filteredMessages + 1
+-
+-        For Each att In item.Attachments
+-            attachmentsSeen = attachmentsSeen + 1
+-            fileName = SH_GenSafeText(att.FileName)
+-            If Len(fileName) > 0 Then
+-                If LCase$(Right$(fileName, 5)) = ".xlsx" Then
+-                    xlsxSeen = xlsxSeen + 1
+-                    SH_GenAddSample sampleNames, fileName
+-                    If SH_GenAttachmentMatches(fileName, pattern, expectedDate) Then
+-                        target = tempRoot & Application.PathSeparator & SH_GenSafeFileName(fileName)
+-                        On Error Resume Next
+-                        Err.Clear
+-                        If Len(Dir$(target)) > 0 Then Kill target
+-                        Err.Clear
+-                        att.SaveAsFile target
+-                        If Err.Number = 0 And Len(Dir$(target)) > 0 Then
+-                            SH_GenFindOutlookFile = target
+-                            diagnostic = SH_GenSearchDiagnostic( _
+-                                mailbox, folderPath, pattern, cutoff, resolvedFolder, itemsScanned, _
+-                                filteredMessages, attachmentsSeen, xlsxSeen, sampleNames _
+-                            )
+-                            On Error GoTo 0
+-                            Exit Function
+-                        End If
+-                        Err.Clear
+-                        On Error GoTo Unavailable
+-                    End If
+-                End If
+-            End If
+-        Next att
+-NextItem:
+-    Next item
+-
+-    diagnostic = SH_GenSearchDiagnostic( _
+-        mailbox, folderPath, pattern, cutoff, resolvedFolder, itemsScanned, filteredMessages, _
+-        attachmentsSeen, xlsxSeen, sampleNames _
+-    )
+-    Exit Function
+-Unavailable:
+-    errNumber = Err.Number
+-    errDescription = Err.Description
+-    diagnostic = SH_GenSearchDiagnostic( _
+-        mailbox, folderPath, pattern, cutoff, resolvedFolder, itemsScanned, filteredMessages, _
+-        attachmentsSeen, xlsxSeen, sampleNames _
+-    )
+-    If errNumber <> 0 Or Len(errDescription) > 0 Then
+-        diagnostic = diagnostic & vbCrLf & "Outlook error [" & CStr(errNumber) & "]: " & errDescription
+-    End If
+-    SH_GenFindOutlookFile = ""
+-End Function
+-
+-Private Function SH_GenOutlookFolder(ByVal ns As Object, ByVal mailbox As String, _
+-    ByVal folderPath As String) As Object
+-    On Error Resume Next
+-    Dim root As Object, inbox As Object, recipient As Object, folder As Object
+-    Dim parts As Variant, firstIndex As Long, token As String
+-
+-    If Len(mailbox) > 0 Then Set root = ns.Folders.Item(mailbox)
+-
+-    If Len(mailbox) > 0 Then
+-        Set recipient = ns.CreateRecipient(mailbox)
+-        If Not recipient Is Nothing Then
+-            recipient.Resolve
+-            If recipient.Resolved Then Set inbox = ns.GetSharedDefaultFolder(recipient, 6)
+-        End If
+-    End If
+-
+-    If inbox Is Nothing And Not root Is Nothing Then Set inbox = root.Store.GetDefaultFolder(6)
+-    If inbox Is Nothing Then Set inbox = ns.GetDefaultFolder(6)
+-    If inbox Is Nothing Then Exit Function
+-
+-    If Len(Trim$(folderPath)) = 0 Then
+-        Set SH_GenOutlookFolder = inbox
+-        Exit Function
+-    End If
+-
+-    parts = Split(Replace(folderPath, "/", "\"), "\")
+-    firstIndex = LBound(parts)
+-    Do While firstIndex <= UBound(parts) And Len(Trim$(CStr(parts(firstIndex)))) = 0
+-        firstIndex = firstIndex + 1
+-    Loop
+-    If firstIndex > UBound(parts) Then
+-        Set SH_GenOutlookFolder = inbox
+-        Exit Function
+-    End If
+-
+-    token = Trim$(CStr(parts(firstIndex)))
+-    If SH_GenIsInboxToken(token, inbox) Then
+-        Set folder = SH_GenWalkFolder(inbox, parts, firstIndex + 1)
+-    Else
+-        Set folder = SH_GenWalkFolder(inbox, parts, firstIndex)
+-        If folder Is Nothing And Not root Is Nothing Then
+-            Set folder = SH_GenWalkFolder(root, parts, firstIndex)
+-        End If
+-    End If
+-    Set SH_GenOutlookFolder = folder
+-End Function
+-
+-Private Function SH_GenWalkFolder(ByVal startFolder As Object, ByVal parts As Variant, _
+-    ByVal firstIndex As Long) As Object
+-    On Error Resume Next
+-    Dim folder As Object, index As Long, token As String
+-    Set folder = startFolder
+-    If folder Is Nothing Then Exit Function
+-    If firstIndex > UBound(parts) Then
+-        Set SH_GenWalkFolder = folder
+-        Exit Function
+-    End If
+-    For index = firstIndex To UBound(parts)
+-        token = Trim$(CStr(parts(index)))
+-        If Len(token) > 0 Then
+-            Set folder = folder.Folders.Item(token)
+-            If folder Is Nothing Then Exit Function
+-        End If
+-    Next index
+-    Set SH_GenWalkFolder = folder
+-End Function
+-
+-Private Function SH_GenIsInboxToken(ByVal token As String, ByVal inbox As Object) As Boolean
+-    Dim normalized As String, inboxName As String
+-    normalized = LCase$(Trim$(token))
+-    inboxName = LCase$(Trim$(SH_GenSafeText(inbox.Name)))
+-    SH_GenIsInboxToken = ( _
+-        normalized = LCase$(SH_DefaultSetting(2)) Or _
+-        normalized = "inbox" Or _
+-        (Len(inboxName) > 0 And normalized = inboxName) _
+-    )
+-End Function
+-
+-Private Function SH_GenAttachmentMatches(ByVal fileName As String, ByVal pattern As String, _
+-    ByVal expectedDate As Date) As Boolean
+-    Dim normalizedName As String, expectedToken As String
+-    If LCase$(Right$(fileName, 5)) <> ".xlsx" Then Exit Function
+-    If LCase$(fileName) Like LCase$(pattern) Then
+-        SH_GenAttachmentMatches = True
+-        Exit Function
+-    End If
+-
+-    normalizedName = SH_GenNormalizeFileKey(fileName)
+-    expectedToken = Format$(expectedDate, "dd_mm_yyyy")
+-    If InStr(1, normalizedName, expectedToken, vbTextCompare) = 0 Then Exit Function
+-    If InStr(1, normalizedName, SH_U("04330435043D0435044004300446"), vbTextCompare) = 0 Then Exit Function
+-    SH_GenAttachmentMatches = True
+-End Function
+-
+-Private Function SH_GenNormalizeFileKey(ByVal fileName As String) As String
+-    Dim value As String
+-    value = LCase$(Trim$(fileName))
+-    If LCase$(Right$(value, 5)) = ".xlsx" Then value = Left$(value, Len(value) - 5)
+-    value = Replace(value, ChrW$(160), " ")
+-    value = Replace(value, ".", "_")
+-    value = Replace(value, "-", "_")
+-    value = Replace(value, " ", "_")
+-    Do While InStr(value, "__") > 0
+-        value = Replace(value, "__", "_")
+-    Loop
+-    SH_GenNormalizeFileKey = value
+-End Function
+-
+-Private Sub SH_GenAddSample(ByRef samples As String, ByVal fileName As String)
+-    If Len(samples) >= 700 Then Exit Sub
+-    If Len(samples) > 0 Then samples = samples & "; "
+-    samples = samples & fileName
+-End Sub
+-
+-Private Function SH_GenFolderPath(ByVal folder As Object) As String
+-    On Error GoTo Failed
+-    SH_GenFolderPath = SH_GenSafeText(folder.FolderPath)
+-    Exit Function
+-Failed:
+-    SH_GenFolderPath = ""
+-End Function
+-
+-Private Function SH_GenSearchDiagnostic(ByVal mailbox As String, ByVal configuredFolder As String, _
+-    ByVal pattern As String, ByVal cutoff As Date, ByVal resolvedFolder As String, _
+-    ByVal itemsScanned As Long, ByVal filteredMessages As Long, ByVal attachmentsSeen As Long, _
+-    ByVal xlsxSeen As Long, ByVal sampleNames As String) As String
+-    Dim result As String
+-    result = "Mailbox: " & mailbox & vbCrLf & _
+-        "Configured folder: " & configuredFolder & vbCrLf & _
+-        "Resolved folder: " & resolvedFolder & vbCrLf & _
+-        "Attachment mask: " & pattern & vbCrLf & _
+-        "Search from: " & Format$(cutoff, "dd.mm.yyyy") & vbCrLf & _
+-        "Messages scanned: " & CStr(itemsScanned) & vbCrLf & _
+-        "Messages after filters: " & CStr(filteredMessages) & vbCrLf & _
+-        "Attachments seen: " & CStr(attachmentsSeen) & vbCrLf & _
+-        "XLSX attachments: " & CStr(xlsxSeen)
+-    If Len(sampleNames) > 0 Then result = result & vbCrLf & "XLSX samples: " & sampleNames
+-    SH_GenSearchDiagnostic = result
+-End Function
+-
+-Private Sub SH_GenReadWorkbook(ByVal path As String, ByRef daily As Double, ByRef own As Double)
+-    On Error GoTo Failed
+-    Dim source As Workbook, ws As Worksheet, data As Variant, used As Range
+-    Dim rowsCount As Long, colsCount As Long, r As Long, c As Long, text As String
+-    Dim value As Variant, foundDaily As Boolean, foundOwn As Boolean
+-    Dim errNumber As Long, errDescription As String
+-
+-    Set source = Workbooks.Open(Filename:=path, UpdateLinks:=0, ReadOnly:=True, AddToMru:=False)
+-    For Each ws In source.Worksheets
+-        Set used = ws.UsedRange
+-        rowsCount = Application.Min(used.Rows.Count, 250)
+-        colsCount = Application.Min(used.Columns.Count, 80)
+-        If rowsCount > 0 And colsCount > 0 Then
+-            data = used.Resize(rowsCount, colsCount).Value2
+-            If rowsCount = 1 And colsCount = 1 Then
+-                ReDim data(1 To 1, 1 To 1)
+-                data(1, 1) = used.Cells(1, 1).Value2
+-            End If
+-            For r = 1 To rowsCount
+-                For c = 1 To colsCount
+-                    text = LCase$(SH_GenSafeText(data(r, c)))
+-                    If Not foundDaily Then
+-                        If InStr(1, text, SH_U("0432044B044004300431043E0442043A0430"), vbTextCompare) > 0 And _
+-                            (InStr(1, text, SH_U("044104430442"), vbTextCompare) > 0 Or _
+-                            InStr(1, text, SH_U("04320447043504400430"), vbTextCompare) > 0) And _
+-                            InStr(1, text, SH_U("043C04350441044F0446"), vbTextCompare) = 0 Then
+-                            value = SH_GenNearNumeric(data, r, c, rowsCount, colsCount)
+-                            If Not IsEmpty(value) Then daily = CDbl(value): foundDaily = True
+-                        End If
+-                    End If
+-                    If Not foundOwn Then
+-                        If InStr(1, text, SH_U("0441043E04310441044204320435043D"), vbTextCompare) > 0 And _
+-                            InStr(1, text, SH_U("043D044304360434"), vbTextCompare) > 0 And _
+-                            (InStr(1, text, SH_U("044104430442"), vbTextCompare) > 0 Or _
+-                            InStr(1, text, SH_U("04320447043504400430"), vbTextCompare) > 0) And _
+-                            InStr(1, text, SH_U("043C04350441044F0446"), vbTextCompare) = 0 Then
+-                            value = SH_GenNearNumeric(data, r, c, rowsCount, colsCount)
+-                            If Not IsEmpty(value) Then own = CDbl(value): foundOwn = True
+-                        End If
+-                    End If
+-                    If foundDaily And foundOwn Then Exit For
+-                Next c
+-                If foundDaily And foundOwn Then Exit For
+-            Next r
+-        End If
+-        If foundDaily And foundOwn Then Exit For
+-    Next ws
+-    source.Close SaveChanges:=False
+-    Set source = Nothing
+-    If Not foundDaily Or Not foundOwn Then
+-        Err.Raise vbObjectError + 585, , "Expected generation fields were not found in the workbook."
+-    End If
+-    If daily < 0 Or own < 0 Then
+-        Err.Raise vbObjectError + 586, , "Generation values must be non-negative."
+-    End If
+-    Exit Sub
+-Failed:
+-    errNumber = Err.Number
+-    errDescription = Err.Description
+-    On Error Resume Next
+-    If Not source Is Nothing Then source.Close SaveChanges:=False
+-    On Error GoTo 0
+-    If errNumber = 0 Then errNumber = vbObjectError + 588
+-    If Len(errDescription) = 0 Then errDescription = "Could not read generation workbook."
+-    Err.Raise errNumber, , errDescription
+-End Sub
+-
+-Private Function SH_GenNearNumeric(ByVal data As Variant, ByVal rowIndex As Long, _
+-    ByVal colIndex As Long, ByVal rowCount As Long, ByVal colCount As Long) As Variant
+-    Dim offset As Long, value As Variant
+-    For offset = 1 To 8
+-        If colIndex + offset <= colCount Then
+-            value = data(rowIndex, colIndex + offset)
+-            If SH_GenIsNumericValue(value) Then
+-                SH_GenNearNumeric = CDbl(value)
+-                Exit Function
+-            End If
+-        End If
+-    Next offset
+-    For offset = 1 To 4
+-        If rowIndex + offset <= rowCount Then
+-            value = data(rowIndex + offset, colIndex)
+-            If SH_GenIsNumericValue(value) Then
+-                SH_GenNearNumeric = CDbl(value)
+-                Exit Function
+-            End If
+-        End If
+-    Next offset
+-    SH_GenNearNumeric = Empty
+-End Function
+-
+-Private Function SH_GenIsNumericValue(ByVal value As Variant) As Boolean
+-    On Error GoTo Failed
+-    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+-    If VarType(value) = vbString Then
+-        If Len(Trim$(CStr(value))) = 0 Then Exit Function
+-    End If
+-    SH_GenIsNumericValue = IsNumeric(value)
+-    Exit Function
+-Failed:
+-    SH_GenIsNumericValue = False
+-End Function
+-
+-Private Function SH_GenSafeText(ByVal value As Variant) As String
+-    On Error GoTo Failed
+-    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+-    SH_GenSafeText = CStr(value)
+-    Exit Function
+-Failed:
+-    SH_GenSafeText = ""
+-End Function
+-
+-Private Function SH_GenSafeDouble(ByVal value As Variant) As Double
+-    On Error GoTo Failed
+-    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+-    If IsNumeric(value) Then SH_GenSafeDouble = CDbl(value)
+-    Exit Function
+-Failed:
+-    SH_GenSafeDouble = 0#
+-End Function
+-
+-Private Function SH_GenTryDate(ByVal value As Variant, ByRef result As Date) As Boolean
+-    On Error GoTo Failed
+-    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+-    If IsDate(value) Or IsNumeric(value) Then
+-        result = CDate(value)
+-        SH_GenTryDate = True
+-    End If
+-    Exit Function
+-Failed:
+-    SH_GenTryDate = False
+-End Function
+-
+-Private Function SH_GenSafeFileName(ByVal name As String) As String
+-    Dim bad As Variant
+-    SH_GenSafeFileName = name
+-    For Each bad In Array("<", ">", ":", Chr$(34), "/", "\", "|", "?", "*")
+-        SH_GenSafeFileName = Replace(SH_GenSafeFileName, CStr(bad), "_")
+-    Next bad
+-End Function
+\ No newline at end of file
+diff --git a/packaging/excel_addin/vba/modShiftHelperQuickCompat.bas b/packaging/excel_addin/vba/modShiftHelperQuickCompat.bas
+index 4c95578807d0971c6fb4fdcecbb56d84e3d67147..447912dca05429997687f07f7635305416280ddb 100644
+--- a/packaging/excel_addin/vba/modShiftHelperQuickCompat.bas
++++ b/packaging/excel_addin/vba/modShiftHelperQuickCompat.bas
+@@ -6,7 +6,7 @@ Public Function SH_QuickInputEventAllowed(ByVal Sh As Object) As Boolean
+     Dim wb As Workbook, fileName As String
+ 
+     If TypeName(Sh) <> "Worksheet" Then Exit Function
+-    If Sh.Name <> SH_JournalSheetName() Then Exit Function
++    If Sh.Name <> SH_JournalSheetName() And Not SH_IsReportInputSheet(Sh.Name) Then Exit Function
+ 
+     Set wb = Sh.Parent
+     If wb Is Nothing Then Exit Function
+@@ -24,3 +24,10 @@ Public Function SH_QuickInputEventAllowed(ByVal Sh As Object) As Boolean
+ Blocked:
+     SH_QuickInputEventAllowed = False
+ End Function
++
++Private Function SH_IsReportInputSheet(ByVal sheetName As String) As Boolean
++    Dim i As Long
++    For i = 2 To 7
++        If sheetName = SH_InputSheetName(i) Then SH_IsReportInputSheet = True: Exit Function
++    Next i
++End Function
+diff --git a/packaging/excel_addin/vba/modShiftHelperQuickInput.bas b/packaging/excel_addin/vba/modShiftHelperQuickInput.bas
+index f9d882c15f9b9429cf7241cef956cba5c516a99e..b44c67f4405360153e6e6313f6dd3a47281f1d06 100644
+--- a/packaging/excel_addin/vba/modShiftHelperQuickInput.bas
++++ b/packaging/excel_addin/vba/modShiftHelperQuickInput.bas
+@@ -4,6 +4,7 @@ Option Explicit
+ Public SH_AppEvents As CShiftHelperAppEvents
+ Private mQuickEnabled As Boolean
+ Private mQuickGuard As Boolean
++Private Const SH_QUICK_PREVIOUS_LIMIT As Long = 1000
+ 
+ Public Sub SH_InitializeAddin()
+     On Error Resume Next
+@@ -19,7 +20,16 @@ Public Sub SH_EnableQuickInput()
+     SH_InitializeAddin
+     mQuickEnabled = True
+     SaveSetting "Shift-Helper", "Journal", "QuickInput", "1"
+-    MsgBox SH_U("0411044B044104420440044B0439002004320432043E043400200432043A043B044E04470451043D002E"), vbInformation, "Shift-Helper"
++    On Error Resume Next
++    Application.EnableEvents = True
++    On Error GoTo 0
++    If Not Application.EnableEvents Then
++        MsgBox "Quick input is enabled but unavailable: Excel events are off.", vbExclamation, "Shift-Helper"
++    ElseIf TypeName(ActiveSheet) = "Worksheet" And Not SH_QuickInputEventAllowed(ActiveSheet) Then
++        MsgBox "Quick input is enabled globally but unavailable in this legacy workbook.", vbExclamation, "Shift-Helper"
++    Else
++        MsgBox SH_U("0411044B044104420440044B0439002004320432043E043400200432043A043B044E04470451043D002E"), vbInformation, "Shift-Helper"
++    End If
+ End Sub
+ 
+ Public Sub SH_DisableQuickInput()
+@@ -31,10 +41,15 @@ End Sub
+ 
+ Public Sub SH_ShowQuickInputStatus()
+     SH_InitializeAddin
+-    If mQuickEnabled Then
++    If mQuickEnabled And Application.EnableEvents And TypeName(ActiveSheet) = "Worksheet" And _
++        SH_QuickInputEventAllowed(ActiveSheet) Then
+         MsgBox SH_U("0411044B044104420440044B0439002004320432043E0434003A00200432043A043B044E04470451043D002E"), vbInformation, "Shift-Helper"
+-    Else
++    ElseIf Not mQuickEnabled Then
+         MsgBox SH_U("0411044B044104420440044B0439002004320432043E0434003A00200432044B043A043B044E04470435043D002E"), vbInformation, "Shift-Helper"
++    ElseIf Not Application.EnableEvents Then
++        MsgBox "Quick input is enabled but unavailable: Excel events are off.", vbExclamation, "Shift-Helper"
++    Else
++        MsgBox "Quick input is enabled globally but unavailable in this legacy workbook.", vbExclamation, "Shift-Helper"
+     End If
+ End Sub
+ 
+@@ -44,52 +59,50 @@ Public Sub SH_PrepareQuickInputSelection(ByVal Sh As Object, ByVal Target As Ran
+     SH_InitializeAddin
+     If Not mQuickEnabled Or mQuickGuard Then Exit Sub
+     If TypeName(Sh) <> "Worksheet" Then Exit Sub
+-    If Sh.Name <> SH_JournalSheetName() Then Exit Sub
+     If Target Is Nothing Then Exit Sub
+-    If Target.Areas.Count <> 1 Or Target.Columns.Count <> 1 Then Exit Sub
++    If Target.Areas.Count <> 1 Then Exit Sub
+     If Target.Cells.CountLarge > 256 Then Exit Sub
+-    col = Target.Column
+-    If Not SH_IsQuickColumn(col) Then Exit Sub
+     For Each cell In Target.Cells
+-        If cell.Row > 1 And Len(CStr(cell.Value2)) = 0 And Not cell.HasFormula Then cell.NumberFormat = "@"
++        col = cell.Column
++        If SH_QuickFieldKind(Sh, col) <> 0 Then
++            If cell.Row > 1 And Len(CStr(cell.Value2)) = 0 And Not cell.HasFormula Then cell.NumberFormat = "@"
++        End If
+     Next cell
+ SafeExit:
+ End Sub
+ 
+ Public Sub SH_HandleQuickInputChange(ByVal Sh As Object, ByVal Target As Range)
+     On Error GoTo Failed
+-    Dim col As Long, previousDate As Date, previousTime As Date, hasPrevious As Boolean
++    Dim col As Long, rowOffset As Long, colOffset As Long, fieldKind As Long
+     Dim cell As Range, raw As Variant, parsedDate As Date, parsedTime As Date, dayOffset As Long
++    Dim parsedCombined As Date, previousDate As Date, previousTime As Date, hasPrevious As Boolean
+     Dim errorText As String, firstError As String, errorCount As Long
+     Dim paired As Range, pairedDate As Date, hadEvents As Boolean
+ 
+     SH_InitializeAddin
+     If Not mQuickEnabled Or mQuickGuard Then Exit Sub
+     If TypeName(Sh) <> "Worksheet" Then Exit Sub
+-    If Sh.Name <> SH_JournalSheetName() Then Exit Sub
+     If Target Is Nothing Then Exit Sub
+-    If Target.Areas.Count <> 1 Or Target.Columns.Count <> 1 Then Exit Sub
++    If Target.Areas.Count <> 1 Then Exit Sub
+     If Target.Cells.CountLarge > 256 Then Exit Sub
+-    col = Target.Column
+-    If Not SH_IsQuickColumn(col) Then Exit Sub
+     If Target.Row <= 1 Then Exit Sub
+ 
+     mQuickGuard = True
+     hadEvents = Application.EnableEvents
+     Application.EnableEvents = False
+ 
+-    If col = 2 Or col = 9 Then
+-        hasPrevious = SH_ReadDateCell(Sh.Cells(Target.Row - 1, col), previousDate)
+-    Else
+-        hasPrevious = SH_ReadTimeCell(Sh.Cells(Target.Row - 1, col), previousTime)
+-    End If
+-
+-    For Each cell In Target.Cells
++    For rowOffset = 1 To Target.Rows.Count
++      For colOffset = 1 To Target.Columns.Count
++        Set cell = Target.Cells(rowOffset, colOffset)
+         If cell.Row <= 1 Then GoTo NextCell
++        col = cell.Column
++        fieldKind = SH_QuickFieldKind(Sh, col)
++        If fieldKind = 0 Then GoTo NextCell
+         raw = SH_QuickRawValue(cell)
+         If SH_QuickBlank(raw) Then GoTo NextCell
+         errorText = ""
+-        If col = 2 Or col = 9 Then
++        If fieldKind = 1 Then
++            hasPrevious = SH_FindPreviousDate(Sh, cell.Row - 1, col, previousDate)
+             If SH_TryParseDate(raw, previousDate, hasPrevious, parsedDate, errorText) Then
+                 cell.Value2 = CDbl(parsedDate)
+                 cell.NumberFormat = "dd.mm.yyyy"
+@@ -99,7 +112,8 @@ Public Sub SH_HandleQuickInputChange(ByVal Sh As Object, ByVal Target As Range)
+                 SH_KeepInvalidToken cell, raw
+                 SH_RecordQuickError firstError, errorCount, cell.Address(False, False), errorText
+             End If
+-        Else
++        ElseIf fieldKind = 2 Then
++            hasPrevious = SH_FindPreviousTime(Sh, cell.Row - 1, col, previousTime)
+             dayOffset = 0
+             If SH_TryParseTime(raw, previousTime, hasPrevious, parsedTime, dayOffset, errorText) Then
+                 cell.Value2 = CDbl(parsedTime) - Int(CDbl(parsedTime))
+@@ -120,9 +134,23 @@ Public Sub SH_HandleQuickInputChange(ByVal Sh As Object, ByVal Target As Range)
+                 SH_KeepInvalidToken cell, raw
+                 SH_RecordQuickError firstError, errorCount, cell.Address(False, False), errorText
+             End If
++        Else
++            hasPrevious = SH_FindPreviousCombined(Sh, cell.Row - 1, col, parsedCombined)
++            If SH_TryParseCombined(raw, parsedCombined, hasPrevious, parsedCombined, errorText) Then
++                cell.Value2 = CDbl(parsedCombined)
++                If SH_QuickCombinedNeedsSeconds(Sh, col) Then
++                    cell.NumberFormat = "dd.mm.yyyy hh:mm:ss"
++                Else
++                    cell.NumberFormat = "dd.mm.yyyy hh:mm"
++                End If
++            Else
++                SH_KeepInvalidToken cell, raw
++                SH_RecordQuickError firstError, errorCount, cell.Address(False, False), errorText
++            End If
+         End If
+ NextCell:
+-    Next cell
++      Next colOffset
++    Next rowOffset
+ 
+ SafeExit:
+     On Error Resume Next
+@@ -145,6 +173,60 @@ Private Function SH_IsQuickColumn(ByVal col As Long) As Boolean
+     SH_IsQuickColumn = (col = 2 Or col = 3 Or col = 9 Or col = 10)
+ End Function
+ 
++Private Function SH_QuickFieldKind(ByVal Sh As Object, ByVal col As Long) As Long
++    Dim columns As Variant, item As Variant
++    If Sh.Name = SH_JournalSheetName() Then
++        If col = 2 Or col = 9 Then SH_QuickFieldKind = 1
++        If col = 3 Or col = 10 Then SH_QuickFieldKind = 2
++        Exit Function
++    End If
++    columns = SH_QuickCombinedColumns(Sh.Name)
++    If IsEmpty(columns) Then Exit Function
++    For Each item In columns
++        If col = CLng(item) Then SH_QuickFieldKind = 3: Exit Function
++    Next item
++End Function
++
++Private Function SH_QuickCombinedColumns(ByVal sheetName As String) As Variant
++    Select Case sheetName
++        Case SH_InputSheetName(2): SH_QuickCombinedColumns = Array(3, 6)
++        Case SH_InputSheetName(3): SH_QuickCombinedColumns = Array(5, 6)
++        Case SH_InputSheetName(4): SH_QuickCombinedColumns = Array(4)
++        Case SH_InputSheetName(5): SH_QuickCombinedColumns = Array(10, 11)
++        Case SH_InputSheetName(6): SH_QuickCombinedColumns = Array(9, 10)
++        Case SH_InputSheetName(7): SH_QuickCombinedColumns = Array(3, 10)
++        Case Else: SH_QuickCombinedColumns = Empty
++    End Select
++End Function
++
++Private Function SH_QuickCombinedNeedsSeconds(ByVal Sh As Object, ByVal col As Long) As Boolean
++    SH_QuickCombinedNeedsSeconds = (Sh.Name = SH_InputSheetName(5) And (col = 10 Or col = 11))
++End Function
++
++Private Function SH_FindPreviousDate(ByVal Sh As Object, ByVal startRow As Long, ByVal col As Long, ByRef result As Date) As Boolean
++    Dim scanRow As Long
++    For scanRow = startRow To Application.Max(2, startRow - SH_QUICK_PREVIOUS_LIMIT) Step -1
++        If SH_ReadDateCell(Sh.Cells(scanRow, col), result) Then SH_FindPreviousDate = True: Exit Function
++    Next scanRow
++End Function
++
++Private Function SH_FindPreviousTime(ByVal Sh As Object, ByVal startRow As Long, ByVal col As Long, ByRef result As Date) As Boolean
++    Dim scanRow As Long
++    For scanRow = startRow To Application.Max(2, startRow - SH_QUICK_PREVIOUS_LIMIT) Step -1
++        If SH_ReadTimeCell(Sh.Cells(scanRow, col), result) Then SH_FindPreviousTime = True: Exit Function
++    Next scanRow
++End Function
++
++Private Function SH_FindPreviousCombined(ByVal Sh As Object, ByVal startRow As Long, ByVal col As Long, ByRef result As Date) As Boolean
++    Dim scanRow As Long, value As Variant
++    For scanRow = startRow To Application.Max(2, startRow - SH_QUICK_PREVIOUS_LIMIT) Step -1
++        value = Sh.Cells(scanRow, col).Value2
++        If IsNumeric(value) And CDbl(value) >= 20000# And CDbl(value) < 80000# Then
++            result = CDate(CDbl(value)): SH_FindPreviousCombined = True: Exit Function
++        End If
++    Next scanRow
++End Function
++
+ Private Function SH_QuickRawValue(ByVal cell As Range) As Variant
+     Dim formulaText As String
+     If cell.HasFormula Then
+@@ -194,6 +276,7 @@ Private Function SH_ReadTimeCell(ByVal cell As Range, ByRef result As Date) As B
+     Dim value As Variant, fraction As Double
+     value = cell.Value2
+     If IsNumeric(value) Then
++        If CDbl(value) = Int(CDbl(value)) Then Exit Function
+         fraction = CDbl(value) - Int(CDbl(value))
+         If fraction >= 0 And fraction < 1 Then
+             result = CDate(fraction)
+@@ -208,12 +291,19 @@ End Function
+ 
+ Private Function SH_TryParseDate(ByVal raw As Variant, ByVal previousDate As Date, ByVal hasPrevious As Boolean, ByRef result As Date, ByRef errorText As String) As Boolean
+     On Error GoTo InvalidValue
+-    Dim token As String, normalized As String, parts As Variant, n As Double
++    Dim token As String, normalized As String, parts As Variant, n As Double, candidate As String
+     Dim dayValue As Long, monthValue As Long, yearValue As Long, amount As Long
+ 
+     If VarType(raw) <> vbString And IsNumeric(raw) Then
+         n = CDbl(raw)
+-        If n > 10000 Then
++        If n = Int(n) Then
++            candidate = Right$("000000" & CStr(CLng(n)), 6)
++            If Len(CStr(CLng(n))) <= 6 Then
++                If SH_StrictDate(2000 + CLng(Right$(candidate, 2)), CLng(Mid$(candidate, 3, 2)), _
++                    CLng(Left$(candidate, 2)), result) Then SH_TryParseDate = True: Exit Function
++            End If
++        End If
++        If n >= 20000# And n < 80000# Then
+             result = CDate(n)
+             SH_TryParseDate = True
+             Exit Function
+@@ -234,9 +324,8 @@ Private Function SH_TryParseDate(ByVal raw As Variant, ByVal previousDate As Dat
+         SH_TryParseDate = True
+         Exit Function
+     End If
+-    If Left$(token, 1) = "+" And Len(token) > 1 And IsNumeric(Mid$(token, 2)) Then
++    If SH_StrictPositiveIncrement(token, amount) Then
+         If Not hasPrevious Then GoTo NeedPrevious
+-        amount = CLng(Mid$(token, 2))
+         result = DateAdd("d", amount, previousDate)
+         SH_TryParseDate = True
+         Exit Function
+@@ -313,9 +402,8 @@ Private Function SH_TryParseTime(ByVal raw As Variant, ByVal previousTime As Dat
+         SH_TryParseTime = True
+         Exit Function
+     End If
+-    If Left$(token, 1) = "+" And Len(token) > 1 And IsNumeric(Mid$(token, 2)) Then
++    If SH_StrictPositiveIncrement(token, amount) Then
+         If Not hasPrevious Then GoTo NeedPrevious
+-        amount = CLng(Mid$(token, 2))
+         total = Hour(previousTime) * 60 + Minute(previousTime) + amount
+         dayOffset = total \ 1440
+         total = total Mod 1440
+@@ -351,3 +439,61 @@ InvalidValue:
+ NeedPrevious:
+     errorText = SH_U("0422043E043A0435043D002004420440043504310443043504420020043F044004350434044B043404430449043504350433043E0020043A043E044004400435043A0442043D043E0433043E00200437043D043004470435043D0438044F00200432044B04480435002E")
+ End Function
++
++Private Function SH_StrictPositiveIncrement(ByVal token As String, ByRef amount As Long) As Boolean
++    Dim i As Long, ch As String
++    If Len(token) < 2 Or Left$(token, 1) <> "+" Then Exit Function
++    For i = 2 To Len(token)
++        ch = Mid$(token, i, 1)
++        If ch < "0" Or ch > "9" Then Exit Function
++    Next i
++    On Error GoTo InvalidValue
++    amount = CLng(Mid$(token, 2))
++    SH_StrictPositiveIncrement = (amount > 0)
++InvalidValue:
++End Function
++
++Private Function SH_TryParseCombined(ByVal raw As Variant, ByVal previousValue As Date, _
++    ByVal hasPrevious As Boolean, ByRef result As Date, ByRef errorText As String) As Boolean
++    On Error GoTo InvalidValue
++    Dim token As String, pieces As Variant, parsedDate As Date, parsedTime As Date
++    Dim ignoredOffset As Long, amount As Long, hasSeconds As Boolean
++    If VarType(raw) <> vbString And IsNumeric(raw) Then
++        If CDbl(raw) >= 20000# And CDbl(raw) < 80000# Then
++            result = CDate(CDbl(raw)): SH_TryParseCombined = True: Exit Function
++        End If
++    End If
++    token = Trim$(CStr(raw))
++    If token = "!" Then result = Now: SH_TryParseCombined = True: Exit Function
++    If token = "." Then
++        If Not hasPrevious Then GoTo NeedPrevious
++        result = previousValue: SH_TryParseCombined = True: Exit Function
++    End If
++    If SH_StrictPositiveIncrement(token, amount) Then
++        If Not hasPrevious Then GoTo NeedPrevious
++        result = DateAdd("n", amount, previousValue): SH_TryParseCombined = True: Exit Function
++    End If
++    pieces = Split(token, " ")
++    If UBound(pieces) = 0 Then
++        If Not hasPrevious Then GoTo NeedPrevious
++        If SH_TryParseTime(pieces(0), 0, False, parsedTime, ignoredOffset, errorText) Then
++            result = DateValue(previousValue) + TimeValue(parsedTime)
++            SH_TryParseCombined = True
++            Exit Function
++        End If
++        GoTo InvalidValue
++    End If
++    If UBound(pieces) <> 1 Then GoTo InvalidValue
++    If Not SH_TryParseDate(pieces(0), 0, False, parsedDate, errorText) Then GoTo InvalidValue
++    If Not SH_TryParseTime(pieces(1), 0, False, parsedTime, ignoredOffset, errorText) Then GoTo InvalidValue
++    hasSeconds = (Len(pieces(1)) - Len(Replace(pieces(1), ":", "")) = 2)
++    If hasSeconds Then parsedTime = TimeSerial(Hour(parsedTime), Minute(parsedTime), CLng(Split(pieces(1), ":")(2)))
++    result = DateValue(parsedDate) + TimeValue(parsedTime)
++    SH_TryParseCombined = True
++    Exit Function
++InvalidValue:
++    errorText = "Invalid combined date/time."
++    Exit Function
++NeedPrevious:
++    errorText = "A previous valid combined date/time is required."
++End Function
+diff --git a/packaging/excel_addin/vba/modShiftHelperReportWindow.bas b/packaging/excel_addin/vba/modShiftHelperReportWindow.bas
+index f1d945da621803137f277de7c810830696f7439a..a287bcfbe68bea9e4079dff842e9aaa55fbd9b8e 100644
+--- a/packaging/excel_addin/vba/modShiftHelperReportWindow.bas
++++ b/packaging/excel_addin/vba/modShiftHelperReportWindow.bas
+@@ -6,16 +6,7 @@ Public Sub SH_SyncReportWindow(ByVal wb As Workbook)
+     Set prep = SH_EnsurePrepSheet(wb)
+     raw = prep.Range("B3").Value2
+ 
+-    If IsError(raw) Or IsNull(raw) Or IsEmpty(raw) Then
+-        Err.Raise vbObjectError + 730, , "Report date is empty or invalid."
+-    End If
+-    If Not IsDate(raw) And Not IsNumeric(raw) Then
+-        Err.Raise vbObjectError + 731, , "Report date is invalid."
+-    End If
+-
+-    On Error GoTo InvalidDate
+-    reportDate = DateValue(CDate(raw))
+-    On Error GoTo 0
++    If Not SH_TryParseReportDate(raw, reportDate) Then GoTo InvalidDate
+ 
+     prep.Range("B3").Value = reportDate
+     prep.Range("B3").NumberFormat = "dd.mm.yyyy"
+diff --git a/packaging/excel_addin/vba/modShiftHelperStation.bas b/packaging/excel_addin/vba/modShiftHelperStation.bas
+index 902b2d2f1c825f34e6de3d121a15df41e1154a10..52df37b2cd83577ad48813863ed3eb1000401e9b 100644
+--- a/packaging/excel_addin/vba/modShiftHelperStation.bas
++++ b/packaging/excel_addin/vba/modShiftHelperStation.bas
+@@ -114,11 +114,7 @@ Failed:
+ End Sub
+ 
+ Public Sub SH_ShowStationCalendar()
+-    Dim wb As Workbook
+-    Set wb = SH_JournalBook()
+-    SH_EnsureStationReportContour wb
+     SH_ShowCalendar
+-    SH_EnsureStationReportContour wb
+ End Sub
+ 
+ Public Sub SH_ImportStationGeneration()
+@@ -407,4 +403,4 @@ Private Function SH_StationSafeText(ByVal value As Variant) As String
+     Exit Function
+ Failed:
+     SH_StationSafeText = ""
+-End Function
+\ No newline at end of file
++End Function
+diff --git a/packaging/excel_addin/vba/modShiftHelperStationImport.bas b/packaging/excel_addin/vba/modShiftHelperStationImport.bas
+index 48f58bad78e7c6ce6e5053417491a6cdec543548..9d9fd36c30ea0dab24027b534cad557da902062d 100644
+--- a/packaging/excel_addin/vba/modShiftHelperStationImport.bas
++++ b/packaging/excel_addin/vba/modShiftHelperStationImport.bas
+@@ -3,140 +3,41 @@ Option Explicit
+ 
+ Public Sub SH_ImportStationGenerationSelected()
+     On Error GoTo Failed
+-    Dim wb As Workbook, main As Worksheet, stationId As Long
+-    Dim reportDate As Date, factDate As Date, oldReportDate As Date, oldFactDate As Date
+-    Dim oldDateValue As Variant, hasOldDate As Boolean
+-    Dim priorMonthGeneration As Double, priorMonthOwn As Double
+-    Dim priorDaily As Double, priorOwn As Double, daily As Double, own As Double
+-    Dim monthGeneration As Double, monthOwn As Double
+-    Dim originalDaily As Variant, originalOwn As Variant, sentinelApplied As Boolean
+-    Dim correctRow As Long, wrongRow As Long, wrongRowWasEmpty As Boolean
+-    Dim wrongRowFormula As Variant
++    Dim wb As Workbook, main As Worksheet, stationId As Long, stationHint As String
++    Dim factDate As Date
+     Dim oldPattern As Variant, changed As Boolean
+     Dim errNumber As Long, errDescription As String
+ 
+     Set wb = SH_JournalBook()
+     stationId = SH_ReportStationId(wb, True)
+-    SH_EnsureStationReportContour wb
+-    Set main = SH_RequireSheet(wb, SH_InputSheetName(1))
+-
+-    reportDate = SH_ReportDate(wb)
+-    factDate = DateAdd("d", -1, DateValue(reportDate))
+-    priorMonthGeneration = SH_StationImportSafeDouble(main.Range("C11").Value2)
+-    priorMonthOwn = SH_StationImportSafeDouble(main.Range("C17").Value2)
+-    priorDaily = SH_StationImportSafeDouble(SH_MetaValue(wb, SH_Label(10), 0))
+-    priorOwn = SH_StationImportSafeDouble(SH_MetaValue(wb, SH_Label(11), 0))
+-    oldDateValue = SH_MetaValue(wb, SH_Label(9), Empty)
+-    hasOldDate = SH_StationImportTryDate(oldDateValue, oldReportDate)
+-    If hasOldDate Then oldFactDate = DateAdd("d", -1, DateValue(oldReportDate))
+-
+-    correctRow = Month(factDate) + 4
+-    wrongRow = Month(reportDate) + 4
+-    wrongRowWasEmpty = IsEmpty(main.Cells(wrongRow, 10).Value2) And _
+-        Not main.Cells(wrongRow, 10).HasFormula
+-    wrongRowFormula = main.Cells(wrongRow, 10).Formula
+-
+     If stationId = SH_STATION_KUZ Then
++        stationHint = "kuz"
+         oldPattern = SH_MetaValue(wb, SH_Label(3), SH_DefaultSetting(3))
+         SH_SetMetaValue wb, SH_Label(3), "*" & SH_U("041A04430437") & "*{date}*.xlsx"
+         changed = True
++    Else
++        stationHint = "kves"
+     End If
+ 
+-    originalDaily = main.Range("C10").Value
+-    originalOwn = main.Range("C16").Value
+-    main.Range("C10").Value2 = -1#
+-    main.Range("C16").Value2 = -1#
+-    sentinelApplied = True
+-
+-    SH_ImportGenerationUniversal
++    If Not SH_ImportGenerationUniversalCore(stationHint) Then GoTo CleanExit
+ 
++    SH_EnsureStationReportContour wb
+     Set main = SH_RequireSheet(wb, SH_InputSheetName(1))
+-    If SH_StationImportSafeDouble(main.Range("C10").Value2) < 0# Or _
+-        SH_StationImportSafeDouble(main.Range("C16").Value2) < 0# Then
+-        main.Range("C10").Value = originalDaily
+-        main.Range("C16").Value = originalOwn
+-        sentinelApplied = False
+-        If changed Then
+-            SH_SetMetaValue wb, SH_Label(3), oldPattern
+-            changed = False
+-        End If
+-        SH_ApplyCriticalFormulas wb
+-        SH_CalculateReportInputs wb
+-        Exit Sub
+-    End If
+-    sentinelApplied = False
+-
++    factDate = DateAdd("d", -1, DateValue(SH_ReportDate(wb)))
++    SH_StoreStationMonthFact wb, stationId, factDate, CDbl(main.Range("C11").Value2)
++    SH_ApplyStationHistoricalFacts wb
++CleanExit:
+     If changed Then
+         SH_SetMetaValue wb, SH_Label(3), oldPattern
+         changed = False
+     End If
+-    SH_EnsureStationReportContour wb
+-    Set main = SH_RequireSheet(wb, SH_InputSheetName(1))
+-
+-    daily = SH_StationImportSafeDouble(main.Range("C10").Value2)
+-    own = SH_StationImportSafeDouble(main.Range("C16").Value2)
+-
+-    If hasOldDate And DateValue(oldReportDate) = DateValue(reportDate) Then
+-        monthGeneration = priorMonthGeneration + daily - priorDaily
+-        monthOwn = priorMonthOwn + own - priorOwn
+-    ElseIf hasOldDate And Year(oldFactDate) = Year(factDate) And _
+-        Month(oldFactDate) = Month(factDate) Then
+-        monthGeneration = priorMonthGeneration + daily
+-        monthOwn = priorMonthOwn + own
+-    Else
+-        monthGeneration = daily
+-        monthOwn = own
+-    End If
+-
+-    main.Range("C11").Value2 = monthGeneration
+-    main.Range("C17").Value2 = monthOwn
+-
+-    If wrongRow <> correctRow Then
+-        If wrongRowWasEmpty Then
+-            main.Cells(wrongRow, 10).ClearContents
+-        Else
+-            main.Cells(wrongRow, 10).Formula = wrongRowFormula
+-        End If
+-    End If
+-    main.Cells(correctRow, 10).Value2 = monthGeneration
+-
+-    SH_StoreStationMonthFact wb, stationId, factDate, monthGeneration
+-    SH_ApplyStationHistoricalFacts wb
+-    SH_ApplyCriticalFormulas wb
+-    SH_CalculateReportInputs wb
+     Exit Sub
+ Failed:
+     errNumber = Err.Number
+     errDescription = Err.Description
+     On Error Resume Next
+-    If sentinelApplied Then
+-        If main Is Nothing Then Set main = SH_RequireSheet(wb, SH_InputSheetName(1))
+-        main.Range("C10").Value = originalDaily
+-        main.Range("C16").Value = originalOwn
+-    End If
+     If changed Then SH_SetMetaValue wb, SH_Label(3), oldPattern
+     On Error GoTo 0
+     If Len(errDescription) = 0 Then errDescription = "Station generation import failed."
+     MsgBox SH_T("GEN_BAD") & "[#" & CStr(errNumber) & "]: " & errDescription, vbExclamation, "Shift-Helper"
+ End Sub
+-
+-Private Function SH_StationImportSafeDouble(ByVal value As Variant) As Double
+-    On Error GoTo Failed
+-    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+-    If IsNumeric(value) Then SH_StationImportSafeDouble = CDbl(value)
+-    Exit Function
+-Failed:
+-    SH_StationImportSafeDouble = 0#
+-End Function
+-
+-Private Function SH_StationImportTryDate(ByVal value As Variant, ByRef result As Date) As Boolean
+-    On Error GoTo Failed
+-    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
+-    If IsDate(value) Or IsNumeric(value) Then
+-        result = CDate(value)
+-        SH_StationImportTryDate = True
+-    End If
+-    Exit Function
+-Failed:
+-    SH_StationImportTryDate = False
+-End Function
+diff --git a/packaging/excel_addin/vba/modShiftHelperUtil.bas b/packaging/excel_addin/vba/modShiftHelperUtil.bas
+index 509efbc2ce34d91287cb06cfb9487a8eaa592442..ac975c0e8bf908b93ef2eb325e084b918f88455a 100644
+--- a/packaging/excel_addin/vba/modShiftHelperUtil.bas
++++ b/packaging/excel_addin/vba/modShiftHelperUtil.bas
+@@ -225,11 +225,39 @@ Failed:
+ End Function
+ 
+ Public Function SH_ReportDate(ByVal wb As Workbook) As Date
+-    Dim value As Variant, ws As Worksheet
++    Dim value As Variant, ws As Worksheet, parsed As Date
+     Set ws = SH_RequireSheet(wb, SH_PrepSheetName())
+     value = ws.Range(SH_ReportDateCell()).Value
+-    If Not IsDate(value) And Not IsNumeric(value) Then Err.Raise vbObjectError + 513, , "Invalid report date in B3."
+-    SH_ReportDate = CDate(value)
++    If Not SH_TryParseReportDate(value, parsed) Then Err.Raise vbObjectError + 513, , "Invalid report date in B3."
++    SH_ReportDate = parsed
++End Function
++
++Public Function SH_TryParseReportDate(ByVal value As Variant, ByRef result As Date) As Boolean
++    On Error GoTo Failed
++    Dim token As String, normalized As String, parts As Variant
++    Dim dayValue As Long, monthValue As Long, yearValue As Long, candidate As Date
++    If IsError(value) Or IsNull(value) Or IsEmpty(value) Then Exit Function
++    If VarType(value) <> vbString Then
++        If Not IsNumeric(value) Then Exit Function
++        If CDbl(value) < 1# Or CDbl(value) >= 2958466# Then Exit Function
++        result = CDate(CDbl(value)): SH_TryParseReportDate = True: Exit Function
++    End If
++    token = Trim$(CStr(value))
++    If Len(token) = 0 Then Exit Function
++    normalized = Replace(Replace(token, "/", "."), "-", ".")
++    parts = Split(normalized, ".")
++    If UBound(parts) <> 2 Then Exit Function
++    If Len(parts(0)) = 4 Then
++        yearValue = CLng(parts(0)): monthValue = CLng(parts(1)): dayValue = CLng(parts(2))
++    Else
++        dayValue = CLng(parts(0)): monthValue = CLng(parts(1)): yearValue = CLng(parts(2))
++        If yearValue < 100 Then yearValue = 2000 + yearValue
++    End If
++    candidate = DateSerial(yearValue, monthValue, dayValue)
++    If Year(candidate) <> yearValue Or Month(candidate) <> monthValue Or Day(candidate) <> dayValue Then Exit Function
++    result = candidate
++    SH_TryParseReportDate = True
++Failed:
+ End Function
+ 
+ Public Function SH_ReportOffset(ByVal wb As Workbook) As Double
+diff --git a/src/shift_helper/core/quick_input.py b/src/shift_helper/core/quick_input.py
+index ecf08c9a4335116349f29b1a4afdfd500b1803b7..3dcc69b756090e2283b5c93e633063489b2a738a 100644
+--- a/src/shift_helper/core/quick_input.py
++++ b/src/shift_helper/core/quick_input.py
+@@ -23,6 +23,12 @@ class ParsedTime:
+     day_offset: int = 0
+ 
+ 
++@dataclass(frozen=True, slots=True)
++class ParsedDateTime:
++    value: datetime
++    explicit_seconds: bool = False
++
++
+ @dataclass(frozen=True, slots=True)
+ class BulkCellResult:
+     value: date | time | None
+@@ -62,6 +68,20 @@ def parse_date_input(
+     if isinstance(raw, date):
+         return raw
+ 
++    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
++        numeric = float(raw)
++        if numeric.is_integer():
++            compact = str(int(numeric)).zfill(6)
++            if len(compact) == 6:
++                try:
++                    return _strict_date(
++                        2000 + int(compact[4:6]), int(compact[2:4]), int(compact[0:2])
++                    )
++                except QuickInputError:
++                    pass
++        if 20_000 <= numeric <= 80_000:
++            return (datetime(1899, 12, 30) + timedelta(days=numeric)).date()
++
+     token = _text(raw)
+     if not token:
+         raise QuickInputError("Дата не заполнена.")
+@@ -72,6 +92,8 @@ def parse_date_input(
+ 
+     plus = _PLUS_RE.fullmatch(token)
+     if plus:
++        if int(plus.group("amount")) <= 0:
++            raise QuickInputError("Приращение должно быть положительным целым числом.")
+         base = _require_previous(previous, token)
+         return base + timedelta(days=int(plus.group("amount")))  # type: ignore[operator]
+ 
+@@ -136,6 +158,8 @@ def parse_time_input(
+ 
+     plus = _PLUS_RE.fullmatch(token)
+     if plus:
++        if int(plus.group("amount")) <= 0:
++            raise QuickInputError("Приращение должно быть положительным целым числом.")
+         base = _require_previous(previous, token)
+         total = _time_minutes(base) + int(plus.group("amount"))  # type: ignore[arg-type]
+         day_offset, minute_of_day = divmod(total, 24 * 60)
+@@ -162,6 +186,81 @@ def parse_time_input(
+     raise QuickInputError(f"Неподдерживаемый формат времени: {token!r}.")
+ 
+ 
++def is_stored_time(raw: object) -> bool:
++    """Return whether an existing cell value is a real Excel time fraction."""
++
++    if isinstance(raw, datetime | time):
++        return True
++    return isinstance(raw, (int, float)) and not isinstance(raw, bool) and 0 <= float(raw) < 1
++
++
++def parse_combined_input(
++    raw: object,
++    *,
++    previous: datetime | None,
++    now: datetime,
++) -> ParsedDateTime:
++    """Parse a mapped combined date/time field without locale-dependent conversion."""
++
++    if isinstance(raw, datetime):
++        return ParsedDateTime(raw, raw.second != 0)
++    token = _text(raw)
++    if token == "!":
++        return ParsedDateTime(now.replace(microsecond=0), now.second != 0)
++    if token == ".":
++        if previous is None:
++            raise QuickInputError("Требуется предыдущее корректное значение выше.")
++        return ParsedDateTime(previous, previous.second != 0)
++    plus = _PLUS_RE.fullmatch(token)
++    if plus:
++        amount = int(plus.group("amount"))
++        if amount <= 0:
++            raise QuickInputError("Приращение должно быть положительным целым числом.")
++        if previous is None:
++            raise QuickInputError("Требуется предыдущее корректное значение выше.")
++        return ParsedDateTime(previous + timedelta(minutes=amount), previous.second != 0)
++
++    pieces = token.split()
++    if len(pieces) == 1:
++        if previous is None:
++            raise QuickInputError("Время без даты требует предыдущего значения выше.")
++        parsed_time = parse_time_input(pieces[0], previous=None, now=now).value
++        return ParsedDateTime(datetime.combine(previous.date(), parsed_time))
++    if len(pieces) != 2:
++        raise QuickInputError(f"Некорректные дата и время: {token!r}.")
++
++    parsed_date = parse_date_input(pieces[0], previous=None, today=now.date())
++    time_token = pieces[1]
++    parsed_time = parse_time_input(time_token, previous=None, now=now).value
++    explicit_seconds = time_token.count(":") == 2
++    if explicit_seconds:
++        parsed_time = time.fromisoformat(time_token)
++    return ParsedDateTime(datetime.combine(parsed_date, parsed_time), explicit_seconds)
++
++
++def accumulate_generation(
++    current_month: float,
++    daily: float,
++    report_date: date,
++    previous_report_date: date | None,
++    previous_daily: float,
++) -> tuple[float, date]:
++    """Accumulate a daily import in the month of report_date - 1 day."""
++
++    fact_date = report_date - timedelta(days=1)
++    if previous_report_date == report_date:
++        return current_month + daily - previous_daily, fact_date
++    previous_fact = previous_report_date - timedelta(days=1) if previous_report_date else None
++    if previous_fact and (previous_fact.year, previous_fact.month) == (
++        fact_date.year,
++        fact_date.month,
++    ):
++        return current_month + daily, fact_date
++    if report_date.day == 1:
++        return current_month + daily, fact_date
++    return daily, fact_date
++
++
+ def normalize_date_paste(
+     values: Sequence[object],
+     *,
+diff --git a/tests/test_excel_datetime_repair_contract.py b/tests/test_excel_datetime_repair_contract.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..898ae66b49a301a71372ec33e775836ebf228c4a
+--- /dev/null
++++ b/tests/test_excel_datetime_repair_contract.py
+@@ -0,0 +1,87 @@
++from pathlib import Path
++
++
++VBA = Path(__file__).resolve().parents[1] / "packaging" / "excel_addin" / "vba"
++
++
++def source(name: str) -> str:
++    return (VBA / name).read_text(encoding="ascii")
++
++
++def test_quick_input_dispatches_multicolumn_ranges_and_has_explicit_combined_map() -> None:
++    quick = source("modShiftHelperQuickInput.bas")
++    assert "Target.Columns.Count <> 1" not in quick
++    assert "SH_QuickFieldKind" in quick
++    for sheet_index, columns in {
++        2: "3, 6",
++        3: "5, 6",
++        4: "4",
++        5: "10, 11",
++        6: "9, 10",
++        7: "3, 10",
++    }.items():
++        expected = f"Case SH_InputSheetName({sheet_index}): SH_QuickCombinedColumns = Array({columns})"
++        assert expected in quick
++    assert "Sh.Name = SH_InputSheetName(5) And (col = 10 Or col = 11)" in quick
++
++
++def test_previous_scan_is_bounded_upward_and_status_checks_actual_viability() -> None:
++    quick = source("modShiftHelperQuickInput.bas")
++    assert "SH_QUICK_PREVIOUS_LIMIT" in quick
++    bounded_scan = (
++        "For scanRow = startRow To Application.Max(2, startRow - "
++        "SH_QUICK_PREVIOUS_LIMIT) Step -1"
++    )
++    assert bounded_scan in quick
++    assert "Application.EnableEvents = True" in quick
++    assert "If Not Application.EnableEvents Then" in quick
++    assert "SH_QuickInputEventAllowed(ActiveSheet)" in quick
++
++
++def test_vba_distinguishes_numeric_compact_dates_and_stored_time_integers() -> None:
++    quick = source("modShiftHelperQuickInput.bas")
++    compact = 'candidate = Right$("000000" & CStr(CLng(n)), 6)'
++    serial = "If n >= 20000# And n < 80000# Then"
++    assert compact in quick and serial in quick
++    assert quick.index(compact) < quick.index(serial)
++    assert "If CDbl(value) = Int(CDbl(value)) Then Exit Function" in quick
++
++
++def test_calendar_requires_explicit_acceptance_and_station_picker_skips_contour() -> None:
++    calendar = source("modShiftHelperCalendar.bas")
++    station = source("modShiftHelperStation.bas")
++    navigation_commit = "If DateValue(currentDate) <> DateValue(initialDate) Then"
++    assert navigation_commit not in calendar
++    assert "SH_CalendarPointInDayGrid" in calendar
++    body = station.split("Public Sub SH_ShowStationCalendar()", 1)[1].split("End Sub", 1)[0]
++    assert "SH_EnsureStationReportContour" not in body
++    assert "SH_ShowCalendar" in body
++
++
++def test_generation_has_one_boolean_core_and_explicit_station_override() -> None:
++    profiles = source("modShiftHelperGenProfiles.bas")
++    station = source("modShiftHelperStationImport.bas")
++    legacy = source("modShiftHelperGeneration.bas")
++    assert "Public Function SH_ImportGenerationUniversalCore" in profiles
++    assert "Optional ByVal stationOverride As String" in profiles
++    assert 'stationHint = "kuz"' in station
++    assert 'stationHint = "kves"' in station
++    assert "SH_ImportGenerationUniversalCore(stationHint)" in station
++    assert "SH_G2StationHint" not in station
++    assert "monthGeneration =" not in station
++    assert "SH_ImportGenerationUniversal" in legacy
++    assert "SH_ReadGenerationWorkbook" not in legacy
++    assert "factDate = DateAdd(\"d\", -1, DateValue(reportDate))" in profiles
++    assert 'If Not SH_G2TryDate(sumSheet.Range("A2").Value2, sourceDate) Then' in profiles
++
++
++def test_report_dates_use_strict_text_parser_and_cut_copy_guard_survives() -> None:
++    util = source("modShiftHelperUtil.bas")
++    calendar = source("modShiftHelperCalendar.bas")
++    report_window = source("modShiftHelperReportWindow.bas")
++    events = source("CShiftHelperAppEvents.cls")
++    assert "Public Function SH_TryParseReportDate" in util
++    calendar_parser = calendar.split("Private Function SH_CalendarTryDate", 1)[1]
++    assert "IsDate(value) Or IsNumeric(value)" not in calendar_parser
++    assert "SH_TryParseReportDate(raw, reportDate)" in report_window
++    assert "If Application.CutCopyMode <> False Then Exit Sub" in events
+diff --git a/tests/test_excel_generation_month_rollover.py b/tests/test_excel_generation_month_rollover.py
+index 7d90a3401ca4a741e23b8c6075632d4e3519d350..5a9e79856b07532bb5c1220edebcb824fc940808 100644
+--- a/tests/test_excel_generation_month_rollover.py
++++ b/tests/test_excel_generation_month_rollover.py
+@@ -9,38 +9,32 @@ def _read(name: str) -> str:
+ 
+ 
+ def test_generation_is_bucketed_by_actual_generation_day() -> None:
+-    source = _read("modShiftHelperStationImport.bas")
++    source = _read("modShiftHelperGenProfiles.bas")
+ 
+     assert 'factDate = DateAdd("d", -1, DateValue(reportDate))' in source
+-    assert 'oldFactDate = DateAdd("d", -1, DateValue(oldReportDate))' in source
+-    assert "correctRow = Month(factDate) + 4" in source
+-    assert "wrongRow = Month(reportDate) + 4" in source
+-    assert "If wrongRow <> correctRow Then" in source
+-    assert "main.Cells(correctRow, 10).Value2 = monthGeneration" in source
++    assert 'oldFactDate = DateAdd("d", -1, DateValue(oldDate))' in source
++    assert "main.Cells(Month(factDate) + 4, 10).Value2 = monthGeneration" in source
+ 
+ 
+ def test_generation_month_total_resets_on_real_month_boundary() -> None:
+-    source = _read("modShiftHelperStationImport.bas")
++    source = _read("modShiftHelperGenProfiles.bas")
+ 
+-    assert "DateValue(oldReportDate) = DateValue(reportDate)" in source
++    assert "DateValue(oldDate) = DateValue(reportDate)" in source
+     assert "Year(oldFactDate) = Year(factDate)" in source
+     assert "Month(oldFactDate) = Month(factDate)" in source
+-    assert "monthGeneration = priorMonthGeneration + daily" in source
++    assert "monthGeneration = monthGeneration + daily" in source
+     assert "monthGeneration = daily" in source
+-    assert "SH_StoreStationMonthFact wb, stationId, factDate, monthGeneration" in source
++    station = _read("modShiftHelperStationImport.bas")
++    assert "SH_StoreStationMonthFact wb, stationId, factDate" in station
+ 
+ 
+ def test_cancelled_or_missing_import_cannot_reuse_stale_daily_values() -> None:
+-    source = _read("modShiftHelperStationImport.bas")
+-
+-    assert 'originalDaily = main.Range("C10").Value' in source
+-    assert 'originalOwn = main.Range("C16").Value' in source
+-    assert 'main.Range("C10").Value2 = -1#' in source
+-    assert 'main.Range("C16").Value2 = -1#' in source
+-    assert "sentinelApplied = True" in source
+-    assert 'main.Range("C10").Value = originalDaily' in source
+-    assert 'main.Range("C16").Value = originalOwn' in source
+-    assert "If sentinelApplied Then" in source
++    station = _read("modShiftHelperStationImport.bas")
++    assert "If Not SH_ImportGenerationUniversalCore(stationHint) Then GoTo CleanExit" in station
++    assert "SH_StoreStationMonthFact" in station
++    assert station.index("SH_ImportGenerationUniversalCore") < station.index(
++        "SH_StoreStationMonthFact"
++    )
+ 
+ 
+ def test_completed_month_history_is_not_hard_limited_to_july() -> None:
+diff --git a/tests/test_excel_runtime_ui_contract.py b/tests/test_excel_runtime_ui_contract.py
+index 51acadb39b850348bc94aa94adbe105cb9f532a0..6f2668e195004c12a1e8084a10588cd1a953e1eb 100644
+--- a/tests/test_excel_runtime_ui_contract.py
++++ b/tests/test_excel_runtime_ui_contract.py
+@@ -172,7 +172,7 @@ def test_quick_input_uses_application_events_and_covers_accepted_journal_columns
+     assert "col = 2 Or col = 3 Or col = 9 Or col = 10" in quick
+     assert 'If token = "." Then' in quick
+     assert 'If token = "!" Then' in quick
+-    assert 'Left$(token, 1) = "+"' in quick
++    assert "SH_StrictPositiveIncrement" in quick
+     assert "dayOffset" in quick
+     assert "Application.EnableEvents = False" in quick
+     assert "SaveSetting" in quick
+diff --git a/tests/test_pivot_quick_input.py b/tests/test_pivot_quick_input.py
+index 98653d54f480b8b821cd38400871f82ef843e668..19b0dd55ecca1050033305e622c90cd13fddede8 100644
+--- a/tests/test_pivot_quick_input.py
++++ b/tests/test_pivot_quick_input.py
+@@ -3,6 +3,9 @@ from datetime import date, datetime, time
+ import pytest
+ 
+ from shift_helper.core.quick_input import (
++    accumulate_generation,
++    is_stored_time,
++    parse_combined_input,
+     QuickInputError,
+     normalize_date_paste,
+     normalize_time_paste,
+@@ -87,3 +90,57 @@ def test_bulk_date_and_time_paste_is_sequential() -> None:
+     assert times[1].day_offset == 1
+     assert times[2].error
+     assert times[3].value == time(9, 30)
++
++
++def test_excel_numeric_compact_date_wins_only_when_it_is_a_valid_operator_date() -> None:
++    assert parse_date_input(70926, previous=None, today=TODAY) == date(2026, 9, 7)
++    assert parse_date_input(46272, previous=None, today=TODAY) == date(2026, 9, 7)
++
++
++@pytest.mark.parametrize("token", ["+0", "+1.5", "+1e2", "+ 2", "+-2"])
++def test_increment_is_a_strict_positive_integer(token: str) -> None:
++    with pytest.raises(QuickInputError):
++        parse_time_input(token, previous=time(9, 0), now=NOW)
++
++
++def test_raw_integer_is_not_a_valid_stored_time() -> None:
++    assert not is_stored_time(930)
++    assert is_stored_time(0.5)
++
++
++@pytest.mark.parametrize(
++    ("raw", "expected"),
++    [
++        ("0709 930", datetime(2026, 9, 7, 9, 30)),
++        ("070926 930", datetime(2026, 9, 7, 9, 30)),
++        ("07092026 0930", datetime(2026, 9, 7, 9, 30)),
++        ("07.09.2026 09:30", datetime(2026, 9, 7, 9, 30)),
++        ("07.09.2026 09:30:45", datetime(2026, 9, 7, 9, 30, 45)),
++    ],
++)
++def test_combined_datetime_contract(raw: str, expected: datetime) -> None:
++    assert parse_combined_input(raw, previous=None, now=NOW).value == expected
++
++
++def test_combined_time_only_inherits_date_and_increment_rolls_midnight() -> None:
++    previous = datetime(2026, 9, 7, 23, 50)
++    assert parse_combined_input("930", previous=previous, now=NOW).value == datetime(
++        2026, 9, 7, 9, 30
++    )
++    assert parse_combined_input("+20", previous=previous, now=NOW).value == datetime(
++        2026, 9, 8, 0, 10
++    )
++    with pytest.raises(QuickInputError):
++        parse_combined_input("930", previous=None, now=NOW)
++
++
++def test_generation_accumulation_uses_fact_date_and_replaces_same_report_date() -> None:
++    assert accumulate_generation(100, 5, date(2026, 10, 1), None, 0) == (105, date(2026, 9, 30))
++    assert accumulate_generation(105, 7, date(2026, 10, 1), date(2026, 10, 1), 5) == (
++        107,
++        date(2026, 9, 30),
++    )
++    assert accumulate_generation(999, 8, date(2026, 10, 2), date(2026, 10, 1), 7) == (
++        8,
++        date(2026, 10, 1),
++    )
