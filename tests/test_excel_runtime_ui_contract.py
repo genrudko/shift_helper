@@ -264,6 +264,7 @@ def test_generic_editing_tools_work_outside_shift_helper_workbooks() -> None:
     assert "Public Function SH_ActiveSelectionRange() As Range" in util
     assert "Set activeBook = Application.ActiveWorkbook" in util
     assert "If activeBook Is ThisWorkbook Then" in util
+    assert "Set selected = SH_ActiveSelectionRange()" in util
 
     merge = journal.split("Public Sub SH_MergeAndCopy()", 1)[1].split("End Sub", 1)[0]
     clean = journal.split("Public Sub SH_CleanSpaces()", 1)[1].split("End Sub", 1)[0]
