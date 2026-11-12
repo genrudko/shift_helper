@@ -253,3 +253,31 @@ def test_report_generation_uses_embedded_template_without_worksheet_copy() -> No
     assert "source.Copy" not in body
     assert "Worksheet.Copy" not in body
     assert "SH_OutputCopyValuesIntoTemplate source, target" in body
+
+
+def test_generic_editing_tools_work_outside_shift_helper_workbooks() -> None:
+    util = _source("modShiftHelperUtil.bas")
+    journal = _source("modShiftHelperJournal.bas")
+    tools = _source("modShiftHelperTools.bas")
+    calendar = _source("modShiftHelperCalendar.bas")
+
+    assert "Public Function SH_ActiveSelectionRange() As Range" in util
+    assert "Set activeBook = Application.ActiveWorkbook" in util
+    assert "If activeBook Is ThisWorkbook Then" in util
+
+    merge = journal.split("Public Sub SH_MergeAndCopy()", 1)[1].split("End Sub", 1)[0]
+    clean = journal.split("Public Sub SH_CleanSpaces()", 1)[1].split("End Sub", 1)[0]
+    rows = journal.split("Public Sub SH_AutoFitRows()", 1)[1].split("End Sub", 1)[0]
+    time_picker = tools.split("Public Sub SH_ShowTimePicker()", 1)[1].split("End Sub", 1)[0]
+    date_insert = calendar.split("Public Sub SH_InsertDateIntoSelection()", 1)[1].split(
+        "End Sub", 1
+    )[0]
+    journal_sort = journal.split("Public Sub SH_SortJournalByTime()", 1)[1].split(
+        "End Sub", 1
+    )[0]
+
+    for body in (merge, clean, rows, time_picker, date_insert):
+        assert "SH_ActiveSelectionRange()" in body
+        assert "SH_JournalBook()" not in body
+
+    assert "SH_JournalBook()" in journal_sort

@@ -104,12 +104,11 @@ End Function
 
 Public Sub SH_InsertDateIntoSelection()
     On Error GoTo Failed
-    Dim wb As Workbook, target As Range, initialDate As Date, selectedDate As Date, picked As Boolean
+    Dim target As Range, initialDate As Date, selectedDate As Date, picked As Boolean
     Dim cell As Range, errNumber As Long, errDescription As String, stage As String
 
-    stage = "resolve journal selection"
-    Set wb = SH_JournalBook()
-    Set target = SH_SelectionRange(wb)
+    stage = "resolve active selection"
+    Set target = SH_ActiveSelectionRange()
     If SH_CalendarTryDate(target.Cells(1, 1).Value2, initialDate) Then
         initialDate = DateValue(initialDate)
     Else

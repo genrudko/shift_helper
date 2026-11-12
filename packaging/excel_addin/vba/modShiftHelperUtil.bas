@@ -176,12 +176,22 @@ Private Sub SH_InitializePrepSheet(ByVal ws As Worksheet)
     ws.Columns(14).Hidden = True
 End Sub
 
-Public Function SH_SelectionRange(ByVal wb As Workbook) As Range
-    Dim selected As Range, selectionBook As Workbook
+Public Function SH_ActiveSelectionRange() As Range
+    Dim selected As Range, activeBook As Workbook, selectionBook As Workbook
+    Set activeBook = Application.ActiveWorkbook
+    If activeBook Is Nothing Then Err.Raise vbObjectError + 516, , SH_T("ERR_SELECTION")
+    If activeBook Is ThisWorkbook Then Err.Raise vbObjectError + 517, , SH_T("ERR_SELECTION_BOOK")
     If TypeName(Selection) <> "Range" Then Err.Raise vbObjectError + 516, , SH_T("ERR_SELECTION")
     Set selected = Selection
     Set selectionBook = selected.Worksheet.Parent
-    If Not (selectionBook Is wb) Then Err.Raise vbObjectError + 517, , SH_T("ERR_SELECTION_BOOK")
+    If Not (selectionBook Is activeBook) Then Err.Raise vbObjectError + 517, , SH_T("ERR_SELECTION_BOOK")
+    Set SH_ActiveSelectionRange = selected
+End Function
+
+Public Function SH_SelectionRange(ByVal wb As Workbook) As Range
+    Dim selected As Range
+    Set selected = SH_ActiveSelectionRange()
+    If Not (selected.Worksheet.Parent Is wb) Then Err.Raise vbObjectError + 517, , SH_T("ERR_SELECTION_BOOK")
     Set SH_SelectionRange = selected
 End Function
 

@@ -3,10 +3,9 @@ Option Explicit
 
 Public Sub SH_ShowTimePicker()
     On Error GoTo Failed
-    Dim wb As Workbook, target As Range, answer As Variant, token As String, parts As Variant
+    Dim target As Range, answer As Variant, token As String, parts As Variant
     Dim hourValue As Long, minuteValue As Long, cell As Range, defaultText As String
-    Set wb = SH_JournalBook()
-    Set target = SH_SelectionRange(wb)
+    Set target = SH_ActiveSelectionRange()
     defaultText = Format$(Now, "hh:mm")
     If target.Cells.CountLarge > 0 Then
         If IsNumeric(target.Cells(1, 1).Value2) And CDbl(target.Cells(1, 1).Value2) >= 0 And CDbl(target.Cells(1, 1).Value2) < 1 Then

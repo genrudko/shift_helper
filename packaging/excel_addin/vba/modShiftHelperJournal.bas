@@ -65,9 +65,8 @@ End Sub
 
 Public Sub SH_MergeAndCopy()
     On Error GoTo Failed
-    Dim wb As Workbook, target As Range, cell As Range, merged As String, part As String
-    Set wb = SH_JournalBook()
-    Set target = SH_SelectionRange(wb)
+    Dim target As Range, cell As Range, merged As String, part As String
+    Set target = SH_ActiveSelectionRange()
     For Each cell In target.Cells
         If cell.MergeCells Then
             If cell.Address <> cell.MergeArea.Cells(1, 1).Address Then GoTo NextCell
@@ -89,9 +88,8 @@ End Sub
 
 Public Sub SH_CleanSpaces()
     On Error GoTo Failed
-    Dim wb As Workbook, target As Range, cell As Range
-    Set wb = SH_JournalBook()
-    Set target = SH_SelectionRange(wb)
+    Dim target As Range, cell As Range
+    Set target = SH_ActiveSelectionRange()
     For Each cell In target.Cells
         If Not cell.HasFormula And VarType(cell.Value2) = vbString Then cell.Value = SH_NormalizeSpaces(cell.Value2)
     Next cell
@@ -103,9 +101,8 @@ End Sub
 
 Public Sub SH_AutoFitRows()
     On Error GoTo Failed
-    Dim wb As Workbook, target As Range, area As Range
-    Set wb = SH_JournalBook()
-    Set target = SH_SelectionRange(wb)
+    Dim target As Range, area As Range
+    Set target = SH_ActiveSelectionRange()
     For Each area In target.Areas
         area.EntireRow.AutoFit
     Next area
