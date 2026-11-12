@@ -211,10 +211,12 @@ def test_service_metadata_has_safe_missing_prep_behavior() -> None:
     assert "Set ws = SH_EnsurePrepSheet(wb)" in meta
 
 
-def test_selection_tools_cannot_mutate_a_transient_or_foreign_workbook() -> None:
+def test_selection_tools_split_generic_and_journal_scopes() -> None:
     journal = _source("modShiftHelperJournal.bas")
     util = _source("modShiftHelperUtil.bas")
-    assert journal.count("SH_SelectionRange(wb)") == 4
+    assert journal.count("SH_SelectionRange(wb)") == 1
+    assert journal.count("SH_ActiveSelectionRange()") == 3
+    assert "Public Function SH_ActiveSelectionRange" in util
     assert "Public Function SH_SelectionRange" in util
     assert "ERR_SELECTION_BOOK" in util
 
