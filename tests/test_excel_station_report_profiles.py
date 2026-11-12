@@ -108,7 +108,7 @@ def test_kuzminskaya_state_profile_keeps_status_service_only_and_merged_gtp_bloc
     assert "target.Columns(12).Delete" in output
 
 
-def test_station_history_seeds_known_2026_facts_without_overwriting_current_month() -> None:
+def test_station_history_seeds_known_2026_facts_and_rolls_forward() -> None:
     facts = _source("modShiftHelperStationFacts.bas")
 
     for value in (
@@ -122,5 +122,7 @@ def test_station_history_seeds_known_2026_facts_without_overwriting_current_mont
     ):
         assert value in facts
 
-    assert "lastKnownMonth = Application.Min(7, Month(reportDate) - 1)" in facts
+    assert "lastKnownMonth = Month(reportDate) - 1" in facts
+    assert "SH_TryStoredStationMonthFact" in facts
+    assert "raw = main.Cells(monthIndex + 4, 10).Value2" in facts
     assert "main.Cells(monthIndex + 4, 10).Value2 = value" in facts

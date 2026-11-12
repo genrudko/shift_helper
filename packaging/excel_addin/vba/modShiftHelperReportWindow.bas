@@ -6,16 +6,7 @@ Public Sub SH_SyncReportWindow(ByVal wb As Workbook)
     Set prep = SH_EnsurePrepSheet(wb)
     raw = prep.Range("B3").Value2
 
-    If IsError(raw) Or IsNull(raw) Or IsEmpty(raw) Then
-        Err.Raise vbObjectError + 730, , "Report date is empty or invalid."
-    End If
-    If Not IsDate(raw) And Not IsNumeric(raw) Then
-        Err.Raise vbObjectError + 731, , "Report date is invalid."
-    End If
-
-    On Error GoTo InvalidDate
-    reportDate = DateValue(CDate(raw))
-    On Error GoTo 0
+    If Not SH_TryParseReportDate(raw, reportDate) Then GoTo InvalidDate
 
     prep.Range("B3").Value = reportDate
     prep.Range("B3").NumberFormat = "dd.mm.yyyy"

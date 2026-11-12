@@ -1,33 +1,87 @@
 Attribute VB_Name = "modShiftHelperStationFacts"
 Option Explicit
 
+Private Const SH_MONTH_FACT_PREFIX As String = "report.generation.month_fact."
+
 Public Sub SH_ApplyStationHistoricalFacts(ByVal wb As Workbook)
     On Error GoTo Failed
     Dim stationId As Long, reportDate As Date, main As Worksheet
     Dim monthIndex As Long, lastKnownMonth As Long, value As Double
+    Dim raw As Variant, found As Boolean
 
     stationId = SH_ReportStationId(wb, False)
     If stationId = 0 Then Exit Sub
     reportDate = SH_ReportDate(wb)
-    If Year(reportDate) <> 2026 Then Exit Sub
 
     Set main = SH_RequireSheet(wb, SH_InputSheetName(1))
-    lastKnownMonth = Application.Min(7, Month(reportDate) - 1)
+    lastKnownMonth = Month(reportDate) - 1
     If lastKnownMonth < 1 Then Exit Sub
 
     For monthIndex = 1 To lastKnownMonth
-        value = SH_StationHistoricalFact2026(stationId, monthIndex)
-        If value >= 0 Then main.Cells(monthIndex + 4, 10).Value2 = value
+        value = -1#
+        found = SH_TryStoredStationMonthFact( _
+            wb, stationId, Year(reportDate), monthIndex, value)
+
+        If Not found Then
+            raw = main.Cells(monthIndex + 4, 10).Value2
+            If SH_StationFactsTryDouble(raw, value) Then
+                found = True
+                SH_SetMetaValue wb, _
+                    SH_StationMonthFactKey(stationId, Year(reportDate), monthIndex), value
+            ElseIf Year(reportDate) = 2026 Then
+                value = SH_StationHistoricalFact2026(stationId, monthIndex)
+                found = (value >= 0#)
+            End If
+        End If
+
+        If found Then main.Cells(monthIndex + 4, 10).Value2 = value
     Next monthIndex
     Exit Sub
 Failed:
     Err.Raise Err.Number, , "Could not apply station historical facts: " & Err.Description
 End Sub
 
+Public Sub SH_StoreStationMonthFact(ByVal wb As Workbook, ByVal stationId As Long, _
+    ByVal factDate As Date, ByVal value As Double)
+    If stationId <> SH_STATION_KOCH And stationId <> SH_STATION_KUZ Then Exit Sub
+    SH_SetMetaValue wb, _
+        SH_StationMonthFactKey(stationId, Year(factDate), Month(factDate)), value
+End Sub
+
+Private Function SH_TryStoredStationMonthFact(ByVal wb As Workbook, ByVal stationId As Long, _
+    ByVal factYear As Long, ByVal factMonth As Long, ByRef value As Double) As Boolean
+    Dim raw As Variant
+    raw = SH_MetaValue(wb, SH_StationMonthFactKey(stationId, factYear, factMonth), Empty)
+    If SH_StationFactsTryDouble(raw, value) Then
+        SH_TryStoredStationMonthFact = True
+    End If
+End Function
+
+Private Function SH_StationMonthFactKey(ByVal stationId As Long, ByVal factYear As Long, _
+    ByVal factMonth As Long) As String
+    SH_StationMonthFactKey = SH_MONTH_FACT_PREFIX & CStr(stationId) & "." & _
+        Format$(factYear, "0000") & "." & Format$(factMonth, "00")
+End Function
+
+Private Function SH_StationFactsTryDouble(ByVal raw As Variant, ByRef value As Double) As Boolean
+    On Error GoTo Failed
+    If IsError(raw) Or IsNull(raw) Or IsEmpty(raw) Then Exit Function
+    If VarType(raw) = vbString Then
+        If Len(Trim$(CStr(raw))) = 0 Then Exit Function
+    End If
+    If Not IsNumeric(raw) Then Exit Function
+    value = CDbl(raw)
+    SH_StationFactsTryDouble = True
+    Exit Function
+Failed:
+    SH_StationFactsTryDouble = False
+End Function
+
 Public Sub SH_PrepareStationReportForRibbon()
     On Error GoTo Failed
     Dim wb As Workbook
     Set wb = SH_JournalBook()
+    SH_ApplyNssForCurrentStation wb
     SH_SyncReportWindow wb
     SH_EnsureStationReportContour wb
     SH_ApplyStationHistoricalFacts wb
@@ -43,6 +97,7 @@ Public Sub SH_SelectStationForRibbon(ByVal stationId As Long)
     SH_SetReportStation stationId
     Dim wb As Workbook
     Set wb = SH_JournalBook()
+    SH_ApplyNssForStation wb, stationId
     SH_SyncReportWindow wb
     SH_ApplyStationHistoricalFacts wb
     SH_CalculateReportInputs wb
@@ -50,21 +105,48 @@ End Sub
 
 Public Sub SH_ShowStationCalendarForRibbon()
     Dim wb As Workbook
-    SH_ShowStationCalendar
+    If Not SH_ShowCalendar() Then Exit Sub
     Set wb = SH_JournalBook()
+    SH_ApplyNssForCurrentStation wb
     SH_SyncReportWindow wb
     SH_ApplyStationHistoricalFacts wb
     SH_CalculateReportInputs wb
 End Sub
 
 Public Sub SH_GenerateStationReportForRibbon()
-    Dim wb As Workbook
+    On Error GoTo Failed
+    Dim wb As Workbook, hadEvents As Boolean, eventsCaptured As Boolean
+    Dim stage As String, errNumber As Long, errDescription As String
+    stage = "capture Excel events"
+    hadEvents = Application.EnableEvents
+    eventsCaptured = True
+    Application.EnableEvents = False
+    stage = "resolve journal workbook"
     Set wb = SH_JournalBook()
+    stage = "apply NSS"
+    SH_ApplyNssForCurrentStation wb
+    stage = "sync report window"
     SH_SyncReportWindow wb
+    stage = "ensure station report contour"
     SH_EnsureStationReportContour wb
+    stage = "apply historical facts"
     SH_ApplyStationHistoricalFacts wb
+    stage = "calculate report inputs"
     SH_CalculateReportInputs wb
+    stage = "generate prepared report"
     SH_GeneratePreparedReport
+    Application.EnableEvents = hadEvents
+    Exit Sub
+Failed:
+    errNumber = Err.Number
+    errDescription = Err.Description
+    On Error Resume Next
+    If eventsCaptured Then Application.EnableEvents = hadEvents
+    On Error GoTo 0
+    If errNumber = 0 Then errNumber = vbObjectError + 733
+    If Len(errDescription) = 0 Then errDescription = "Station report generation failed."
+    MsgBox SH_T("ERR_REPORT") & "[#" & CStr(errNumber) & "] Stage [" & stage & "]: " & _
+        errDescription, vbExclamation, "Shift-Helper"
 End Sub
 
 Private Function SH_StationHistoricalFact2026(ByVal stationId As Long, _
